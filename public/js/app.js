@@ -37,6 +37,10 @@
   const selfMonitorCheckbox = document.getElementById('selfMonitorCheckbox');
   const tauriMicWarning = document.getElementById('tauriMicWarning');
   const speakerUnsupportedHint = document.getElementById('speakerUnsupportedHint');
+  const micGateModeField = document.getElementById('micGateModeField');
+  const micGateModeSelect = document.getElementById('micGateModeSelect');
+  const micGateStatus = document.getElementById('micGateStatus');
+  const micSensitivityField = document.getElementById('micSensitivityField');
   const micSensitivityRange = document.getElementById('micSensitivityRange');
   const micSensitivityValue = document.getElementById('micSensitivityValue');
   const noiseSuppressionSelect = document.getElementById('noiseSuppressionSelect');
@@ -185,14 +189,10 @@
   const localVoiceOverrides = new Map(); // userId -> { mutedLocal, hideVideo }
   let audioCtx = null;
   let localAnalyser = null;
-  let speakingRAF = null; // timer do laço de fala/portão do mic (ver runSpeakingLoop)
-  // 30x por segundo: rápido o bastante pro portão do mic não cortar começo de palavra, e bem mais
-  // leve que rodar colado na taxa do monitor (60–240 Hz) — esse laço roda o tempo todo na call,
-  // inclusive com o didiscord atrás do jogo
+  let legacySpeakingTimer = null; // timer só para a detecção legada
   const SPEAKING_TICK_MS = 33;
   let rawMicStream = null; // stream crua do getUserMedia, antes do reforço de ganho — precisa ser parada separadamente pra liberar o hardware do mic
   let micGainNode = null; // GainNode aplicado no mic durante a call de verdade — ajustável ao vivo pelo slider de configurações
-  let micGateGainNode = null; // GainNode do gate de sensibilidade — abre/fecha via ganho, nunca via track.enabled
   let callMicGraph = null;
   let micNsActiveMode = 'off'; // qual supressão está de fato rodando ('deepfilter' | 'rnnoise' | 'off')
   let selfMonitorGainNode = null; // "ouvir a si mesmo" — toca o próprio mic de volta no fone, só localmente
@@ -250,6 +250,7 @@
   }
 
   // ---------- sensibilidade do microfone (gate de ruído) e supressão de ruído ----------
+  const MIC_GATE_MODE_KEY = 'didiscord:micGateMode';
   const MIC_SENSITIVITY_KEY = 'didiscord:micSensitivity';
   const NOISE_SUPPRESSION_KEY = 'didiscord:noiseSuppression';
   const NOISE_SUPPRESSION_LEVEL_KEY = 'didiscord:noiseSuppressionLevel';
@@ -291,14 +292,27 @@
   function getSavedMicSensitivity() {
     try {
       const v = parseInt(localStorage.getItem(MIC_SENSITIVITY_KEY), 10);
-      // A escala do medidor vai até 100, mas é uma média do espectro: fala normal pode
-      // ficar longe do máximo mesmo com ganho alto. O teto continua protegendo contra mic mudo.
       return Number.isFinite(v) ? Math.min(60, Math.max(0, v)) : 0;
     } catch (_) { return 0; }
   }
   function saveMicSensitivity(v) {
     try { localStorage.setItem(MIC_SENSITIVITY_KEY, String(v)); } catch (_) { /* segue sem persistir */ }
   }
+  function getSavedMicGateMode() {
+    if (isTauriApp()) return 'manual';
+    try { return localStorage.getItem(MIC_GATE_MODE_KEY) === 'manual' ? 'manual' : 'auto'; }
+    catch (_) { return 'auto'; }
+  }
+
+  // Mantém a posição gravada do slider, agora calibrado em RMS. Zero sempre deixa aberto.
+  function micThresholdDb(sensitivity) {
+    return sensitivity === 0 ? null : Math.round(-65 + (sensitivity - 1) * 45 / 59);
+  }
+
+  function micDbToPercent(db) {
+    return Math.max(0, Math.min(100, (db + 70) * 100 / 70));
+  }
+
   // 'deepfilter' (avançada, parecida com a Krisp do Discord — padrão) | 'rnnoise' (leve) | 'off'
   const NOISE_MODES = ['deepfilter', 'rnnoise', 'off'];
   // processamento da voz no navegador: 'speakers' (cancela eco + volume automático), 'headphones'
@@ -5642,13 +5656,20 @@
   }
 
   function runMicMeter() {
-    let gateOpenUntil = 0;
     function loop() {
-      const analyser = voiceChannel && localStream ? localAnalyser : settingsMicGraph?.analyser || settingsMicFallback;
-      const level = analyser ? getAnalyserLevel(analyser) : 0;
-      micMeterFill.style.width = level + '%';
-      if (settingsMicGraph) {
-        gateOpenUntil = updateMicGate(settingsMicGraph.gateGainNode, level, getSavedMicSensitivity(), gateOpenUntil, performance.now());
+      const inCall = voiceChannel && localStream;
+      const graph = micTest?.graph || (inCall ? callMicGraph : settingsMicGraph);
+      const analyser = graph?.analyser || (inCall ? localAnalyser : settingsMicFallback);
+      const gate = graph?.gate;
+      if (gate?.legacy && graph !== callMicGraph) gate.tickLegacy(getAnalyserDb(analyser));
+      const level = gate?.state.levelDb ?? getAnalyserDb(analyser);
+      micMeterFill.style.width = (isTauriApp() && analyser ? getAnalyserLevel(analyser) : micDbToPercent(level)) + '%';
+      if (micGateStatus) {
+        const fallback = (gate?.legacy || gate?.vadFailed) && getSavedMicGateMode() === 'auto';
+        const text = inCall && isMuted && !micTest?.graph ? 'microfone mutado'
+          : fallback ? 'detecção indisponível · microfone aberto'
+          : gate ? (gate.state.open ? 'microfone aberto' : 'microfone fechado') : '';
+        if (micGateStatus.textContent !== text) micGateStatus.textContent = text;
       }
       settingsMeterTimer = setTimeout(loop, SPEAKING_TICK_MS);
     }
@@ -5660,7 +5681,6 @@
     micTest = null;
     if (test) {
       clearTimeout(test.stopTimer);
-      clearInterval(test.gateTimer);
       if (test.recorder && test.recorder.state !== 'inactive') test.recorder.stop();
       test.graph?.teardown();
       test.clonedTrack?.stop();
@@ -5706,15 +5726,6 @@
         if (micTest !== test) { graph?.teardown(); return; }
         test.graph = graph;
         stream = graph?.stream || raw;
-        if (graph) {
-          let openUntil = 0;
-          const tick = () => {
-            const now = performance.now();
-            openUntil = updateMicGate(graph.gateGainNode, getAnalyserLevel(graph.analyser), getSavedMicSensitivity(), openUntil, now);
-          };
-          tick();
-          test.gateTimer = setInterval(tick, SPEAKING_TICK_MS);
-        }
       }
 
       const recorder = new MediaRecorder(stream);
@@ -5729,7 +5740,6 @@
       recorder.onstop = async () => {
         if (micTest !== test) return;
         clearTimeout(test.stopTimer);
-        clearInterval(test.gateTimer);
         test.graph?.teardown();
         test.graph = null;
         test.clonedTrack?.stop();
@@ -5933,7 +5943,7 @@
     }
   }
 
-  const SITE_VERSION = '0.6.2';
+  const SITE_VERSION = '0.6.3';
   function renderSettingsAppCard() {
     const card = document.getElementById('settingsAppCard');
     const desk = window.didiscordDesktop;
@@ -5962,6 +5972,7 @@
     speakerUnsupportedHint.hidden = SUPPORTS_SINK_ID;
     notificationSoundsCheckbox.checked = getSavedNotificationSounds();
     micSensitivityRange.value = getSavedMicSensitivity();
+    if (micGateModeSelect) micGateModeSelect.value = getSavedMicGateMode();
     updateMicSensitivityLabel();
     noiseSuppressionSelect.value = getSavedNoiseSuppression();
     if (noiseSuppressionLevelSelect) noiseSuppressionLevelSelect.value = getSavedNoiseSuppressionLevel();
@@ -6060,13 +6071,29 @@
 
   function updateMicSensitivityLabel() {
     const v = Number(micSensitivityRange.value);
-    micSensitivityValue.textContent = v === 0 ? 'desligada' : v + '%';
-    micMeterThreshold.classList.toggle('show', v > 0);
-    micMeterThreshold.style.left = v + '%';
+    const manual = getSavedMicGateMode() === 'manual';
+    const legacy = isTauriApp();
+    const threshold = micThresholdDb(v);
+    if (micGateModeField) micGateModeField.hidden = legacy;
+    if (micSensitivityField) micSensitivityField.hidden = !manual;
+    micSensitivityValue.textContent = v === 0 ? 'aberto' : legacy ? v + '%' : threshold + ' dBFS';
+    micMeterThreshold.classList.toggle('show', manual && v > 0);
+    micMeterThreshold.style.left = (legacy ? v : micDbToPercent(threshold)) + '%';
   }
+
+  function applyMicGateSettings() {
+    for (const graph of [callMicGraph, settingsMicGraph, micTest?.graph]) graph?.gate.configure();
+  }
+
   micSensitivityRange.addEventListener('input', () => {
-    updateMicSensitivityLabel();
     saveMicSensitivity(Number(micSensitivityRange.value));
+    updateMicSensitivityLabel();
+    applyMicGateSettings();
+  });
+  micGateModeSelect?.addEventListener('change', () => {
+    try { localStorage.setItem(MIC_GATE_MODE_KEY, micGateModeSelect.value); } catch (_) { /* segue com o padrão */ }
+    updateMicSensitivityLabel();
+    applyMicGateSettings();
   });
   // texto embaixo da opção: o que está de fato rodando na call agora (pode ter caído pro modo leve)
   function updateNoiseSuppressionStatus() {
@@ -6242,6 +6269,15 @@
     return Math.min(100, Math.round((sum / data.length) * 1.6));
   }
 
+  const micRmsBuffer = new Float32Array(512);
+  function getAnalyserDb(analyser) {
+    if (!analyser) return -90;
+    analyser.getFloatTimeDomainData(micRmsBuffer);
+    let sum = 0;
+    for (const sample of micRmsBuffer) sum += sample * sample;
+    return Math.max(-90, 10 * Math.log10(sum / micRmsBuffer.length));
+  }
+
   // Toca a mesma saída que a call envia, com volume local reduzido pra evitar microfonia.
   function updateSelfMonitor() {
     const stream = localStream || settingsMicGraph?.stream || settingsStream;
@@ -6317,24 +6353,24 @@
   // refletir o volume de verdade que está sendo enviado, não o volume cru do hardware.
   // ---------- supressão de ruído de verdade (RNNoise, WASM) — mesma família de técnica do Krisp ----------
   const RNNOISE_BASE = '/vendor/web-noise-suppressor';
-  let rnnoiseLoadPromise = null;
+  const RNNOISE_WORKLET = `${RNNOISE_BASE}/rnnoiseWorkletProcessor.js?v=2`;
+  let rnnoiseAssetsPromise = null;
 
-  function loadRnnoiseAssets(ctx) {
-    if (!rnnoiseLoadPromise) {
-      rnnoiseLoadPromise = (async () => {
+  function loadRnnoiseAssets() {
+    if (!rnnoiseAssetsPromise) {
+      rnnoiseAssetsPromise = (async () => {
         const mod = await import(`${RNNOISE_BASE}/index.js`);
         const wasmBinary = await mod.loadRnnoise({
           url: `${RNNOISE_BASE}/rnnoise.wasm`,
           simdUrl: `${RNNOISE_BASE}/rnnoise_simd.wasm`,
         });
-        await ctx.audioWorklet.addModule(`${RNNOISE_BASE}/rnnoiseWorkletProcessor.js`);
         return { RnnoiseWorkletNode: mod.RnnoiseWorkletNode, wasmBinary };
       })().catch((err) => {
-        rnnoiseLoadPromise = null; // permite tentar de novo na próxima call em vez de ficar quebrado pra sempre
+        rnnoiseAssetsPromise = null;
         throw err;
       });
     }
-    return rnnoiseLoadPromise;
+    return rnnoiseAssetsPromise;
   }
 
   // monta o grafo de áudio do mic: bruto -> [RNNoise] -> ganho manual -> gate de sensibilidade -> destino (pro transceiver)
@@ -6390,7 +6426,9 @@
     }
     if (mode === 'rnnoise') {
       try {
-        const { RnnoiseWorkletNode, wasmBinary } = await loadRnnoiseAssets(ctx);
+        const [{ RnnoiseWorkletNode, wasmBinary }] = await Promise.all([
+          loadRnnoiseAssets(), loadMicWorkletModule(ctx, RNNOISE_WORKLET),
+        ]);
         const node = new RnnoiseWorkletNode(ctx, { maxChannels: 1, wasmBinary });
         return { node, mode: 'rnnoise', teardown: () => { try { node.disconnect(); node.destroy(); } catch (_) { /* já desligado */ } } };
       } catch (err) {
@@ -6400,34 +6438,132 @@
     return { node: null, mode: 'off', teardown: null };
   }
 
-  let micLimiterModulePromise = null;
+  const micWorkletModules = new Map(); // a call e a prévia usam o mesmo AudioContext
 
-  async function createMicLimiterWorklet(ctx) {
+  function loadMicWorkletModule(ctx, url) {
+    if (!micWorkletModules.has(url)) {
+      const pending = ctx.audioWorklet.addModule(url).catch((err) => {
+        micWorkletModules.delete(url);
+        throw err;
+      });
+      micWorkletModules.set(url, pending);
+    }
+    return micWorkletModules.get(url);
+  }
+
+  async function createMicWorklet(ctx, name, url, options = {}) {
     if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') return null;
     let timer;
     try {
-      if (!micLimiterModulePromise) {
-        micLimiterModulePromise = ctx.audioWorklet.addModule('/js/worklets/mic-limiter.js?v=1').catch((err) => {
-          micLimiterModulePromise = null;
-          throw err;
-        });
-      }
-      // Se a conexão atrasar a carga do módulo, a captura segue com o compressor.
       await Promise.race([
-        micLimiterModulePromise,
+        loadMicWorkletModule(ctx, url),
         new Promise((_, reject) => {
           timer = setTimeout(() => reject(new Error('tempo de carga excedido')), 1000);
         }),
       ]);
-      return new AudioWorkletNode(ctx, 'didiscord-mic-limiter', {
-        channelCount: 1, channelCountMode: 'explicit', outputChannelCount: [1],
+      return new AudioWorkletNode(ctx, name, {
+        channelCount: 1, channelCountMode: 'explicit', outputChannelCount: [1], ...options,
       });
     } catch (err) {
-      console.warn('[call] limitador do microfone indisponível, usando o compressor:', err);
+      console.warn('[call] processamento do microfone indisponível:', name, err);
       return null;
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  function connectMicGate(input, sidechain, output, worklet) {
+    const gate = {
+      legacy: !worklet,
+      vadFailed: false,
+      state: { levelDb: -90, speaking: false, open: true },
+      onSpeaking: null,
+      configure,
+      mute,
+      tickLegacy,
+      teardown,
+    };
+    let automatic = true;
+    let thresholdDb = null;
+    let muted = false;
+    let openUntil = 0;
+    let vadRequested = false;
+
+    function report(state) {
+      const changed = state.speaking !== gate.state.speaking;
+      gate.state = state;
+      if (changed) gate.onSpeaking?.(state.speaking);
+    }
+
+    function configure() {
+      automatic = getSavedMicGateMode() === 'auto';
+      thresholdDb = micThresholdDb(getSavedMicSensitivity());
+      if (gate.legacy) return;
+      worklet.port.postMessage({ type: 'config', automatic, thresholdDb });
+      if (!automatic || vadRequested) return;
+      vadRequested = true;
+      if (worklet.context.sampleRate !== 48000) {
+        gate.vadFailed = true;
+        return;
+      }
+      loadRnnoiseAssets().then(({ wasmBinary }) => {
+        if (!gate.legacy) worklet.port.postMessage({ type: 'vad', wasmBinary });
+      }).catch((err) => {
+        gate.vadFailed = true;
+        console.warn('[call] detecção automática indisponível, seguindo com o mic aberto:', err);
+      });
+    }
+
+    function mute(value) {
+      if (muted === value) return;
+      muted = value;
+      if (!gate.legacy) worklet.port.postMessage({ type: 'mute', muted });
+      if (muted) {
+        openUntil = 0;
+        report({ levelDb: -90, speaking: false, open: false });
+      }
+    }
+
+    // O fallback mantém o gate manual com o medidor em dB e deixa passar no automático.
+    function tickLegacy(levelDb) {
+      const now = performance.now();
+      const bypass = automatic || thresholdDb === null;
+      if (!muted && levelDb >= (bypass ? -55 : thresholdDb)) openUntil = now + 350;
+      const speaking = !muted && now < openUntil;
+      const open = !muted && (bypass || speaking);
+      output.gain.setTargetAtTime(open ? 1 : 0, output.context.currentTime, 0.03);
+      report({ levelDb, speaking, open });
+    }
+
+    function teardown() {
+      if (gate.legacy) return;
+      gate.legacy = true; // também invalida o carregamento assíncrono do WASM
+      worklet.onprocessorerror = null;
+      worklet.port.onmessage = null;
+      worklet.port.postMessage({ type: 'stop' });
+      worklet.port.close();
+      worklet.disconnect();
+    }
+
+    if (worklet) {
+      worklet.port.onmessage = ({ data }) => {
+        if (data.type === 'vad-error') gate.vadFailed = true;
+        if (data.type === 'meter' && !muted) report({ levelDb: data.levelDb, speaking: data.speaking, open: data.open });
+      };
+      worklet.onprocessorerror = (err) => {
+        input.disconnect(worklet);
+        sidechain.disconnect(worklet);
+        teardown();
+        input.connect(output); // usa a mesma track de saída se o worklet parar na call
+        console.warn('[call] gate indisponível, usando o modo de reserva:', err);
+      };
+      input.connect(worklet, 0, 0);
+      sidechain.connect(worklet, 0, 1);
+      worklet.connect(output);
+    } else {
+      input.connect(output);
+    }
+    return gate;
   }
 
   function connectMicLimiter(input, dest, worklet) {
@@ -6479,31 +6615,34 @@
     const gateGainNode = ctx.createGain();
     const analyser = ctx.createAnalyser();
     const dest = ctx.createMediaStreamDestination();
-    const [ns, worklet] = await Promise.all([
+    const [ns, limiterWorklet, gateWorklet] = await Promise.all([
       createNoiseSuppressorNode(ctx, noiseMode),
-      createMicLimiterWorklet(ctx),
+      createMicWorklet(ctx, 'didiscord-mic-limiter', '/js/worklets/mic-limiter.js?v=1'),
+      createMicWorklet(ctx, 'didiscord-mic-gate', '/js/worklets/mic-gate.js?v=1', { numberOfInputs: 2 }),
     ]);
+    let gate;
     let teardownLimiter;
     const teardown = () => {
       for (const node of [source, highpass, gainNode, gateGainNode]) node.disconnect();
+      gate?.teardown();
       teardownLimiter?.();
       ns.teardown?.();
       dest.stream.getTracks().forEach((track) => track.stop());
     };
 
     try {
-      teardownLimiter = connectMicLimiter(gateGainNode, dest, worklet);
+      teardownLimiter = connectMicLimiter(gateGainNode, dest, limiterWorklet);
+      gate = connectMicGate(gainNode, highpass, gateGainNode, gateWorklet);
       source.connect(highpass);
       if (ns.node) highpass.connect(ns.node);
       (ns.node || highpass).connect(gainNode);
       gainNode.gain.value = gainValue / 100;
-      gainNode.connect(gateGainNode);
 
       // Call e prévia leem o mesmo ponto: depois da supressão e do ganho, antes do gate.
       analyser.fftSize = 512;
       gainNode.connect(analyser);
       return {
-        stream: dest.stream, gainNode, gateGainNode, analyser, noiseMode: ns.mode,
+        stream: dest.stream, gainNode, gate, analyser, noiseMode: ns.mode,
         setSuppressionLevel: ns.setSuppressionLevel, teardown,
       };
     } catch (err) {
@@ -6518,6 +6657,7 @@
       // A pessoa pode mexer nas configurações enquanto os módulos carregam.
       graph.gainNode.gain.value = getSavedMicGain() / 100;
       graph.setSuppressionLevel?.(getSavedNoiseSuppressionLevel());
+      graph.gate.configure();
       return graph;
     } catch (err) {
       console.warn('[call] processamento do microfone indisponível, seguindo com o áudio cru:', err);
@@ -6541,10 +6681,10 @@
     }
 
     const previousGraph = callMicGraph;
-    if (graph && micGateGainNode) graph.gateGainNode.gain.value = micGateGainNode.gain.value;
     rawMicStream = input;
     useCallMicGraph(graph);
     applyLocalTrackState();
+    publishLocalSpeaking(graph?.gate.state.speaking);
     const replacement = replaceOnAllPeers('mic', localStream.getAudioTracks()[0] || null);
     resetMicTest();
     await replacement;
@@ -6556,8 +6696,10 @@
   function useCallMicGraph(graph) {
     localStream = graph?.stream || rawMicStream;
     micGainNode = graph?.gainNode || null;
-    micGateGainNode = graph?.gateGainNode || null;
     callMicGraph = graph;
+    if (graph) graph.gate.onSpeaking = (speaking) => {
+      if (callMicGraph === graph) publishLocalSpeaking(speaking);
+    };
     micNsActiveMode = graph?.noiseMode || 'off';
     localAnalyser = graph?.analyser || createRawMicAnalyser(rawMicStream);
     runSpeakingLoop();
@@ -6802,6 +6944,7 @@
   }
 
   function applyLocalTrackState() {
+    callMicGraph?.gate.mute(isMuted);
     if (localStream) localStream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
     if (rawMicStream && rawMicStream !== localStream) {
       rawMicStream.getAudioTracks().forEach((track) => { track.enabled = !isMuted; });
@@ -6811,6 +6954,7 @@
   function setMuted(val) {
     isMuted = val;
     applyLocalTrackState();
+    if (isMuted) publishLocalSpeaking(false);
     muteBtn.classList.toggle('active', isMuted);
     callViewMuteBtn.classList.toggle('active', isMuted);
     syncLocalVoiceState();
@@ -7313,59 +7457,50 @@
     if (currentUser && userId === currentUser.id) profileBar.classList.toggle('is-speaking', on);
   }
 
-  // avisa os outros quando eu começo/paro de falar (com uma folguinha pra não piscar entre palavras)
+  // A mesma transição do gate atualiza a borda local e é enviada aos demais participantes.
   let speakingSentState = false;
-  let lastLoudAt = 0;
-  function reportSelfSpeaking(loud) {
-    const now = performance.now();
-    if (loud) lastLoudAt = now;
-    const effective = loud || now - lastLoudAt < 280;
-    if (effective === speakingSentState) return effective;
-    speakingSentState = effective;
-    if (voiceChannel) Realtime.send('voice_speaking', { speaking: effective });
-    return effective;
-  }
-
-  function checkSpeaking(analyser) {
-    if (!analyser) return false;
-    return getAnalyserLevel(analyser) > 12;
-  }
-
-  // Mesmo limiar, hangover e rampa na prévia e na call.
-  function updateMicGate(gate, level, sensitivity, openUntil, now) {
-    if (sensitivity > 0 && level >= sensitivity) openUntil = now + 350;
-    if (gate) {
-      const open = sensitivity === 0 || now < openUntil;
-      gate.gain.setTargetAtTime(open ? 1 : 0, gate.context.currentTime, sensitivity === 0 ? 0.01 : 0.03);
-    }
-    return openUntil;
+  let voiceSpeakingReady = false;
+  function publishLocalSpeaking(speaking) {
+    if (!voiceChannel || !voiceSpeakingReady || !currentUser) return;
+    const active = !!speaking && !isMuted;
+    setParticipantSpeaking(currentUser.id, active);
+    if (active === speakingSentState) return;
+    speakingSentState = active;
+    Realtime.send('voice_speaking', { speaking: active });
   }
 
   function runSpeakingLoop() {
-    let micGateOpenUntil = 0;
+    let rawOpenUntil = 0;
     function loop() {
-      if (!voiceChannel) { speakingRAF = null; return; }
-
-      let selfSpeaking = false;
-      if (localAnalyser && !isMuted) {
+      if (!voiceChannel) { legacySpeakingTimer = null; return; }
+      const gate = callMicGraph?.gate;
+      if (gate?.legacy) {
+        gate.tickLegacy(getAnalyserDb(localAnalyser));
+        publishLocalSpeaking(gate.state.speaking);
+      } else if (!gate && localAnalyser && !isMuted) {
         const level = getAnalyserLevel(localAnalyser);
-        const sensitivity = getSavedMicSensitivity();
+        const sensitivity = isTauriApp() ? getSavedMicSensitivity() : 0;
         const now = performance.now();
-        micGateOpenUntil = updateMicGate(micGateGainNode, level, sensitivity, micGateOpenUntil, now);
-        selfSpeaking = sensitivity === 0 ? level >= 8 : now < micGateOpenUntil;
-        if (!micGateGainNode && localStream && isTauriApp()) {
-          // No Tauri, preserva o gate legado via track.enabled.
-          // Se o grafo falhar num navegador, a faixa crua fica aberta pra garantir a transmissão.
-          localStream.getAudioTracks().forEach((track) => { track.enabled = sensitivity === 0 || selfSpeaking; });
+        if (level >= (sensitivity || 8)) rawOpenUntil = now + 350;
+        const speaking = now < rawOpenUntil;
+        if (isTauriApp()) {
+          localStream?.getAudioTracks().forEach((track) => { track.enabled = sensitivity === 0 || speaking; });
         }
-      } else if (micGateGainNode && isMuted) {
-        micGateGainNode.gain.setTargetAtTime(0, micGateGainNode.context.currentTime, 0.01);
+        publishLocalSpeaking(speaking);
+      } else if (isMuted) {
+        rawOpenUntil = 0;
       }
-      setParticipantSpeaking(currentUser.id, reportSelfSpeaking(selfSpeaking && !isMuted));
-      for (const peer of peers.values()) setParticipantSpeaking(peer.userId, checkSpeaking(peer.analyser));
-      speakingRAF = setTimeout(loop, SPEAKING_TICK_MS);
+
+      // Mantém o analisador remoto até chegar o primeiro evento de fala (por exemplo, se
+      // a pessoa já falava antes de eu entrar). Depois a borda acompanha o gate de quem fala.
+      for (const peer of peers.values()) {
+        if (!peer.hasSpeakingSignal && peer.analyser) {
+          setParticipantSpeaking(peer.userId, getAnalyserLevel(peer.analyser) > 12);
+        }
+      }
+      legacySpeakingTimer = setTimeout(loop, SPEAKING_TICK_MS);
     }
-    if (!speakingRAF) speakingRAF = setTimeout(loop, 0);
+    if (!legacySpeakingTimer) legacySpeakingTimer = setTimeout(loop, 0);
   }
 
   function createRawMicAnalyser(stream) {
@@ -7646,7 +7781,7 @@
   function stopSpeakingDetection() {
     localAnalyser = null;
     for (const peer of peers.values()) peer.analyser = null;
-    if (speakingRAF) { clearTimeout(speakingRAF); speakingRAF = null; }
+    if (legacySpeakingTimer) { clearTimeout(legacySpeakingTimer); legacySpeakingTimer = null; }
   }
 
   async function flushPendingIceCandidates(peer) {
@@ -7872,7 +8007,7 @@
         } else {
           peer.audioStream.addTrack(ev.track);
           connectPeerAudio(peer);
-          setupRemoteSpeakingDetection(peer);
+          if (!peer.hasSpeakingSignal) setupRemoteSpeakingDetection(peer);
         }
         return;
       }
@@ -8501,12 +8636,15 @@
     refreshConnectionStatus();
 
     Realtime.send('voice_join', { channelId: ch.id });
+    voiceSpeakingReady = true;
+    publishLocalSpeaking(callMicGraph?.gate.state.speaking);
     syncLocalVoiceState(); // manda o estado real (inclusive o mudo forçado, se for o caso) pro outro lado
   }
 
   function leaveVoiceCall(opts = {}) {
     if (currentUser) setParticipantSpeaking(currentUser.id, false);
     speakingSentState = false;
+    voiceSpeakingReady = false;
     if (!voiceChannel) return;
     playLeaveSound();
     if (!opts.silent) Realtime.send('voice_leave');
@@ -8528,7 +8666,6 @@
     callMicGraph = null;
     micNsActiveMode = 'off';
     micGainNode = null;
-    micGateGainNode = null;
     if (localCameraStream) {
       localCameraStream.getTracks().forEach((t) => t.stop());
       localCameraStream = null;
@@ -8811,8 +8948,11 @@
 
     Realtime.on('voice_speaking', ({ userId, speaking }) => {
       if (currentUser && userId === currentUser.id) return;
-      // na call que estou, o meu próprio medidor já sabe; fora dela, quem conta é o servidor
-      if (peers.has(userId)) return;
+      const peer = peers.get(userId);
+      if (peer) {
+        peer.hasSpeakingSignal = true;
+        peer.analyser = null;
+      }
       setParticipantSpeaking(userId, speaking);
     });
 

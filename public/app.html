@@ -747,10 +747,19 @@
               <span class="field-help">reforça o volume do seu microfone antes de mandar pra call — aumenta se sua voz chega baixa do outro lado</span>
             </div>
 
-            <div class="field">
+            <div class="field" id="micGateModeField">
+              <label for="micGateModeSelect">detecção de voz</label>
+              <select id="micGateModeSelect">
+                <option value="auto" selected>automática</option>
+                <option value="manual">manual</option>
+              </select>
+              <span class="field-help" id="micGateStatus"></span>
+            </div>
+
+            <div class="field" id="micSensitivityField">
               <label for="micSensitivityRange">sensibilidade do microfone <span id="micSensitivityValue" class="field-hint">desligada</span></label>
               <input type="range" id="micSensitivityRange" min="0" max="60" value="0">
-              <span class="field-help">acima de 0, o microfone abre quando o nível medido após a supressão e o ganho cruza a linha marcada acima</span>
+              <span class="field-help">no manual, o microfone abre quando o nível cruza a linha no medidor. O mínimo deixa o microfone aberto.</span>
             </div>
 
             <div class="field field-checkbox">
@@ -930,6 +939,6 @@
   <script src="/js/realtime.js?v=20"></script>
   <script src="/js/markdown.js?v=20"></script>
   <script src="/js/emoji.js?v=20"></script>
-  <script src="/js/app.js?v=22"></script>
+  <script src="/js/app.js?v=23"></script>
 </body>
 </html>
