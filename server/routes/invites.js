@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const realtime = require('../realtime');
 const access = require('../access');
 const { memberRow } = require('./servers');
+const extras = require('../chatExtras');
 
 const router = express.Router();
 
@@ -80,6 +81,7 @@ router.post('/:code/accept', requireAuth, (req, res) => {
   db.transaction(() => {
     db.prepare('INSERT INTO server_members (server_id, user_id) VALUES (?, ?)').run(server.id, req.user.id);
     db.prepare('UPDATE invites SET uses = uses + 1 WHERE code = ?').run(invite.code);
+    extras.markServerRead(server.id, req.user.id); // histórico antigo não chega como "não lido"
   })();
 
   const member = memberRow(server.id, req.user.id);

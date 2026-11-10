@@ -6,15 +6,16 @@
   <title>concord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/theme.css?v=18">
-  <link rel="stylesheet" href="/css/app.css?v=18">
-  <link rel="stylesheet" href="/css/chat.css?v=18">
-  <link rel="stylesheet" href="/css/members.css?v=18">
-  <link rel="stylesheet" href="/css/profile.css?v=18">
-  <link rel="stylesheet" href="/css/voice.css?v=18">
-  <link rel="stylesheet" href="/css/settings.css?v=18">
-  <link rel="stylesheet" href="/css/servers.css?v=18">
-  <link rel="stylesheet" href="/css/call-roles.css?v=18">
+  <link rel="stylesheet" href="/css/theme.css?v=19">
+  <link rel="stylesheet" href="/css/app.css?v=19">
+  <link rel="stylesheet" href="/css/chat.css?v=19">
+  <link rel="stylesheet" href="/css/members.css?v=19">
+  <link rel="stylesheet" href="/css/profile.css?v=19">
+  <link rel="stylesheet" href="/css/voice.css?v=19">
+  <link rel="stylesheet" href="/css/settings.css?v=19">
+  <link rel="stylesheet" href="/css/servers.css?v=19">
+  <link rel="stylesheet" href="/css/call-roles.css?v=19">
+  <link rel="stylesheet" href="/css/chat-extras.css?v=19">
 </head>
 <body>
   <div class="app-shell">
@@ -103,13 +104,35 @@
           <span class="icon" id="chatChannelIcon"></span>
           <h2 class="chat-channel-name" id="chatChannelName"></h2>
           <div class="chat-header-spacer"></div>
+          <button class="icon-btn" id="pinsBtn" title="mensagens fixadas" aria-label="mensagens fixadas">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+          </button>
+          <form class="chat-search" id="chatSearchForm" role="search">
+            <input type="search" id="chatSearchInput" placeholder="buscar" autocomplete="off" spellcheck="false" aria-label="buscar mensagens">
+            <svg class="chat-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </form>
           <button class="icon-btn" id="membersToggleBtn" title="membros" aria-label="mostrar membros">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </button>
         </header>
 
         <div class="chat-body">
-          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-messages-wrap">
+            <div class="chat-messages" id="chatMessages"></div>
+            <button type="button" class="jump-present" id="jumpPresentBtn" hidden>vendo mensagens antigas — <strong>voltar pro presente</strong></button>
+          </div>
+
+          <!-- mensagens fixadas (abre pelo botão do alfinete) -->
+          <aside class="side-panel" id="pinsPanel" hidden>
+            <header class="side-panel-head"><span>mensagens fixadas</span><button type="button" class="side-panel-close" data-close-panel aria-label="fechar">×</button></header>
+            <div class="side-panel-body" id="pinsList"></div>
+          </aside>
+
+          <!-- resultados da busca -->
+          <aside class="side-panel" id="searchPanel" hidden>
+            <header class="side-panel-head"><span id="searchSummary">buscando…</span><button type="button" class="side-panel-close" data-close-panel aria-label="fechar">×</button></header>
+            <div class="side-panel-body" id="searchResults"></div>
+          </aside>
 
           <aside class="member-panel" id="memberPanel">
             <div class="member-section" id="memberSectionOnline">
@@ -167,9 +190,13 @@
           </button>
           <input type="file" id="attachInput" hidden>
           <button type="button" class="icon-btn composer-gif-btn" id="gifBtn" title="enviar gif" aria-label="enviar gif">GIF</button>
-          <input type="text" id="chatInput" placeholder="mandar mensagem..." autocomplete="off" maxlength="4000">
+          <textarea id="chatInput" rows="1" placeholder="mandar mensagem..." autocomplete="off" maxlength="4000" spellcheck="true"></textarea>
+          <button type="button" class="icon-btn composer-emoji-btn" id="emojiBtn" title="emoji" aria-label="escolher emoji">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </button>
           <button type="submit" class="btn btn-primary" id="chatSendBtn">enviar</button>
         </form>
+        <div class="typing-indicator" id="typingIndicator" aria-live="polite"></div>
       </section>
 
       <!-- view de chamada de voz — mostrada quando o canal selecionado é de voz -->
@@ -671,6 +698,19 @@
           este app não consegue trocar a saída de áudio por aqui (limitação do motor usado no app desktop). Troque o dispositivo de saída padrão direto nas configurações de som do sistema operacional.
         </div>
 
+        <div class="field">
+          <label for="notificationLevelSelect">notificações do sistema</label>
+          <div class="settings-row">
+            <select id="notificationLevelSelect">
+              <option value="mentions">menções e mensagens diretas (recomendado)</option>
+              <option value="all">todas as mensagens</option>
+              <option value="none">nenhuma</option>
+            </select>
+            <button type="button" class="btn btn-ghost" id="notificationPermissionBtn" hidden>permitir</button>
+          </div>
+          <span class="field-help" id="notificationHelp">aparecem no canto da tela quando o didiscord não está na sua frente. Quem escreve <strong>@seu nome</strong> ou <strong>@everyone</strong> conta como menção.</span>
+        </div>
+
         <div class="field field-checkbox">
           <label class="checkbox-label">
             <input type="checkbox" id="notificationSoundsCheckbox" checked>
@@ -739,7 +779,9 @@
     </div>
   </div>
 
-  <script src="/js/realtime.js?v=18"></script>
-  <script src="/js/app.js?v=18"></script>
+  <script src="/js/realtime.js?v=19"></script>
+  <script src="/js/markdown.js?v=19"></script>
+  <script src="/js/emoji.js?v=19"></script>
+  <script src="/js/app.js?v=19"></script>
 </body>
 </html>

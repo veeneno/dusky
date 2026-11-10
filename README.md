@@ -21,8 +21,16 @@ O site fica em **https://didiscord.veneno.space**, por um túnel do Cloudflare. 
 - Canais de texto e DMs (só entre quem divide algum servidor).
 - Enviar, editar, apagar e responder mensagens. Histórico carregado em páginas ao rolar pra cima.
 - Anexos de qualquer tipo até 2 GB: imagem e vídeo com prévia, o resto vira um botão de download.
-- GIFs e stickers do GIPHY. Links viram clicáveis.
-- Marcação de canais com mensagem nova (por enquanto só na memória do navegador: some ao recarregar).
+- **Markdown** igual o Discord: `# título`, `## subtítulo`, `-# texto pequeno`, `**negrito**`, `*itálico*`, `__sublinhado__`, `~~riscado~~`, `` `código` ``, blocos ```` ``` ````, `||spoiler||`, `> citação`, listas e `[texto](link)`. A caixa de mensagem tem várias linhas (Shift+Enter quebra linha; seta pra cima edita a sua última mensagem).
+- **Menções**: `@` abre a lista de membros; `@everyone` e `@here` avisam todo mundo. Mensagem que te menciona fica destacada.
+- **Emojis e reações**: seletor com busca em português (e gírias como `joinha`, `kkk`), `:atalho:` na caixa de mensagem, tom de pele e recentes. Reação em qualquer mensagem.
+- **"fulano está digitando…"**
+- **Prévia de links**: YouTube (toca ali mesmo), posts do X, imagens/vídeos por link e qualquer site com prévia.
+- **Busca** em todo o servidor (ou na DM), sem diferença de acento; `de:nome` filtra por quem escreveu. Clicar num resultado leva até a mensagem.
+- **Mensagens fixadas** por canal (alfinete no topo).
+- **Não lidas e menções** guardadas no servidor: continuam marcadas depois de recarregar, com contador de menções no canal, no servidor e no título da aba.
+- **Notificações do sistema** (menções e DMs, todas, ou nenhuma — nas configurações de áudio).
+- GIFs e stickers do GIPHY.
 
 **Calls (voz, câmera e tela)**
 - WebRTC direto entre as pessoas (malha: cada um tem uma conexão com cada outro).
@@ -52,7 +60,7 @@ O áudio sempre vem do YouTube (a API do Spotify só dá o nome, o artista e a c
 - Servidores: ver e apagar.
 - Aviso geral que aparece pra todo mundo conectado.
 
-**App desktop** (Electron, Linux e Windows): abre direto no site, pede permissão de mic/câmera/tela sozinho e compartilha a tela pela placa de vídeo. Detalhes mais abaixo.
+**App desktop** (Electron, Linux e Windows): abre direto no site, compartilha a tela pela placa de vídeo, mostra o contador de menções no ícone e **se atualiza sozinho**. Os amigos instalam pela página **https://didiscord.veneno.space/baixar**. Detalhes mais abaixo.
 
 ## Como rodar
 
@@ -125,6 +133,9 @@ didiscord/
 │       ├── channels.js     # editar/apagar canal, quem está em qual call
 │       ├── messages.js     # histórico, enviar (texto, anexo, gif), editar, apagar
 │       ├── dms.js          # conversas diretas
+│       ├── activity.js     # não lidas (com menções) e busca de mensagens
+│       ├── embeds.js       # prévia de links (busca a página e devolve título/imagem)
+│       ├── downloads.js    # página /baixar, /downloads/* e versão atual do app desktop
 │       ├── invites.js      # prévia e aceite de convite
 │       ├── users.js        # perfil de outra pessoa, contatos
 │       ├── profile.js      # editar o próprio perfil, senha, avatar, banner
@@ -140,6 +151,9 @@ didiscord/
 │   ├── css/                # um arquivo por área
 │   ├── js/app.js           # o site inteiro: chat, servidores, perfil, calls, tela, configurações
 │   ├── js/realtime.js      # cliente WebSocket (reconexão, eventos)
+│   ├── js/markdown.js      # Markdown do chat (monta os elementos direto, sem innerHTML)
+│   ├── js/emoji.js         # seletor de emoji e busca por :atalho:
+│   ├── baixar.html         # página de instalação do app desktop
 │   ├── js/auth.js          # tela de login/cadastro
 │   ├── vendor/             # DeepFilterNet3 e RNNoise (supressão de ruído, em WebAssembly)
 │   └── uploads/            # arquivos enviados pelo pessoal (fora do git)
@@ -155,6 +169,9 @@ didiscord/
 - **`channels`**: canais de texto/voz de um servidor. `server_id` nulo = DM, com os 2 participantes em **`dm_members`**.
 - **`messages`**: mensagens, com anexo, resposta (`reply_to_id`), edição, e `embed_json` pras respostas do bot de música.
 - **`roles`**, **`member_roles`**, **`channel_role_access`**: cargos, quem tem cada um, e quais cargos veem/entram em cada canal restrito.
+- **`channel_reads`**: até qual mensagem cada pessoa leu cada canal (as não lidas).
+- **`message_mentions`**, **`message_reactions`**: quem cada mensagem menciona (`user_id` 0 = @everyone) e as reações. Fixada é `messages.pinned_at`.
+- **`messages_fts`**: índice de busca (FTS5), mantido em dia por gatilhos.
 - **`voice_state`**: quem está em qual call (sobrevive a um reinício; enquanto o servidor está de pé, quem manda é a memória do `realtime.js`).
 - **`server_settings`**: resto do modelo antigo de um servidor só (migrado pra `servers` automaticamente).
 
@@ -177,7 +194,16 @@ npm install
 npm start          # abre em https://didiscord.veneno.space
 npm run dev        # abre em http://localhost:3000 (servidor local)
 npm run build      # gera AppImage + .deb (Linux) e instalador .exe (Windows) em electron/dist/
+npm run release    # gera tudo E publica em downloads/ (página /baixar + atualização automática)
 ```
+
+### Versão nova pros amigos
+
+1. Sobe o `version` em `electron/package.json` (ex: `0.5.0` → `0.5.1`).
+2. `cd electron && npm run release`. Ele gera os instaladores e copia pra pasta `downloads/` do servidor (fora do git), guardando só a versão nova e a anterior.
+3. Pronto: a página `/baixar` já mostra a nova, e quem está com o app aberto recebe em até 3 horas (ou na hora, em **Ajuda → Procurar atualizações**). O app baixa em segundo plano e pergunta se quer reiniciar.
+
+A atualização funciona no instalador do Windows e no AppImage. No `.deb` também, mas pede a senha de administrador. Quem ainda tem a versão 0.4.0 ou anterior precisa instalar a 0.5.0 uma vez pela página: as antigas não sabiam se atualizar.
 
 - **Endereço**: já abre em `https://didiscord.veneno.space`. Dá pra trocar pela tela de "conectando…" ou pelo menu **Servidor** (aparece apertando Alt). `DIDISCORD_URL` força um endereço.
 - **Segurança da janela**: só navega pro servidor escolhido; links de fora abrem no navegador do sistema. Mic, câmera e tela são liberados sem perguntar, só pra esse endereço.
@@ -232,13 +258,6 @@ electron/native/build-cross.sh
 - Os arquivos estáticos são servidos sem cache (pra ninguém ficar com `app.js` velho depois de uma mudança), menos `public/vendor/`, que fica em cache por 30 dias.
 
 ## Próximos passos
-
-Combinados pra fazer agora:
-- Notificações do sistema, menções com `@nome` e não lidas que continuam marcadas depois de recarregar.
-- App desktop que se atualiza sozinho, e uma página pra instalar o app.
-- Reações com emoji e seletor de emoji.
-- "fulano está digitando…".
-- Chat em Markdown (títulos com `#`, negrito, itálico, código, spoiler, citação), prévia de links, busca de mensagens e mensagens fixadas.
 
 Pra depois:
 - Status "jogando X" automático.

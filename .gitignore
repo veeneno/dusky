@@ -12,6 +12,7 @@ public/uploads/server/*
 !public/uploads/*/.gitkeep
 
 # gerados ao rodar
+downloads/
 tunnel-url.txt
 server/bots/musicBot/bin/
 

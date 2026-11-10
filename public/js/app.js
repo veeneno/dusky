@@ -139,7 +139,7 @@
   let serverRoles = []; // cargos do servidor aberto
   let myServerPerms = { is_admin: false, role_ids: [] }; // o que eu posso no servidor aberto
   const usersById = new Map(); // cache de todo usuario que ja apareceu (ver rememberUser)
-  const unreadChannels = new Map(); // channelId -> serverId (null = DM) com mensagem nova nao vista
+  const unreadChannels = new Map(); // channelId -> { serverId (null = DM), mentions } — vem do servidor (/api/unread)
 
   // ---------- estado de chamada de voz (WebRTC) ----------
   let voiceChannel = null; // canal de voz que estou ocupando de verdade (pode diferir do currentChannel se eu for ver um canal de texto durante a call)
@@ -852,6 +852,8 @@
     el.dataset.channelId = ch.id;
     el.innerHTML = `<span class="icon">${ICONS[ch.type]}</span><span class="channel-item-name"></span>`;
     el.querySelector('.channel-item-name').textContent = ch.name;
+    const unread = unreadChannels.get(ch.id);
+    if (unread && unread.mentions > 0) el.appendChild(mentionBadge(unread.mentions, 'channel-mention-badge'));
 
     const locked = ch.type === 'voice' && ch.can_connect === false;
     if (ch.private_view || (ch.type === 'voice' && ch.private_connect)) {
@@ -955,6 +957,12 @@
       <span class="unread-pill" aria-label="mensagens novas"></span>
     `;
     el.querySelector('.dm-item-name').textContent = u.username;
+    const dmUnread = unreadChannels.get(dm.id);
+    if (dmUnread && dmUnread.mentions > 0) {
+      const pill = el.querySelector('.unread-pill');
+      pill.textContent = dmUnread.mentions > 99 ? '99+' : String(dmUnread.mentions);
+      pill.classList.add('has-count');
+    }
     el.querySelector('.dm-item-status').textContent = u.status_text || (u.online ? 'online' : 'offline');
     el.addEventListener('click', () => selectChannel(dmChannel(dm)));
     return el;
@@ -1036,16 +1044,20 @@
 
   const AT_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>';
 
-  async function selectChannel(ch) {
+  async function selectChannel(ch, opts = {}) {
     if (ch.type === 'voice' && ch.can_connect === false && !(voiceChannel && voiceChannel.id === ch.id)) {
       toast('você não tem permissão pra entrar nessa call', 'error');
       return;
     }
     closeMediaViewer();
     hideCommandPopup();
+    const sameChannel = !!(currentChannel && currentChannel.id === ch.id);
     currentChannel = ch;
-    markChannelRead(ch.id);
+    if (ch.type === 'text') markChannelRead(ch.id);
     if (ch.server_id != null) rememberLastChannel(ch.server_id, ch.id);
+    setViewingHistory(false);
+    if (!(opts.aroundId && sameChannel)) closeSidePanels();
+    renderTyping();
     renderChannels();
     renderRail();
     clearPendingAttachment();
@@ -1093,7 +1105,7 @@
     const requestedId = ch.id;
     let data = null;
     try {
-      const res = await fetch(`/api/channels/${ch.id}/messages`);
+      const res = await fetch(`/api/channels/${ch.id}/messages${opts.aroundId ? `?around=${opts.aroundId}&limit=60` : ''}`);
       if (res.ok) data = await res.json();
     } catch (_) { /* cai no aviso abaixo */ }
     // se a pessoa trocou de canal enquanto carregava, descarta essa resposta
@@ -1105,7 +1117,12 @@
     currentMessages = data.messages || [];
     hasOlderMessages = !!data.has_more;
     renderMessages();
-    chatInput.focus();
+    if (opts.aroundId) {
+      setViewingHistory(!!data.has_more_after);
+      requestAnimationFrame(() => highlightMessage(opts.aroundId));
+    } else {
+      chatInput.focus();
+    }
   }
 
   function messageGroupKey(m) {
@@ -1281,7 +1298,15 @@
         <div class="msg-text"></div>
       </div>
     `;
-    renderMessageText(el.querySelector('.msg-text'), m.content || '', !!m.edited);
+    renderMessageText(el.querySelector('.msg-text'), m.content || '', !!m.edited, m);
+    if (messageMentionsMe(m)) el.classList.add('mentions-me');
+    if (m.pinned) {
+      const pin = document.createElement('span');
+      pin.className = 'msg-pinned';
+      pin.title = 'mensagem fixada';
+      pin.innerHTML = PIN_ICON;
+      el.querySelector('.msg-meta').appendChild(pin);
+    }
 
     if (m.embed_json) {
       try {
@@ -1309,7 +1334,7 @@
       ref.className = 'msg-reply-ref';
       const refName = m.reply_username || m.reply_bot_name || 'mensagem apagada';
       const refSnippet = m.reply_content
-        ? m.reply_content
+        ? DidiMarkdown.plain(m.reply_content, mentionContext(m))
         : (m.reply_attachment_type === 'video' ? 'vídeo' : m.reply_attachment_type === 'file' ? 'arquivo' : m.reply_attachment_type === 'image' ? 'imagem' : '');
       ref.innerHTML = `<span class="msg-reply-ref-icon">${MSG_REPLY_ICON}</span><span class="msg-reply-ref-name">${escapeHtml(refName)}</span><span class="msg-reply-ref-snippet"></span>`;
       ref.querySelector('.msg-reply-ref-snippet').textContent = refSnippet;
@@ -1358,13 +1383,37 @@
       el.querySelector('.msg-body').appendChild(wrap);
     }
 
+    attachLinkEmbeds(el, m);
+    el.querySelector('.msg-body').appendChild(buildReactionsEl(m));
+
+    // barrinha de ações que aparece no hover: reagir, fixar, responder, editar, apagar
+    const actions = document.createElement('div');
+    actions.className = 'msg-actions';
+    el.appendChild(actions);
+
+    const reactBtn = document.createElement('button');
+    reactBtn.type = 'button';
+    reactBtn.className = 'msg-action-btn';
+    reactBtn.title = 'reagir';
+    reactBtn.innerHTML = REACT_ICON;
+    reactBtn.addEventListener('click', () => DidiEmoji.open({ anchor: reactBtn, onPick: (emoji) => toggleReaction(m, emoji) }));
+    actions.appendChild(reactBtn);
+
+    const pinBtn = document.createElement('button');
+    pinBtn.type = 'button';
+    pinBtn.className = 'msg-action-btn' + (m.pinned ? ' is-on' : '');
+    pinBtn.title = m.pinned ? 'desafixar' : 'fixar mensagem';
+    pinBtn.innerHTML = PIN_ICON;
+    pinBtn.addEventListener('click', () => togglePin(m));
+    actions.appendChild(pinBtn);
+
     if (!isBot) {
       const replyBtn = document.createElement('button');
       replyBtn.className = 'msg-reply-btn';
       replyBtn.title = 'responder';
       replyBtn.innerHTML = MSG_REPLY_ICON;
       replyBtn.addEventListener('click', () => setReplyTarget(m));
-      el.appendChild(replyBtn);
+      actions.appendChild(replyBtn);
     }
 
     if (canEditMessage(m)) {
@@ -1373,7 +1422,7 @@
       editBtn.title = 'editar mensagem';
       editBtn.innerHTML = MSG_EDIT_ICON;
       editBtn.addEventListener('click', () => startEditMessage(m, el));
-      el.appendChild(editBtn);
+      actions.appendChild(editBtn);
     }
 
     if (canDeleteMessage(m)) {
@@ -1382,49 +1431,10 @@
       delBtn.title = 'apagar mensagem';
       delBtn.innerHTML = MSG_TRASH_ICON;
       delBtn.addEventListener('click', () => deleteMessage(m.id));
-      el.appendChild(delBtn);
+      actions.appendChild(delBtn);
     }
 
     return el;
-  }
-
-  // escreve o texto da mensagem no elemento: links http(s) viram <a> clicáveis (abrem em nova aba),
-  // o resto continua texto puro (nada de innerHTML, então não dá pra injetar HTML)
-  function renderMessageText(target, text, edited) {
-    target.textContent = '';
-    const urlRe = /https?:\/\/[^\s<>"']+/gi;
-    let last = 0;
-    let match;
-    while ((match = urlRe.exec(text)) !== null) {
-      let url = match[0];
-      // pontuação no fim geralmente não faz parte do link ("veja https://x.com.") — mas um ')' que
-      // fecha um '(' do próprio link (ex: wikipedia) fica
-      while (/[.,;:!?)\]}]$/.test(url)) {
-        if (url.endsWith(')') && (url.match(/\(/g) || []).length >= (url.match(/\)/g) || []).length) break;
-        url = url.slice(0, -1);
-      }
-      let parsed = null;
-      try { parsed = new URL(url); } catch (_) { /* não é uma URL válida — fica como texto */ }
-      if (!parsed || !parsed.hostname.includes('.')) continue;
-
-      if (match.index > last) target.appendChild(document.createTextNode(text.slice(last, match.index)));
-      const a = document.createElement('a');
-      a.className = 'msg-link';
-      a.href = parsed.href;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.textContent = url;
-      target.appendChild(a);
-      last = match.index + url.length;
-      urlRe.lastIndex = last;
-    }
-    if (last < text.length) target.appendChild(document.createTextNode(text.slice(last)));
-    if (edited) {
-      const tag = document.createElement('span');
-      tag.className = 'msg-edited';
-      tag.textContent = ' (editado)';
-      target.appendChild(tag);
-    }
   }
 
   // só o autor edita (bot e gif não têm texto pra editar)
@@ -1441,7 +1451,7 @@
 
     const ta = document.createElement('textarea');
     ta.className = 'msg-edit-input';
-    ta.value = m.content || '';
+    ta.value = decodeMentions(m.content || '', m);
     ta.maxLength = 4000;
     ta.rows = 1;
     const hint = document.createElement('div');
@@ -1464,7 +1474,7 @@
     };
 
     const save = async () => {
-      const value = ta.value.trim();
+      const value = encodeShortcodes(encodeMentions(ta.value.trim()));
       if (value === (m.content || '').trim()) return close();
       if (!value && !m.attachment_url) { hint.textContent = 'a mensagem não pode ficar vazia (esc cancela)'; hint.classList.add('is-error'); return; }
       ta.disabled = true;
@@ -1510,7 +1520,10 @@
   // rola até a mensagem original (se ainda estiver carregada) e pisca ela, tipo Discord
   function jumpToMessage(messageId) {
     const el = chatMessages.querySelector(`.msg-group[data-message-id="${messageId}"]`);
-    if (!el) return;
+    if (!el) {
+      if (currentChannel) selectChannel(currentChannel, { aroundId: messageId });
+      return;
+    }
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     el.classList.remove('is-highlighted');
     void el.offsetWidth; // força reflow pra poder tocar a animação de novo se já rodou antes
@@ -1520,7 +1533,7 @@
   function setReplyTarget(m) {
     const isBot = !m.user_id;
     const name = isBot ? (m.bot_name || 'bot') : m.username;
-    const snippet = m.content ? m.content : (m.attachment_type === 'video' ? 'vídeo' : m.attachment_type === 'file' ? 'arquivo' : m.attachment_type === 'image' ? 'imagem' : '');
+    const snippet = m.content ? DidiMarkdown.plain(m.content, mentionContext(m)) : (m.attachment_type === 'video' ? 'vídeo' : m.attachment_type === 'file' ? 'arquivo' : m.attachment_type === 'image' ? 'imagem' : '');
     pendingReplyTo = { id: m.id, authorName: name, snippet };
     replyPreviewName.textContent = name;
     replyPreviewSnippet.textContent = snippet;
@@ -1543,6 +1556,814 @@
 
   function scrollToBottom() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  // ===================================================================
+  // conteúdo das mensagens: Markdown, menções, reações, prévia de links
+  // ===================================================================
+
+  // quem é `id` pra mostrar numa menção: membro do servidor aberto, alguém já visto, ou o nome que
+  // veio junto com a mensagem (mention_users)
+  function mentionContext(m) {
+    const extra = new Map(((m && m.mention_users) || []).map((u) => [u.id, u]));
+    return {
+      meId: currentUser ? currentUser.id : null,
+      resolveUser: (id) => (currentUser && id === currentUser.id ? currentUser : null)
+        || members.find((x) => x.id === id) || findUser(id) || extra.get(id) || null,
+      onMention: (id, anchor) => openViewProfile(id, anchor),
+    };
+  }
+
+  function messageMentionsMe(m) {
+    if (!currentUser || !m || m.user_id === currentUser.id) return false;
+    const text = m.content || '';
+    return text.includes(`<@${currentUser.id}>`) || !!m.mentions_everyone || /(^|[^\w`])@(everyone|here)\b/.test(text);
+  }
+
+  // texto puro de uma mensagem (notificação, resposta, fixadas)
+  function messagePlain(m, fallback = '') {
+    if (!m) return fallback;
+    const t = DidiMarkdown.plain(m.content || '', mentionContext(m));
+    if (t) return t;
+    if (m.attachment_type === 'gif') return 'mandou um gif';
+    if (m.attachment_type === 'image') return 'mandou uma imagem';
+    if (m.attachment_type === 'video') return 'mandou um vídeo';
+    if (m.attachment_type === 'file') return `mandou um arquivo${m.attachment_name ? `: ${m.attachment_name}` : ''}`;
+    return fallback;
+  }
+
+  // escreve o texto da mensagem (Markdown) no elemento — nada de innerHTML, ver js/markdown.js
+  function renderMessageText(target, text, edited, m) {
+    target.textContent = '';
+    target.classList.toggle('is-jumbo', DidiMarkdown.isEmojiOnly(text));
+    target.appendChild(DidiMarkdown.render(text, mentionContext(m)));
+    if (edited) {
+      const tag = document.createElement('span');
+      tag.className = 'msg-edited';
+      tag.textContent = ' (editado)';
+      const last = target.lastElementChild;
+      if (last && /^(DIV|H1|H2|H3)$/.test(last.tagName)) last.appendChild(tag);
+      else target.appendChild(tag);
+    }
+  }
+
+  // ---------- reações ----------
+
+  const REACT_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>';
+  const PIN_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
+
+  function userName(id) {
+    if (currentUser && id === currentUser.id) return 'você';
+    const u = members.find((x) => x.id === id) || findUser(id);
+    return u ? u.username : 'alguém';
+  }
+
+  async function toggleReaction(m, emoji) {
+    const group = (m.reactions || []).find((r) => r.emoji === emoji);
+    const mine = !!(group && currentUser && group.user_ids.includes(currentUser.id));
+    try {
+      const res = await fetch(`/api/channels/${m.channel_id}/messages/${m.id}/reactions/${encodeURIComponent(emoji)}`, { method: mine ? 'DELETE' : 'PUT' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast(data.error || 'não deu pra reagir', 'error');
+      }
+      // a atualização chega pra todo mundo pelo broadcast reactions_updated
+    } catch (_) {
+      toast('sem conexão — não deu pra reagir', 'error');
+    }
+  }
+
+  function buildReactionsEl(m) {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-reactions';
+    for (const r of m.reactions || []) {
+      if (!r.user_ids.length) continue;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'msg-reaction';
+      if (currentUser && r.user_ids.includes(currentUser.id)) b.classList.add('is-mine');
+      b.innerHTML = '<span class="msg-reaction-emoji"></span><span class="msg-reaction-count"></span>';
+      b.querySelector('.msg-reaction-emoji').textContent = r.emoji;
+      b.querySelector('.msg-reaction-count').textContent = String(r.user_ids.length);
+      const names = r.user_ids.slice(0, 8).map(userName);
+      b.title = names.join(', ') + (r.user_ids.length > 8 ? ` e mais ${r.user_ids.length - 8}` : '') + ` reagiu com ${r.emoji}`;
+      b.addEventListener('click', () => toggleReaction(m, r.emoji));
+      wrap.appendChild(b);
+    }
+    if (wrap.children.length) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'msg-reaction msg-reaction-add';
+      add.title = 'adicionar reação';
+      add.innerHTML = REACT_ICON;
+      add.addEventListener('click', () => DidiEmoji.open({ anchor: add, onPick: (emoji) => toggleReaction(m, emoji) }));
+      wrap.appendChild(add);
+    }
+    return wrap;
+  }
+
+  function refreshReactions(messageId) {
+    const m = currentMessages.find((x) => x.id === messageId);
+    const el = chatMessages.querySelector(`.msg-group[data-message-id="${messageId}"]`);
+    if (!m || !el) return;
+    const old = el.querySelector('.msg-reactions');
+    const fresh = buildReactionsEl(m);
+    if (old) old.replaceWith(fresh);
+    else el.querySelector('.msg-body').appendChild(fresh);
+  }
+
+  // ---------- fixar ----------
+
+  async function togglePin(m) {
+    try {
+      const res = await fetch(`/api/channels/${m.channel_id}/messages/${m.id}/pin`, { method: m.pinned ? 'DELETE' : 'PUT' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) toast(data.error || 'não deu pra fixar', 'error');
+      else toast(m.pinned ? 'mensagem desafixada' : 'mensagem fixada — veja pelo alfinete no topo');
+    } catch (_) {
+      toast('sem conexão', 'error');
+    }
+  }
+
+  // ---------- prévia de links ----------
+
+  const embedCache = new Map(); // url -> Promise<embed|null>
+  function fetchEmbed(url) {
+    if (!embedCache.has(url)) {
+      embedCache.set(url, fetch(`/api/embed?url=${encodeURIComponent(url)}`)
+        .then((r) => (r.ok ? r.json() : null)).then((d) => (d && d.embed) || null).catch(() => null));
+    }
+    return embedCache.get(url);
+  }
+
+  function buildLinkEmbedEl(e, m) {
+    const card = document.createElement('div');
+    if (e.type === 'image') {
+      card.className = 'msg-embed-media';
+      const img = document.createElement('img');
+      img.src = e.image; img.alt = ''; img.loading = 'lazy';
+      img.addEventListener('click', () => openMediaViewer({ ...m, id: -m.id, attachment_url: e.image, attachment_type: 'image' }));
+      card.appendChild(img);
+      return card;
+    }
+    if (e.type === 'video') {
+      card.className = 'msg-embed-media';
+      const v = document.createElement('video');
+      v.src = e.video; v.controls = true; v.preload = 'metadata'; v.playsInline = true;
+      card.appendChild(v);
+      return card;
+    }
+    card.className = 'msg-link-embed' + (e.type === 'youtube' ? ' is-youtube' : '');
+    if (e.color) card.style.setProperty('--embed-color', e.color);
+    const text = document.createElement('div');
+    text.className = 'msg-link-embed-text';
+    if (e.site || e.author) {
+      const site = document.createElement('div');
+      site.className = 'msg-link-embed-site';
+      site.textContent = e.type === 'youtube' && e.author ? `${e.site} · ${e.author}` : e.site;
+      text.appendChild(site);
+    }
+    if (e.title) {
+      const a = document.createElement('a');
+      a.className = 'msg-link-embed-title';
+      a.href = e.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.textContent = e.title;
+      text.appendChild(a);
+    }
+    if (e.description) {
+      const d = document.createElement('div');
+      d.className = 'msg-link-embed-desc';
+      d.textContent = e.description;
+      text.appendChild(d);
+    }
+    card.appendChild(text);
+
+    if (e.type === 'youtube') {
+      // miniatura com botão de play; clicando, vira o vídeo de verdade ali mesmo
+      const player = document.createElement('button');
+      player.type = 'button';
+      player.className = 'msg-yt-thumb';
+      player.setAttribute('aria-label', 'tocar vídeo');
+      player.innerHTML = '<img alt="" loading="lazy"><span class="msg-yt-play"><svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>';
+      player.querySelector('img').src = e.image;
+      player.addEventListener('click', () => {
+        const frame = document.createElement('iframe');
+        frame.className = 'msg-yt-frame';
+        frame.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(e.video_id)}?autoplay=1${e.start ? `&start=${e.start}` : ''}`;
+        frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+        frame.allowFullscreen = true;
+        player.replaceWith(frame);
+      });
+      card.appendChild(player);
+    } else if (e.image) {
+      const img = document.createElement('img');
+      img.className = e.large_image ? 'msg-link-embed-image' : 'msg-link-embed-thumb';
+      img.src = e.image; img.alt = ''; img.loading = 'lazy';
+      img.addEventListener('error', () => img.remove());
+      img.addEventListener('click', () => openMediaViewer({ ...m, id: -m.id, attachment_url: e.image, attachment_type: 'image' }));
+      card.appendChild(img);
+      if (!e.large_image) card.classList.add('has-thumb');
+    }
+    return card;
+  }
+
+  function attachLinkEmbeds(el, m) {
+    if (m.attachment_type === 'gif') return;
+    const urls = DidiMarkdown.links(m.content || '');
+    if (!urls.length) return;
+    const holder = document.createElement('div');
+    holder.className = 'msg-embeds';
+    const body = el.querySelector('.msg-body');
+    const reactions = body.querySelector('.msg-reactions');
+    body.insertBefore(holder, reactions || null);
+    for (const url of urls) {
+      fetchEmbed(url).then((embed) => {
+        if (!embed || !holder.isConnected) return;
+        const near = isScrolledNearBottom();
+        holder.appendChild(buildLinkEmbedEl(embed, m));
+        if (near) scrollToBottom();
+        holder.querySelectorAll('img').forEach((img) => img.addEventListener('load', () => { if (near && isScrolledNearBottom()) scrollToBottom(); }, { once: true }));
+      });
+    }
+  }
+
+  // ===================================================================
+  // menções (@) e emojis (:) na caixa de mensagem
+  // ===================================================================
+  // No texto que vai pro servidor, menção é <@id>. Na caixa de mensagem a pessoa vê "@nome"; a troca
+  // acontece na hora de enviar (e o contrário, na hora de editar).
+
+  // quem dá pra mencionar aqui: membros do servidor, ou a outra pessoa da DM
+  function mentionCandidates() {
+    if (!currentChannel) return [];
+    if (currentChannel.dm) {
+      const u = findUser(currentChannel.userId);
+      return [u, currentUser].filter(Boolean);
+    }
+    return members;
+  }
+
+  function foldText(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  // "@fulano de tal" -> "<@12>" (nomes mais longos primeiro, pra "ana" não pegar o começo de "ana clara")
+  function encodeMentions(text) {
+    const list = mentionCandidates().filter((u) => u && u.username).sort((a, b) => b.username.length - a.username.length);
+    if (!list.length) return text;
+    const parts = text.split(/(```[\s\S]*?```|`[^`\n]*`)/); // não mexe dentro de código
+    return parts.map((part, i) => {
+      if (i % 2 === 1) return part;
+      let out = '';
+      let idx = 0;
+      while (idx < part.length) {
+        const at = part.indexOf('@', idx);
+        if (at === -1) { out += part.slice(idx); break; }
+        out += part.slice(idx, at);
+        const prevCh = part[at - 1];
+        let matched = null;
+        if (!prevCh || !/[\p{L}\p{N}_]/u.test(prevCh)) {
+          const after = part.slice(at + 1);
+          matched = list.find((u) => after.toLowerCase().startsWith(u.username.toLowerCase())
+            && !/[\p{L}\p{N}_]/u.test(after[u.username.length] || ''));
+        }
+        if (matched) { out += `<@${matched.id}>`; idx = at + 1 + matched.username.length; }
+        else { out += '@'; idx = at + 1; }
+      }
+      return out;
+    }).join('');
+  }
+
+  function decodeMentions(text, m) {
+    const ctx = mentionContext(m);
+    return String(text || '').replace(/<@(\d{1,10})>/g, (all, id) => {
+      const u = ctx.resolveUser(Number(id));
+      return u ? `@${u.username}` : all;
+    });
+  }
+
+  // :joia: escrito à mão (sem escolher na lista) também vira emoji ao enviar
+  function encodeShortcodes(text) {
+    return text.replace(/(^|[^\w`]):([a-z0-9_+-]{2,40}):/gi, (all, pre, name) => {
+      const e = DidiEmoji.fromShortcode(name);
+      return e ? pre + e : all;
+    });
+  }
+
+  // texto antes do cursor que está sendo completado: { kind: 'mention'|'emoji', query, start }
+  function tokenBeforeCaret() {
+    const pos = chatInput.selectionStart;
+    if (pos == null || pos !== chatInput.selectionEnd) return null;
+    const before = chatInput.value.slice(0, pos);
+    let m = before.match(/(^|\s)@([^\s@]{0,32})$/);
+    if (m) return { kind: 'mention', query: m[2], start: pos - m[2].length - 1 };
+    m = before.match(/(^|\s):([\p{L}\p{N}_+-]{2,32})$/u);
+    if (m) return { kind: 'emoji', query: m[2], start: pos - m[2].length - 1 };
+    return null;
+  }
+
+  function replaceToken(token, insert) {
+    const pos = chatInput.selectionStart;
+    const v = chatInput.value;
+    chatInput.value = v.slice(0, token.start) + insert + v.slice(pos);
+    const caret = token.start + insert.length;
+    chatInput.setSelectionRange(caret, caret);
+    chatInput.focus();
+    autosizeComposer();
+  }
+
+  // devolve true se tratou (mostrou a lista de menção/emoji)
+  let emojiSearchToken = 0;
+  function updateMentionOrEmojiPopup() {
+    const token = tokenBeforeCaret();
+    if (!token) return false;
+    if (token.kind === 'mention') {
+      const q = foldText(token.query);
+      const users = mentionCandidates()
+        .filter((u) => u && foldText(u.username).split(/\s+/).some((w, i, arr) => w.startsWith(q) || arr.join(' ').startsWith(q)))
+        .slice(0, 8)
+        .map((u) => ({ kind: 'mention', user: u, token }));
+      const specials = currentChannel && !currentChannel.dm
+        ? ['everyone', 'here'].filter((s) => s.startsWith(q)).map((s) => ({ kind: 'mention-special', name: s, token }))
+        : [];
+      if (popupMode !== 'mention') popupIndex = 0;
+      popupMode = 'mention';
+      popupItems = [...users, ...specials];
+      if (!popupItems.length) { hideCommandPopup(); return true; }
+      renderPopup(token.query ? `membros com "@${token.query}"` : 'mencionar');
+      return true;
+    }
+    const mine = ++emojiSearchToken;
+    DidiEmoji.search(token.query, 8).then((found) => {
+      if (mine !== emojiSearchToken) return;
+      const still = tokenBeforeCaret();
+      if (!still || still.kind !== 'emoji' || still.query !== token.query) return;
+      if (popupMode !== 'emoji') popupIndex = 0;
+      popupMode = 'emoji';
+      popupItems = found.map((e) => ({ kind: 'emoji', emoji: e, token }));
+      if (!popupItems.length) { hideCommandPopup(); return; }
+      renderPopup(`emojis com ":${token.query}"`);
+    }).catch(() => {});
+    return true;
+  }
+
+  // caixa de mensagem cresce com o texto (até um limite), igual o Discord
+  function autosizeComposer() {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 260) + 'px';
+  }
+
+  // ===================================================================
+  // "fulano está digitando…"
+  // ===================================================================
+
+  const TYPING_SEND_EVERY_MS = 3000;
+  const TYPING_SHOW_MS = 6500;
+  const typingByChannel = new Map(); // channelId -> Map(userId -> até quando mostrar)
+  let lastTypingSentAt = 0;
+  let lastTypingChannel = null;
+  const typingIndicator = document.getElementById('typingIndicator');
+
+  function notifyTyping() {
+    if (!currentChannel || currentChannel.type !== 'text') return;
+    const v = chatInput.value;
+    if (!v.trim() || v.startsWith('/')) return;
+    const now = Date.now();
+    if (lastTypingChannel === currentChannel.id && now - lastTypingSentAt < TYPING_SEND_EVERY_MS) return;
+    lastTypingSentAt = now;
+    lastTypingChannel = currentChannel.id;
+    Realtime.send('typing', { channelId: currentChannel.id });
+  }
+
+  function renderTyping() {
+    if (!typingIndicator) return;
+    const map = currentChannel ? typingByChannel.get(currentChannel.id) : null;
+    const now = Date.now();
+    const ids = map ? [...map.entries()].filter(([, until]) => until > now).map(([id]) => id) : [];
+    if (!ids.length) { typingIndicator.textContent = ''; typingIndicator.classList.remove('is-active'); return; }
+    const names = ids.map(userName);
+    let text;
+    if (names.length === 1) text = `${names[0]} está digitando…`;
+    else if (names.length === 2) text = `${names[0]} e ${names[1]} estão digitando…`;
+    else if (names.length === 3) text = `${names[0]}, ${names[1]} e ${names[2]} estão digitando…`;
+    else text = 'várias pessoas estão digitando…';
+    typingIndicator.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span><span class="typing-text"></span>';
+    typingIndicator.querySelector('.typing-text').textContent = text;
+    typingIndicator.classList.add('is-active');
+  }
+
+  function setTyping(channelId, userId, on) {
+    if (!typingByChannel.has(channelId)) typingByChannel.set(channelId, new Map());
+    const map = typingByChannel.get(channelId);
+    if (on) map.set(userId, Date.now() + TYPING_SHOW_MS);
+    else map.delete(userId);
+    if (currentChannel && currentChannel.id === channelId) renderTyping();
+  }
+
+  setInterval(() => { if (typingIndicator && typingIndicator.classList.contains('is-active')) renderTyping(); }, 1000);
+
+  // ===================================================================
+  // notificações do sistema
+  // ===================================================================
+
+  const NOTIFY_KEY = 'didiscord:notificationLevel';
+  const notificationLevelSelect = document.getElementById('notificationLevelSelect');
+  const notificationPermissionBtn = document.getElementById('notificationPermissionBtn');
+
+  function getNotifyLevel() {
+    try { const v = localStorage.getItem(NOTIFY_KEY); return ['mentions', 'all', 'none'].includes(v) ? v : 'mentions'; } catch (_) { return 'mentions'; }
+  }
+  function setNotifyLevel(v) { try { localStorage.setItem(NOTIFY_KEY, v); } catch (_) { /* ok */ } }
+
+  function notificationsSupported() { return typeof Notification !== 'undefined'; }
+
+  function updateNotificationPermissionUi() {
+    if (!notificationPermissionBtn) return;
+    const need = notificationsSupported() && Notification.permission === 'default' && getNotifyLevel() !== 'none';
+    notificationPermissionBtn.hidden = !need;
+    const help = document.getElementById('notificationHelp');
+    if (help && notificationsSupported() && Notification.permission === 'denied' && getNotifyLevel() !== 'none') {
+      help.textContent = 'o navegador está bloqueando as notificações deste site — libera no cadeado ao lado do endereço.';
+    }
+  }
+
+  function askNotificationPermission() {
+    if (!notificationsSupported() || Notification.permission !== 'default') return;
+    Notification.requestPermission().then(updateNotificationPermissionUi).catch(() => {});
+  }
+
+  if (notificationLevelSelect) {
+    notificationLevelSelect.value = getNotifyLevel();
+    notificationLevelSelect.addEventListener('change', () => {
+      setNotifyLevel(notificationLevelSelect.value);
+      if (notificationLevelSelect.value !== 'none') askNotificationPermission();
+      updateNotificationPermissionUi();
+    });
+  }
+  if (notificationPermissionBtn) notificationPermissionBtn.addEventListener('click', askNotificationPermission);
+  // o navegador só deixa pedir permissão num clique de verdade — pede no primeiro clique no site
+  document.addEventListener('pointerdown', function firstClick() {
+    document.removeEventListener('pointerdown', firstClick, true);
+    if (getNotifyLevel() !== 'none') askNotificationPermission();
+  }, true);
+
+  function appIsInFront() {
+    return document.visibilityState === 'visible' && document.hasFocus();
+  }
+
+  function shouldNotify(message, isDm, mentionsMe) {
+    const level = getNotifyLevel();
+    if (level === 'none') return false;
+    if (level === 'all') return true;
+    return isDm || mentionsMe;
+  }
+
+  function showSystemNotification(message) {
+    if (!notificationsSupported() || Notification.permission !== 'granted') return;
+    const isDm = message.server_id == null;
+    const author = message.username || message.bot_name || 'alguém';
+    let title = author;
+    if (!isDm) {
+      const s = servers.find((x) => x.id === message.server_id);
+      const ch = channels.find((c) => c.id === message.channel_id);
+      const chName = message.channel_name || (ch && ch.name);
+      title = `${author} (${chName ? '#' + chName : 'canal'}${s ? ', ' + s.name : ''})`;
+    }
+    try {
+      const n = new Notification(title, {
+        body: messagePlain(message).slice(0, 220),
+        icon: message.avatar_url || '/favicon.ico',
+        tag: `didiscord-${message.channel_id}`,
+        silent: true, // o som é o do próprio didiscord
+      });
+      n.onclick = () => {
+        if (window.didiscordDesktop && window.didiscordDesktop.focusWindow) window.didiscordDesktop.focusWindow();
+        window.focus();
+        n.close();
+        openMessageLocation(message);
+      };
+    } catch (_) { /* alguns ambientes não deixam criar Notification fora de service worker */ }
+  }
+
+  // vai até a mensagem: troca de servidor/conversa se precisar
+  async function openMessageLocation(message, opts = {}) {
+    if (message.server_id == null) {
+      if (currentServerId != null) await selectServer(null);
+      const dm = dms.find((d) => d.id === message.channel_id);
+      if (dm) await selectChannel(dmChannel(dm), opts);
+      return;
+    }
+    if (currentServerId !== message.server_id) {
+      await selectServer(message.server_id, { channelId: message.channel_id, aroundId: opts.aroundId });
+      return;
+    }
+    const ch = channels.find((c) => c.id === message.channel_id);
+    if (ch) await selectChannel(ch, opts);
+  }
+
+  // ===================================================================
+  // não lidas (guardadas no servidor) e contagem de menções
+  // ===================================================================
+
+  async function loadUnread() {
+    try {
+      const res = await fetch('/api/unread');
+      if (!res.ok) return;
+      const data = await res.json();
+      unreadChannels.clear();
+      for (const u of data.unread || []) {
+        if (currentChannel && currentChannel.id === u.channel_id && appIsInFront()) { syncRead(u.channel_id); continue; }
+        unreadChannels.set(u.channel_id, { serverId: u.server_id, mentions: u.mentions || 0 });
+      }
+      renderRail();
+      renderChannels();
+      updateUnreadTitle();
+    } catch (_) { /* sem conexão — tenta de novo quando o WebSocket voltar */ }
+  }
+
+  const readSyncTimers = new Map();
+  function syncRead(channelId) {
+    clearTimeout(readSyncTimers.get(channelId));
+    readSyncTimers.set(channelId, setTimeout(() => {
+      readSyncTimers.delete(channelId);
+      fetch(`/api/unread/${channelId}/read`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+    }, 600));
+  }
+
+  function totalMentions() {
+    let n = 0;
+    for (const u of unreadChannels.values()) n += u.mentions || 0;
+    return n;
+  }
+
+  function updateUnreadTitle() {
+    const n = totalMentions();
+    const base = 'didiscord';
+    document.title = n ? `(${n > 99 ? '99+' : n}) ${base}` : (unreadChannels.size ? `• ${base}` : base);
+    if (window.didiscordDesktop && typeof window.didiscordDesktop.setBadge === 'function') {
+      try { window.didiscordDesktop.setBadge(n); } catch (_) { /* app antigo */ }
+    }
+  }
+
+  function serverMentionCount(serverId) {
+    let n = 0;
+    for (const u of unreadChannels.values()) if (u.serverId === serverId) n += u.mentions || 0;
+    return n;
+  }
+
+  function mentionBadge(count, cls) {
+    const b = document.createElement('span');
+    b.className = cls;
+    b.textContent = count > 99 ? '99+' : String(count);
+    return b;
+  }
+
+  // ===================================================================
+  // pular pra uma mensagem antiga (busca, fixadas, resposta) e voltar pro presente
+  // ===================================================================
+
+  let hasNewerMessages = false;
+  let loadingNewerMessages = false;
+  const jumpPresentBtn = document.getElementById('jumpPresentBtn');
+
+  function setViewingHistory(on) {
+    hasNewerMessages = on;
+    if (jumpPresentBtn) jumpPresentBtn.hidden = !on;
+  }
+
+  if (jumpPresentBtn) {
+    jumpPresentBtn.addEventListener('click', () => { if (currentChannel) selectChannel(currentChannel); });
+  }
+
+  async function loadNewerMessages() {
+    const channel = currentChannel;
+    const newest = currentMessages[currentMessages.length - 1];
+    if (!channel || !newest || loadingNewerMessages || !hasNewerMessages) return;
+    loadingNewerMessages = true;
+    try {
+      const res = await fetch(`/api/channels/${channel.id}/messages?after=${newest.id}&limit=50`);
+      if (!res.ok || currentChannel !== channel) return;
+      const data = await res.json();
+      if (currentChannel !== channel) return;
+      const newer = data.messages || [];
+      let prev = newest;
+      for (const m of newer) {
+        currentMessages.push(m);
+        const el = buildMessageEl(m, isContinuation(prev, m));
+        el.classList.add('no-anim');
+        chatMessages.appendChild(el);
+        prev = m;
+      }
+      setViewingHistory(!!data.has_more_after);
+      if (!hasNewerMessages) syncRead(channel.id);
+    } catch (_) { /* tenta de novo na próxima rolagem */ } finally {
+      loadingNewerMessages = false;
+    }
+  }
+
+  chatMessages.addEventListener('scroll', () => {
+    if (hasNewerMessages && isScrolledNearBottom()) loadNewerMessages();
+  }, { passive: true });
+
+  function highlightMessage(messageId) {
+    const el = chatMessages.querySelector(`.msg-group[data-message-id="${messageId}"]`);
+    if (!el) return false;
+    el.scrollIntoView({ behavior: 'auto', block: 'center' });
+    el.classList.remove('is-highlighted');
+    void el.offsetWidth;
+    el.classList.add('is-highlighted');
+    return true;
+  }
+
+  // ===================================================================
+  // painéis da lateral: fixadas e busca
+  // ===================================================================
+
+  const pinsBtn = document.getElementById('pinsBtn');
+  const pinsPanel = document.getElementById('pinsPanel');
+  const pinsList = document.getElementById('pinsList');
+  const searchPanel = document.getElementById('searchPanel');
+  const searchResults = document.getElementById('searchResults');
+  const searchSummary = document.getElementById('searchSummary');
+  const chatSearchForm = document.getElementById('chatSearchForm');
+  const chatSearchInput = document.getElementById('chatSearchInput');
+
+  // com fixadas/busca abertas, a lista de membros (ou o perfil da DM) sai da frente — igual o Discord
+  function closeSidePanels() {
+    const wasOpen = (pinsPanel && !pinsPanel.hidden) || (searchPanel && !searchPanel.hidden);
+    if (pinsPanel) pinsPanel.hidden = true;
+    if (searchPanel) searchPanel.hidden = true;
+    if (pinsBtn) pinsBtn.classList.remove('active');
+    if (wasOpen && currentChannel) {
+      if (currentChannel.dm) dmProfilePanel.hidden = false;
+      else memberPanel.hidden = memberPanelCollapsed;
+    }
+  }
+  function openSidePanel(panel) {
+    closeSidePanels();
+    panel.hidden = false;
+    memberPanel.hidden = true;
+    dmProfilePanel.hidden = true;
+  }
+  document.querySelectorAll('[data-close-panel]').forEach((b) => b.addEventListener('click', closeSidePanels));
+
+  // um resultado (busca/fixada): autor, quando, onde, texto — clicando, pula pra mensagem
+  function buildResultEl(m, terms, showChannel) {
+    const el = document.createElement('div');
+    el.className = 'side-result';
+    const head = document.createElement('div');
+    head.className = 'side-result-head';
+    head.innerHTML = '<span class="side-result-author"></span><span class="side-result-when"></span>';
+    head.querySelector('.side-result-author').textContent = m.username || m.bot_name || 'bot';
+    head.querySelector('.side-result-when').textContent = (showChannel && m.channel_name ? `#${m.channel_name} · ` : '') + formatDateTime(m.created_at);
+    const body = document.createElement('div');
+    body.className = 'side-result-text msg-text';
+    renderMessageText(body, m.content || '', false, m);
+    if (!m.content && m.attachment_type) body.textContent = messagePlain(m);
+    if (terms && terms.length) markTerms(body, terms);
+    const jump = document.createElement('button');
+    jump.type = 'button';
+    jump.className = 'side-result-jump';
+    jump.textContent = 'ir';
+    el.append(head, body, jump);
+    const go = () => goToMessage(m);
+    jump.addEventListener('click', go);
+    el.addEventListener('click', (e) => { if (!e.target.closest('a, .md-spoiler, .md-mention')) go(); });
+    return el;
+  }
+
+  function formatDateTime(iso) {
+    const d = new Date(timeValue(iso));
+    return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  // destaca as palavras buscadas (sem diferença de acento) nos textos do resultado
+  function markTerms(root, terms) {
+    const needles = terms.map(foldText).filter(Boolean);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const text = node.nodeValue;
+      const folded = foldText(text);
+      if (folded.length !== text.length) continue; // acento composto mudou o tamanho: pula pra não errar a posição
+      const ranges = [];
+      for (const n of needles) {
+        const re = new RegExp(`(^|[^\\p{L}\\p{N}])(${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\p{L}\\p{N}_]*)`, 'gu');
+        for (const m of folded.matchAll(re)) ranges.push([m.index + m[1].length, m.index + m[0].length]);
+      }
+      if (!ranges.length) continue;
+      ranges.sort((a, b) => a[0] - b[0]);
+      const frag = document.createDocumentFragment();
+      let pos = 0;
+      for (const [a, b] of ranges) {
+        if (a < pos) continue;
+        frag.append(text.slice(pos, a));
+        const mark = document.createElement('mark');
+        mark.textContent = text.slice(a, b);
+        frag.append(mark);
+        pos = b;
+      }
+      frag.append(text.slice(pos));
+      node.replaceWith(frag);
+    }
+  }
+
+  async function goToMessage(m) {
+    if (currentChannel && currentChannel.id === m.channel_id && highlightMessage(m.id)) return;
+    await openMessageLocation(m, { aroundId: m.id });
+  }
+
+  async function openPins() {
+    if (!currentChannel || currentChannel.type !== 'text') return;
+    if (!pinsPanel.hidden) { closeSidePanels(); return; }
+    openSidePanel(pinsPanel);
+    pinsBtn.classList.add('active');
+    await renderPins();
+  }
+
+  async function renderPins() {
+    if (!currentChannel || pinsPanel.hidden) return;
+    const channel = currentChannel;
+    pinsList.innerHTML = '<div class="side-empty">carregando…</div>';
+    try {
+      const res = await fetch(`/api/channels/${channel.id}/messages/pins`);
+      const data = await res.json();
+      if (currentChannel !== channel) return;
+      pinsList.innerHTML = '';
+      if (!data.messages || !data.messages.length) {
+        pinsList.innerHTML = '<div class="side-empty">nenhuma mensagem fixada aqui ainda.<br>passe o mouse numa mensagem e clique no alfinete.</div>';
+        return;
+      }
+      for (const m of data.messages) pinsList.appendChild(buildResultEl(m, null, false));
+    } catch (_) {
+      pinsList.innerHTML = '<div class="side-empty">não deu pra carregar</div>';
+    }
+  }
+
+  if (pinsBtn) pinsBtn.addEventListener('click', openPins);
+
+  let searchState = null; // { q, params, offset, total }
+
+  // "de:fulano pizza" procura só mensagens do fulano
+  function parseSearch(raw) {
+    let q = raw;
+    let authorId = null;
+    const m = raw.match(/(?:^|\s)de:@?(\S+)/i);
+    if (m) {
+      const name = foldText(m[1]);
+      const u = mentionCandidates().find((x) => x && foldText(x.username).replace(/\s+/g, '') === name.replace(/\s+/g, ''))
+        || mentionCandidates().find((x) => x && foldText(x.username).startsWith(name));
+      if (u) { authorId = u.id; q = raw.replace(m[0], ' ').trim(); }
+    }
+    return { q, authorId };
+  }
+
+  async function runSearch(append) {
+    if (!searchState) return;
+    const { q, authorId } = searchState;
+    const where = currentChannel && currentChannel.dm ? `channel_id=${currentChannel.id}` : `server_id=${currentServerId}`;
+    const url = `/api/search?q=${encodeURIComponent(q)}&${where}${authorId ? `&author_id=${authorId}` : ''}&offset=${searchState.offset}`;
+    if (!append) { searchResults.innerHTML = '<div class="side-empty">buscando…</div>'; searchSummary.textContent = 'buscando…'; }
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) { searchResults.innerHTML = `<div class="side-empty"></div>`; searchResults.firstChild.textContent = data.error || 'não deu pra buscar'; return; }
+      if (!append) searchResults.innerHTML = '';
+      const more = searchResults.querySelector('.side-more');
+      if (more) more.remove();
+      searchState.total = data.total;
+      searchSummary.textContent = data.total === 1 ? '1 resultado' : `${data.total} resultados`;
+      if (!data.total) { searchResults.innerHTML = '<div class="side-empty">nada encontrado</div>'; return; }
+      for (const m of data.messages) searchResults.appendChild(buildResultEl(m, data.terms, !currentChannel.dm));
+      searchState.offset = data.offset + data.messages.length;
+      if (searchState.offset < data.total) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-ghost side-more';
+        b.textContent = 'mais resultados';
+        b.addEventListener('click', () => runSearch(true));
+        searchResults.appendChild(b);
+      }
+    } catch (_) {
+      searchResults.innerHTML = '<div class="side-empty">sem conexão</div>';
+    }
+  }
+
+  if (chatSearchForm) {
+    chatSearchForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const raw = chatSearchInput.value.trim();
+      if (!raw || !currentChannel) return;
+      const { q, authorId } = parseSearch(raw);
+      if (!q && !authorId) return;
+      openSidePanel(searchPanel);
+      searchState = { q, authorId, offset: 0, total: 0 };
+      runSearch(false);
+    });
+    chatSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { chatSearchInput.value = ''; closeSidePanels(); chatSearchInput.blur(); }
+    });
   }
 
   // ---------- anexos ----------
@@ -1839,7 +2660,31 @@
       el.className = 'command-item' + (item.kind === 'track' ? ' is-track' : '');
       el.id = `command-item-${idx}`;
       el.setAttribute('role', 'option');
-      if (item.kind === 'command') {
+      if (item.kind === 'mention') {
+        el.classList.add('is-mention');
+        el.innerHTML = `
+          <span class="command-item-avatar">${memberAvatarInner(item.user)}</span>
+          <span class="command-item-text"><span class="command-item-name"><strong></strong></span></span>
+          <span class="command-item-source"></span>`;
+        el.querySelector('strong').textContent = item.user.username;
+        el.querySelector('.command-item-source').textContent = currentUser && item.user.id === currentUser.id ? 'você' : (item.user.online ? 'online' : '');
+      } else if (item.kind === 'mention-special') {
+        el.classList.add('is-mention');
+        el.innerHTML = `
+          <span class="command-item-avatar is-special">@</span>
+          <span class="command-item-text"><span class="command-item-name"><strong></strong></span><span class="command-item-desc"></span></span>`;
+        el.querySelector('strong').textContent = '@' + item.name;
+        el.querySelector('.command-item-desc').textContent = item.name === 'everyone' ? 'avisa todo mundo que vê este canal' : 'avisa quem está online';
+      } else if (item.kind === 'emoji') {
+        el.classList.add('is-emoji');
+        el.innerHTML = `
+          <span class="command-item-emoji"></span>
+          <span class="command-item-text"><span class="command-item-name"><strong></strong></span></span>
+          <span class="command-item-source"></span>`;
+        el.querySelector('.command-item-emoji').textContent = item.emoji.emoji;
+        el.querySelector('strong').textContent = item.emoji.codes.length ? `:${item.emoji.codes[0]}:` : item.emoji.name;
+        el.querySelector('.command-item-source').textContent = item.emoji.name;
+      } else if (item.kind === 'command') {
         el.innerHTML = `
           <span class="command-item-icon">${bot.avatar ? `<img src="${escapeAttr(bot.avatar)}" alt="">` : '♪'}</span>
           <span class="command-item-text">
@@ -1890,8 +2735,11 @@
   }
 
   function updateCommandPopup() {
+    if (!currentChannel || currentChannel.type !== 'text') { hideCommandPopup(); return; }
+    // @menção e :emoji: funcionam em qualquer canal de texto (inclusive DM)
+    if (updateMentionOrEmojiPopup()) return;
     // comandos só fazem sentido em canal de texto de servidor (o bot não toca em DM)
-    if (!currentChannel || currentChannel.dm || currentChannel.type !== 'text' || pendingAttachment) {
+    if (currentChannel.dm || pendingAttachment) {
       hideCommandPopup();
       return;
     }
@@ -1946,6 +2794,13 @@
   function choosePopupItem() {
     const item = popupItems[popupIndex];
     if (!item) return false;
+    if (item.kind === 'mention' || item.kind === 'mention-special' || item.kind === 'emoji') {
+      const insert = item.kind === 'mention' ? `@${item.user.username} `
+        : item.kind === 'mention-special' ? `@${item.name} ` : `${item.emoji.emoji} `;
+      hideCommandPopup();
+      replaceToken(item.token, insert);
+      return true;
+    }
     if (item.kind === 'command') {
       if (item.cmd.args) {
         // comando com argumento: completa e deixa a pessoa digitar (no /play já começa a sugerir)
@@ -1968,7 +2823,8 @@
     return true;
   }
 
-  chatInput.addEventListener('input', updateCommandPopup);
+  chatInput.addEventListener('input', () => { autosizeComposer(); notifyTyping(); updateCommandPopup(); });
+  chatInput.addEventListener('click', updateCommandPopup);
   chatInput.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== chatInput) hideCommandPopup(); }, 150));
 
   chatInput.addEventListener('keydown', (e) => {
@@ -1984,11 +2840,42 @@
     }
   });
 
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.isComposing) return;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      chatComposer.requestSubmit();
+    } else if (e.key === 'ArrowUp' && !chatInput.value) {
+      // seta pra cima com a caixa vazia: edita a sua última mensagem (igual o Discord)
+      const mine = [...currentMessages].reverse().find(canEditMessage);
+      const el = mine && chatMessages.querySelector(`.msg-group[data-message-id="${mine.id}"]`);
+      if (el) { e.preventDefault(); startEditMessage(mine, el); }
+    }
+  });
+
+  const emojiBtn = document.getElementById('emojiBtn');
+  if (emojiBtn) {
+    emojiBtn.addEventListener('click', () => {
+      DidiEmoji.open({
+        anchor: emojiBtn,
+        onPick: (emoji) => {
+          const start = chatInput.selectionStart ?? chatInput.value.length;
+          const end = chatInput.selectionEnd ?? start;
+          chatInput.value = chatInput.value.slice(0, start) + emoji + chatInput.value.slice(end);
+          const caret = start + emoji.length;
+          chatInput.focus();
+          chatInput.setSelectionRange(caret, caret);
+          autosizeComposer();
+        },
+      });
+    });
+  }
+
   chatComposer.addEventListener('submit', async (e) => {
     e.preventDefault();
     hideCommandPopup();
     if (!currentChannel) return;
-    const content = chatInput.value.trim();
+    const content = encodeShortcodes(encodeMentions(chatInput.value.trim()));
     const replyToId = pendingReplyTo ? pendingReplyTo.id : null;
 
     if (pendingAttachment) {
@@ -2027,6 +2914,7 @@
         if (xhr.status >= 200 && xhr.status < 300) {
           clearPendingAttachment();
           chatInput.value = '';
+          autosizeComposer();
           clearReplyTarget();
           // a mensagem em si aparece via broadcast (message_created), igual todo o resto
         } else {
@@ -2063,6 +2951,7 @@
 
     if (!content) return;
     chatInput.value = '';
+    autosizeComposer();
     clearReplyTarget();
     showComposerError('');
     try {
@@ -2830,30 +3719,37 @@
         [{ label: 'nova conversa', primary: true, onClick: openNewDmModal }]
       );
     } else {
-      setMainEmpty('suas conversas', 'Escolha uma conversa na lateral pra continuar de onde parou.');
+      setMainEmpty('suas conversas', 'Escolha uma conversa na lateral pra continuar de onde parou.',
+        window.didiscordDesktop ? [] : [{ label: 'baixar o app pro computador', onClick: () => window.open('/baixar', '_blank') }]);
     }
   }
 
   // ---------- não lidas ----------
-  // canal -> servidor (null = DM). Só vale durante a sessão: marca o que chegou enquanto a pessoa
-  // estava olhando outra coisa.
+  // canal -> { servidor (null = DM), quantas menções }. O ponto lido fica no servidor
+  // (channel_reads), então sobrevive a recarregar a página e vale em todas as abas/no app.
 
-  function markChannelUnread(channelId, serverId) {
-    unreadChannels.set(channelId, serverId == null ? null : serverId);
+  function markChannelUnread(channelId, serverId, addMentions = 0) {
+    const cur = unreadChannels.get(channelId) || { serverId: serverId == null ? null : serverId, mentions: 0 };
+    cur.mentions += addMentions;
+    unreadChannels.set(channelId, cur);
+    updateUnreadTitle();
   }
 
   function markChannelRead(channelId) {
     unreadChannels.delete(channelId);
+    syncRead(channelId);
+    updateUnreadTitle();
   }
 
   function serverHasUnread(serverId) {
-    for (const sid of unreadChannels.values()) if (sid === serverId) return true;
+    for (const u of unreadChannels.values()) if (u.serverId === serverId) return true;
     return false;
   }
 
+  // na bolinha da tela inicial: quantas mensagens diretas não lidas
   function dmUnreadCount() {
     let n = 0;
-    for (const sid of unreadChannels.values()) if (sid === null) n++;
+    for (const u of unreadChannels.values()) if (u.serverId === null) n += Math.max(1, u.mentions || 0);
     return n;
   }
 
@@ -2895,6 +3791,8 @@
       b.title = s.name;
       b.setAttribute('aria-label', s.name);
       b.innerHTML = `<span class="rail-pill"></span><span class="rail-icon">${serverIconInner(s)}</span>`;
+      const mentions = serverMentionCount(s.id);
+      if (mentions > 0) b.appendChild(mentionBadge(mentions, 'rail-badge'));
       b.addEventListener('click', () => selectServer(s.id));
       railServers.appendChild(b);
     }
@@ -2988,7 +3886,7 @@
     const wanted = opts.channelId || lastChannelOf(sid);
     const target = channels.find((c) => c.id === wanted && c.type === 'text') || channels.find((c) => c.type === 'text');
     if (target) {
-      selectChannel(target);
+      selectChannel(target, target.id === opts.channelId && opts.aroundId ? { aroundId: opts.aroundId } : {});
     } else if (voiceChannel && voiceChannel.server_id === sid) {
       selectChannel(channels.find((c) => c.id === voiceChannel.id) || voiceChannel);
     } else {
@@ -7014,18 +7912,36 @@
         }
       }
 
-      // som só pra DM ou pro servidor que estou olhando — com vários servidores, tocar pra tudo vira barulho
-      if (!mine && message.user_id && (isDm || message.server_id === currentServerId)) {
+      const mentionsMe = messageMentionsMe(message);
+      if (message.user_id) setTyping(message.channel_id, message.user_id, false);
+
+      // som só pra DM, pro servidor que estou olhando, ou quando me mencionam — com vários
+      // servidores, tocar pra tudo vira barulho
+      if (!mine && message.user_id && (isDm || message.server_id === currentServerId || mentionsMe)) {
         playMessageSound();
       }
+      // notificação do sistema quando o didiscord não está na frente (ou é outro canal)
+      if (!mine && (!isOpen || !appIsInFront()) && shouldNotify(message, isDm, mentionsMe)) {
+        showSystemNotification(message);
+      }
 
-      if (!isOpen) {
-        if (!mine) markChannelUnread(message.channel_id, message.server_id);
+      const countsAsMention = !mine && (isDm || mentionsMe) ? 1 : 0;
+      const refreshLists = () => {
         renderRail();
         if ((isDm && currentServerId == null) || (!isDm && message.server_id === currentServerId)) renderChannels();
+      };
+
+      // canal fechado, ou aberto mas vendo mensagens antigas (não dá pra encaixar a nova no fim)
+      if (!isOpen || hasNewerMessages) {
+        if (!mine) markChannelUnread(message.channel_id, message.server_id, countsAsMention);
+        refreshLists();
         return;
       }
 
+      if (!mine) {
+        if (appIsInFront()) syncRead(message.channel_id);
+        else { markChannelUnread(message.channel_id, message.server_id, countsAsMention); refreshLists(); }
+      }
       if (isDm && currentServerId == null) renderChannels(); // reordena a lista de conversas
       currentMessages.push(message);
       appendMessageToDom(message);
@@ -7038,6 +7954,50 @@
       currentMessages[idx] = message;
       const old = chatMessages.querySelector(`.msg-group[data-message-id="${message.id}"]`);
       if (old) old.replaceWith(buildMessageEl(message, old.classList.contains('is-continued')));
+    });
+
+    Realtime.on('reactions_updated', ({ channelId, messageId, reactions }) => {
+      if (!currentChannel || channelId !== currentChannel.id) return;
+      const m = currentMessages.find((x) => x.id === messageId);
+      if (!m) return;
+      m.reactions = reactions;
+      refreshReactions(messageId);
+    });
+
+    Realtime.on('message_pinned', ({ channelId, message, pinned, by }) => {
+      if (!currentChannel || channelId !== currentChannel.id) return;
+      const idx = currentMessages.findIndex((x) => x.id === message.id);
+      if (idx !== -1) {
+        currentMessages[idx] = message;
+        const old = chatMessages.querySelector(`.msg-group[data-message-id="${message.id}"]`);
+        if (old) old.replaceWith(Object.assign(buildMessageEl(message, old.classList.contains('is-continued')), {}));
+        const fresh = chatMessages.querySelector(`.msg-group[data-message-id="${message.id}"]`);
+        if (fresh) fresh.classList.add('no-anim');
+      }
+      if (by && currentUser && by.id !== currentUser.id) toast(`${by.username} ${pinned ? 'fixou' : 'desafixou'} uma mensagem`);
+      renderPins();
+    });
+
+    Realtime.on('typing', ({ channelId, userId }) => {
+      if (currentUser && userId === currentUser.id) return;
+      setTyping(channelId, userId, true);
+    });
+
+    // li num lugar (outra aba, o app no PC): tira o aviso aqui também
+    Realtime.on('read_state', ({ channelId }) => {
+      if (!unreadChannels.has(channelId)) return;
+      unreadChannels.delete(channelId);
+      updateUnreadTitle();
+      renderRail();
+      renderChannels();
+    });
+
+    // voltou a conexão depois de cair: pode ter chegado mensagem nesse meio-tempo
+    let wsOpenedOnce = false;
+    Realtime.on('connection_status', ({ status }) => {
+      if (status !== 'open') return;
+      if (wsOpenedOnce) loadUnread();
+      wsOpenedOnce = true;
     });
 
     Realtime.on('message_deleted', ({ channelId, messageId }) => {
@@ -7261,6 +8221,15 @@
     });
   }
 
+  function readCurrentIfInFront() {
+    if (!appIsInFront() || !currentChannel || hasNewerMessages || !unreadChannels.has(currentChannel.id)) return;
+    markChannelRead(currentChannel.id);
+    renderChannels();
+    renderRail();
+  }
+  window.addEventListener('focus', readCurrentIfInFront);
+  document.addEventListener('visibilitychange', readCurrentIfInFront);
+
   (async function init() {
     if (!window.isSecureContext) {
       alert('esse site precisa ser acessado por HTTPS (ou localhost) pra microfone e câmera funcionarem — use o link https, não o IP local puro.');
@@ -7272,6 +8241,8 @@
     await loadVoiceOccupancy();
     await loadMusicbotState();
     wireRealtime();
+    loadUnread();
+    updateNotificationPermissionUi();
 
     // abre onde a pessoa estava da última vez (servidor ou tela de conversas)
     let last = null;

@@ -14,6 +14,7 @@ const path = require('path');
 const { createScreenAudio } = require('./audio');
 const { createDeps } = require('./deps');
 const { createScreencast } = require('./screencast');
+const { createUpdater } = require('./updater');
 
 const DEV = process.env.DIDISCORD_DEV === '1';
 
@@ -160,6 +161,7 @@ const screenAudio = createScreenAudio({ log });
 // compartilhamento de tela pela placa de vídeo (ver screencast.js) e o que ele baixa sozinho (deps.js)
 const deps = createDeps({ log });
 const screencast = createScreencast({ log, deps });
+const updater = createUpdater({ log, getWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null), getSiteUrl: () => SITE_URL });
 
 function createMainWindow() {
   const state = loadWindowState();
@@ -189,6 +191,7 @@ function createMainWindow() {
   win.on('resize', () => { if (!win.isMaximized() && !win.isMinimized()) win._lastNormalBounds = win.getBounds(); });
   win.on('close', () => saveWindowState(win));
   win.on('closed', () => { screenAudio.stop(); mainWindow = null; });
+  win.on('focus', () => { try { win.flashFrame(false); } catch (_) { /* ok */ } });
 
   const wc = win.webContents;
 
@@ -548,6 +551,31 @@ ipcMain.handle('screencast:stop', (event) => {
   if (trustedSender(event)) screencast.stop();
 });
 
+// ---------- avisos: contador de menções no ícone e trazer a janela pra frente ----------
+
+let lastBadge = 0;
+ipcMain.on('didiscord:badge', (event, count) => {
+  if (!trustedSender(event)) return;
+  const n = Math.max(0, Math.min(999, Number(count) || 0));
+  try { app.setBadgeCount(n); } catch (_) { /* nem todo sistema tem contador no ícone */ }
+  // menção nova com a janela em segundo plano: pisca na barra de tarefas (Windows/Linux)
+  if (n > lastBadge && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
+    try { mainWindow.flashFrame(true); } catch (_) { /* ok */ }
+  }
+  lastBadge = n;
+});
+
+ipcMain.on('didiscord:focus', (event) => {
+  if (!trustedSender(event) || !mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
+
+ipcMain.handle('didiscord:checkUpdates', (event) => {
+  if (trustedSender(event)) updater.check(true);
+});
+
 // ---------- menu ----------
 
 function buildMenu() {
@@ -577,6 +605,14 @@ function buildMenu() {
         },
       ],
     },
+    {
+      label: 'Ajuda',
+      submenu: [
+        { label: 'Procurar atualizações…', click: () => updater.check(true) },
+        { type: 'separator' },
+        { label: `didiscord ${app.getVersion()}`, enabled: false },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -601,6 +637,7 @@ if (!app.requestSingleInstanceLock()) {
     // já descobre o melhor jeito de compartilhar a tela (e baixa o ffmpeg se precisar) em segundo
     // plano, pra estar pronto na primeira vez que a pessoa compartilhar
     if (!IS_WAYLAND) setTimeout(() => { screencast.probe().catch(() => {}); }, 3000);
+    updater.start();
   });
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

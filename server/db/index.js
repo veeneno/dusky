@@ -95,6 +95,74 @@ function migrateLegacyServer() {
 }
 migrateLegacyServer();
 
+// ------------------------------------------------------------------
+// leituras, menções, reações, fixadas e busca
+// ------------------------------------------------------------------
+
+// até onde cada pessoa leu cada canal (as "não lidas" sobrevivem a recarregar a página)
+const hadReads = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'channel_reads'").get();
+db.exec(`
+  CREATE TABLE IF NOT EXISTS channel_reads (
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel_id   INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    last_read_id INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, channel_id)
+  );
+  -- quem cada mensagem menciona (user_id 0 = @everyone) — pra contar menções não lidas
+  CREATE TABLE IF NOT EXISTS message_mentions (
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL,
+    PRIMARY KEY (message_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_mentions_user ON message_mentions(user_id, message_id);
+  CREATE TABLE IF NOT EXISTS message_reactions (
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emoji      TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (message_id, user_id, emoji)
+  );
+`);
+ensureColumn('messages', 'pinned_at', 'TEXT');
+ensureColumn('messages', 'pinned_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
+db.exec('CREATE INDEX IF NOT EXISTS idx_messages_pinned ON messages(channel_id, pinned_at) WHERE pinned_at IS NOT NULL');
+
+// primeira vez com a tabela de leituras: marca tudo que já existe como lido, senão todo mundo
+// abriria o site com o histórico inteiro "não lido"
+if (!hadReads) {
+  db.exec(`
+    INSERT OR IGNORE INTO channel_reads (user_id, channel_id, last_read_id)
+      SELECT sm.user_id, c.id, COALESCE((SELECT MAX(id) FROM messages m WHERE m.channel_id = c.id), 0)
+      FROM channels c JOIN server_members sm ON sm.server_id = c.server_id WHERE c.type = 'text';
+    INSERT OR IGNORE INTO channel_reads (user_id, channel_id, last_read_id)
+      SELECT dm.user_id, dm.channel_id, COALESCE((SELECT MAX(id) FROM messages m WHERE m.channel_id = dm.channel_id), 0)
+      FROM dm_members dm;
+  `);
+  console.log('[db] leituras iniciadas (tudo que já existia conta como lido)');
+}
+
+// busca de mensagens (FTS5): sem diferença de acento nem maiúscula, mantida em dia por gatilhos
+const hadFts = !!db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'messages_fts'").get();
+db.exec(`
+  CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+    content, content='messages', content_rowid='id', tokenize='unicode61 remove_diacritics 2'
+  );
+  CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
+    INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+  END;
+  CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.id, old.content);
+  END;
+  CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE OF content ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.id, old.content);
+    INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+  END;
+`);
+if (!hadFts) {
+  db.exec("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')");
+  console.log('[db] índice de busca criado');
+}
+
 // canais padrão de um servidor recém-criado — usado por routes/servers.js
 function createDefaultChannels(serverId, createdBy) {
   const insert = db.prepare(

@@ -24,6 +24,9 @@ const invitesRoutes = require('./routes/invites');
 const dmsRoutes = require('./routes/dms');
 const usersRoutes = require('./routes/users');
 const adminRoutes = require('./routes/admin');
+const activityRoutes = require('./routes/activity');
+const embedRoutes = require('./routes/embeds');
+const downloadRoutes = require('./routes/downloads');
 const realtime = require('./realtime');
 
 const app = express();
@@ -77,6 +80,9 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
   },
 }));
 
+// app desktop: /baixar, /downloads/*, /api/downloads (público, sem login)
+app.use(downloadRoutes);
+
 // rotas de autenticação (registro, login, logout, /me)
 app.use('/api/auth', authRoutes);
 app.use('/api/channels', channelRoutes);
@@ -92,6 +98,8 @@ app.use('/api/invites', invitesRoutes);
 app.use('/api/dms', dmsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api', activityRoutes); // /api/unread, /api/search
+app.use('/api/embed', embedRoutes);
 
 const server = http.createServer(app);
 realtime.init(server); // liga o WebSocket em /ws no mesmo servidor HTTP

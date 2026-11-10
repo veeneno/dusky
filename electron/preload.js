@@ -25,6 +25,12 @@ ipcRenderer.on('didiscord:pcm', (_event, bytes) => {
 contextBridge.exposeInMainWorld('didiscordDesktop', {
   platform: process.platform,
 
+  // contador de menções não lidas no ícone do app (e piscar na barra de tarefas quando chega uma)
+  setBadge: (count) => ipcRenderer.send('didiscord:badge', Number(count) || 0),
+  // traz a janela pra frente (clique numa notificação)
+  focusWindow: () => ipcRenderer.send('didiscord:focus'),
+  checkForUpdates: () => ipcRenderer.invoke('didiscord:checkUpdates'),
+
   // Depois do getDisplayMedia: como o áudio da tela vai ser obtido.
   //   { mode: 'none' }                                             sem áudio
   //   { mode: 'pcm', sampleRate, channels, isFloat, bitsPerSample } PCM chega por onPcmChunk

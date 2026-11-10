@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>baixar o didiscord</title>
+  <meta name="description" content="App do didiscord pra Windows e Linux">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/theme.css?v=19">
+  <link rel="stylesheet" href="/css/auth.css?v=19">
+  <style>
+    .dl-screen { min-height: 100vh; display: flex; justify-content: center; padding: 56px 20px 40px; position: relative; }
+    .dl-screen::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none;
+      background-image: radial-gradient(circle at 18% 20%, rgba(157, 92, 232, 0.12), transparent 40%),
+                        radial-gradient(circle at 82% 78%, rgba(255, 143, 102, 0.07), transparent 42%);
+    }
+    .dl { width: 100%; max-width: 640px; position: relative; animation: rise 0.5s var(--ease) both; }
+    .dl-mark { display: flex; justify-content: center; margin-bottom: 18px; }
+    .dl h1 { text-align: center; font-size: 40px; margin: 0 0 8px; }
+    .dl-lead { text-align: center; color: var(--text-lo); margin: 0 0 30px; line-height: 1.6; }
+    .dl-main { padding: 26px; text-align: center; }
+    .dl-main .btn { font-size: 16px; padding: 14px 26px; display: inline-flex; gap: 10px; align-items: center; text-decoration: none; }
+    .dl-meta { margin-top: 12px; font-size: 13px; color: var(--text-faint); }
+    .dl-others { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 18px 0 0; }
+    .dl-option {
+      display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; text-decoration: none;
+      border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--elevated); color: var(--text-hi);
+      transition: border-color 0.15s;
+    }
+    .dl-option:hover { border-color: var(--amethyst); }
+    .dl-option strong { font-size: 14.5px; }
+    .dl-option span { font-size: 12.5px; color: var(--text-faint); }
+    .dl-option.is-off { opacity: 0.45; pointer-events: none; }
+    .dl-steps { margin-top: 28px; padding: 22px 24px; }
+    .dl-steps h2 { font-size: 20px; margin: 0 0 12px; }
+    .dl-steps ol { margin: 0; padding-left: 20px; color: var(--text-lo); line-height: 1.7; }
+    .dl-steps li + li { margin-top: 6px; }
+    .dl-steps code {
+      font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace; font-size: 12.5px;
+      background: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--text-hi);
+      word-break: break-all;
+    }
+    .dl-steps .dl-note { margin-top: 14px; font-size: 13px; color: var(--text-faint); line-height: 1.6; }
+    .dl-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .dl-tab { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text-lo); cursor: pointer; font: inherit; font-size: 13px; }
+    .dl-tab.active { background: var(--amethyst); border-color: var(--amethyst); color: var(--amethyst-ink); font-weight: 600; }
+    .dl-panel[hidden] { display: none; }
+    .dl-foot { margin-top: 26px; text-align: center; color: var(--text-faint); font-size: 13.5px; line-height: 1.7; }
+    .dl-foot a { color: var(--amethyst-hi); }
+    .dl-empty { color: var(--text-lo); line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="dl-screen">
+    <main class="dl">
+      <div class="dl-mark">
+        <svg class="mark-duo" width="56" height="28" viewBox="0 0 56 28" xmlns="http://www.w3.org/2000/svg">
+          <path d="M 10 14 C 20 2, 36 26, 46 14" />
+          <circle cx="10" cy="14" r="6"></circle>
+          <circle cx="46" cy="14" r="6"></circle>
+        </svg>
+      </div>
+      <h1 class="display">baixar o didiscord</h1>
+      <p class="dl-lead">O app pro computador: compartilha a tela pela placa de vídeo (sem pesar no jogo), pega o som de um app só, avisa quando te chamam e se atualiza sozinho.</p>
+
+      <section class="dl-main card" id="dlMain">
+        <p class="dl-empty">carregando…</p>
+      </section>
+
+      <div class="dl-others" id="dlOthers"></div>
+
+      <section class="dl-steps card">
+        <h2 class="display">como instalar</h2>
+        <div class="dl-tabs" role="tablist">
+          <button type="button" class="dl-tab" data-tab="windows">Windows</button>
+          <button type="button" class="dl-tab" data-tab="appimage">Linux (AppImage)</button>
+          <button type="button" class="dl-tab" data-tab="deb">Linux (.deb)</button>
+        </div>
+
+        <div class="dl-panel" data-panel="windows">
+          <ol>
+            <li>Baixa o instalador e abre.</li>
+            <li>Se aparecer <strong>"O Windows protegeu o computador"</strong>, clica em <strong>Mais informações</strong> e depois em <strong>Executar assim mesmo</strong> — o aviso aparece porque o app não tem assinatura paga da Microsoft.</li>
+            <li>Escolhe onde instalar e pronto: o didiscord abre direto no servidor.</li>
+          </ol>
+          <p class="dl-note">As próximas versões chegam sozinhas: o app baixa em segundo plano e pergunta se quer reiniciar.</p>
+        </div>
+
+        <div class="dl-panel" data-panel="appimage" hidden>
+          <ol>
+            <li>Baixa o arquivo <code>.AppImage</code>.</li>
+            <li>Deixa ele executável: botão direito → Propriedades → "permitir executar", ou no terminal: <code id="chmodCmd">chmod +x didiscord-*.AppImage</code></li>
+            <li>Abre com dois cliques (ou <code>./didiscord-*.AppImage</code>). Pra ele aparecer no menu de apps, dá pra usar o <strong>Gear Lever</strong> ou o <strong>AppImageLauncher</strong>.</li>
+          </ol>
+          <p class="dl-note">É o jeito recomendado no Linux: se atualiza sozinho, sem pedir senha.<br>
+            Compartilhar a tela pela placa no <strong>Wayland</strong> (Hyprland, GNOME, KDE) precisa do GStreamer:<br>
+            Arch/CachyOS: <code>sudo pacman -S gst-plugin-pipewire gst-plugins-bad gst-plugins-ugly</code><br>
+            Ubuntu/Debian: <code>sudo apt install gstreamer1.0-pipewire gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly</code></p>
+        </div>
+
+        <div class="dl-panel" data-panel="deb" hidden>
+          <ol>
+            <li>Baixa o arquivo <code>.deb</code>.</li>
+            <li>Instala pelo terminal: <code id="debCmd">sudo apt install ./didiscord-*.deb</code></li>
+            <li>O didiscord aparece no menu de apps.</li>
+          </ol>
+          <p class="dl-note">Também se atualiza sozinho, mas pede a senha de administrador a cada versão nova. Sem esse incômodo, use o AppImage.</p>
+        </div>
+      </section>
+
+      <p class="dl-foot">Prefere não instalar nada? Dá pra usar direto no navegador: <a href="/">entrar no didiscord</a>.<br>
+        No celular, use pelo navegador mesmo.</p>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+      const ua = navigator.userAgent;
+      const os = /Windows/i.test(ua) ? 'windows' : (/Linux/i.test(ua) && !/Android/i.test(ua) ? 'appimage' : null);
+      const DL_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+      const NAMES = { windows: 'Windows', appimage: 'Linux (AppImage)', deb: 'Linux (.deb)' };
+      const HINTS = { windows: 'instalador .exe · Windows 10 e 11', appimage: 'qualquer distro · se atualiza sozinho', deb: 'Ubuntu, Debian, Mint, Pop!_OS' };
+
+      const size = (b) => (b ? `${(b / 1024 / 1024).toFixed(0)} MB` : '');
+      const date = (d) => { try { return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }); } catch (_) { return ''; } };
+
+      function showTab(tab) {
+        document.querySelectorAll('.dl-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+        document.querySelectorAll('.dl-panel').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
+      }
+      document.querySelectorAll('.dl-tab').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+      showTab(os || 'windows');
+
+      fetch('/api/downloads').then((r) => r.json()).then((info) => {
+        const main = document.getElementById('dlMain');
+        const others = document.getElementById('dlOthers');
+        if (!info.version || !(info.windows || info.appimage || info.deb)) {
+          main.innerHTML = '<p class="dl-empty">O app ainda não foi publicado aqui. Enquanto isso, dá pra usar <a href="/">pelo navegador</a>.</p>';
+          return;
+        }
+        if (info.appimage) document.getElementById('chmodCmd').textContent = `chmod +x ${info.appimage.file}`;
+        if (info.deb) document.getElementById('debCmd').textContent = `sudo apt install ./${info.deb.file}`;
+
+        const primaryKey = os && info[os] ? os : (info.windows ? 'windows' : info.appimage ? 'appimage' : 'deb');
+        const primary = info[primaryKey];
+        main.innerHTML = '';
+        const a = document.createElement('a');
+        a.className = 'btn btn-primary';
+        a.href = primary.url;
+        a.innerHTML = DL_ICON + '<span></span>';
+        a.querySelector('span').textContent = `baixar pra ${NAMES[primaryKey]}`;
+        const meta = document.createElement('div');
+        meta.className = 'dl-meta';
+        meta.textContent = `versão ${info.version}${info.date ? ` · ${date(info.date)}` : ''} · ${size(primary.size)}`;
+        main.append(a, meta);
+        a.addEventListener('click', () => showTab(primaryKey));
+
+        for (const key of ['windows', 'appimage', 'deb']) {
+          if (key === primaryKey) continue;
+          const f = info[key];
+          const o = document.createElement('a');
+          o.className = 'dl-option' + (f ? '' : ' is-off');
+          if (f) o.href = f.url;
+          o.innerHTML = '<strong></strong><span></span>';
+          o.querySelector('strong').textContent = NAMES[key];
+          o.querySelector('span').textContent = f ? `${HINTS[key]} · ${size(f.size)}` : 'ainda não disponível';
+          o.addEventListener('click', () => showTab(key));
+          others.appendChild(o);
+        }
+      }).catch(() => {
+        document.getElementById('dlMain').innerHTML = '<p class="dl-empty">Não deu pra carregar. Tenta recarregar a página.</p>';
+      });
+    })();
+  </script>
+</body>
+</html>

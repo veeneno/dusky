@@ -1,7 +1,7 @@
 {
   "name": "didiscord-desktop",
   "productName": "didiscord",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "App desktop do didiscord (janela nativa que carrega o site hospedado)",
   "main": "main.js",
   "author": {
@@ -17,7 +17,9 @@
     "icon": "node build/make-icon.js",
     "build:linux": "electron-builder --linux",
     "build:win": "electron-builder --win",
-    "build": "electron-builder --linux --win"
+    "build": "electron-builder --linux --win",
+    "release": "electron-builder --linux --win && node scripts/publish-local.js",
+    "release:linux": "electron-builder --linux && node scripts/publish-local.js"
   },
   "build": {
     "appId": "fun.sambalele.didiscord",
@@ -35,7 +37,8 @@
       "picker/**/*",
       "shell/**/*",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "updater.js"
     ],
     "linux": {
       "target": [
@@ -53,7 +56,8 @@
           "from": "native/bin/didiscord-screencast",
           "to": "native/didiscord-screencast"
         }
-      ]
+      ],
+      "artifactName": "didiscord-${version}.${ext}"
     },
     "win": {
       "target": [
@@ -75,11 +79,21 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "perMachine": false
-    }
+      "perMachine": false,
+      "artifactName": "didiscord-setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://didiscord.veneno.space/downloads/"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }

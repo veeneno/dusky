@@ -121,6 +121,8 @@ function handleClientMessage(ws, msg) {
       return handleVoiceUpdate(ws, msg);
     case 'rtc_signal':
       return handleRtcSignal(ws, msg);
+    case 'typing':
+      return handleTyping(ws, msg);
     default:
       return; // tipo desconhecido, ignora
   }
@@ -178,6 +180,19 @@ function handleVoiceUpdate(ws, msg) {
   state.screenOn = !!msg.screenOn;
   persistVoiceState(ws.userId, state);
   broadcastToChannel(state.channelId, { type: 'voice_state_update', channelId: state.channelId, userId: ws.userId, muted: state.muted, deafened: state.deafened, cameraOn: state.cameraOn, screenOn: state.screenOn });
+}
+
+// "fulano está digitando…": o site manda a cada ~3s enquanto a pessoa digita; aqui só confere se ela
+// vê o canal e repassa pra quem também vê. No máximo 1 aviso a cada 2s por conexão e canal.
+function handleTyping(ws, msg) {
+  const channelId = Number(msg.channelId);
+  if (!channelId) return;
+  const now = Date.now();
+  if (!ws.typingAt) ws.typingAt = new Map();
+  if (now - (ws.typingAt.get(channelId) || 0) < 2000) return;
+  ws.typingAt.set(channelId, now);
+  if (!access.canAccessChannel(channelId, ws.userId)) return;
+  broadcastToChannel(channelId, { type: 'typing', channelId, userId: ws.userId }, ws);
 }
 
 // relay de sinalização (offer/answer/ice candidate/assistir tela) entre duas pessoas NA MESMA call.

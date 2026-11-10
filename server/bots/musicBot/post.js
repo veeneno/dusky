@@ -4,6 +4,7 @@
 const db = require('../../db');
 const realtime = require('../../realtime');
 const { MESSAGE_SELECT_BY_ID } = require('../../db/messageQueries');
+const { decorateMessage } = require('../../chatExtras');
 
 const BOT_NAME = 'DJ didiscord';
 
@@ -16,7 +17,7 @@ function postBotMessage(channelId, content, embed) {
     'INSERT INTO messages (channel_id, bot_name, content, embed_json) VALUES (?, ?, ?, ?)'
   ).run(channelId, BOT_NAME, clean, embedJson);
 
-  const message = db.prepare(MESSAGE_SELECT_BY_ID).get(result.lastInsertRowid);
+  const message = decorateMessage(db.prepare(MESSAGE_SELECT_BY_ID).get(result.lastInsertRowid));
   realtime.broadcastToChannel(channelId, { type: 'message_created', message });
   return message;
 }
