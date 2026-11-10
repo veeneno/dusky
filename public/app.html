@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/css/chat.css?v=20">
   <link rel="stylesheet" href="/css/members.css?v=20">
   <link rel="stylesheet" href="/css/profile.css?v=20">
-  <link rel="stylesheet" href="/css/voice.css?v=20">
+  <link rel="stylesheet" href="/css/voice.css?v=21">
   <link rel="stylesheet" href="/css/settings.css?v=20">
   <link rel="stylesheet" href="/css/servers.css?v=20">
   <link rel="stylesheet" href="/css/call-roles.css?v=20">
@@ -750,7 +750,7 @@
             <div class="field">
               <label for="micSensitivityRange">sensibilidade do microfone <span id="micSensitivityValue" class="field-hint">desligada</span></label>
               <input type="range" id="micSensitivityRange" min="0" max="60" value="0">
-              <span class="field-help">acima de 0, o microfone só transmite quando o volume ultrapassa a linha marcada no medidor acima</span>
+              <span class="field-help">acima de 0, o microfone abre quando o nível medido após a supressão e o ganho cruza a linha marcada acima</span>
             </div>
 
             <div class="field field-checkbox">
@@ -758,7 +758,14 @@
                 <input type="checkbox" id="selfMonitorCheckbox">
                 ouvir a si mesmo
               </label>
-              <span class="field-help">toca seu próprio microfone de volta no seu fone, baixinho — use fone de ouvido pra não causar eco/microfonia. Ótimo pra confirmar que o mic tá pegando sua voz de verdade, além da borda verde</span>
+              <span class="field-help">toca o áudio da call no seu fone em volume baixo. Use fone de ouvido pra evitar eco ou microfonia.</span>
+            </div>
+
+            <div class="field">
+              <button type="button" class="btn btn-ghost" id="micTestBtn" disabled>testar microfone</button>
+              <span class="field-help">grava 5 segundos com as configurações da call e toca o trecho aqui.</span>
+              <span class="field-help" id="micTestStatus" role="status"></span>
+              <audio id="micTestPlayback" controls hidden aria-label="gravação do microfone" style="max-width: 100%;"></audio>
             </div>
 
             <div class="field-help" id="tauriMicWarning" hidden style="color: var(--ember);">
@@ -914,6 +921,6 @@
   <script src="/js/realtime.js?v=20"></script>
   <script src="/js/markdown.js?v=20"></script>
   <script src="/js/emoji.js?v=20"></script>
-  <script src="/js/app.js?v=20"></script>
+  <script src="/js/app.js?v=21"></script>
 </body>
 </html>

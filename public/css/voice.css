@@ -297,6 +297,22 @@
   flex-shrink: 0;
 }
 
+/* Estatísticas do microfone remoto, atualizadas sem remontar a tile. */
+.call-voice-stats {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.call-voice-stats summary { cursor: pointer; }
+.call-voice-stats[data-quality="1"] summary { color: var(--success); }
+.call-voice-stats[data-quality="2"] summary { color: var(--mention); }
+.call-voice-stats[data-quality="3"] summary { color: var(--danger); }
+.call-voice-stats dl { margin: 6px 0 0; padding: 6px; background: var(--bg-floating); border-radius: var(--radius-md); }
+.call-voice-stats dt { margin-top: 4px; }
+.call-voice-stats dt:first-child { margin-top: 0; }
+.call-voice-stats dd { margin: 0; color: var(--text-normal); }
+
 .call-controls {
   display: flex;
   align-items: center;

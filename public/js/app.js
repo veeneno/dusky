@@ -31,6 +31,9 @@
   const micMeterThreshold = document.getElementById('micMeterThreshold');
   const micGainRange = document.getElementById('micGainRange');
   const micGainValue = document.getElementById('micGainValue');
+  const micTestBtn = document.getElementById('micTestBtn');
+  const micTestStatus = document.getElementById('micTestStatus');
+  const micTestPlayback = document.getElementById('micTestPlayback');
   const selfMonitorCheckbox = document.getElementById('selfMonitorCheckbox');
   const tauriMicWarning = document.getElementById('tauriMicWarning');
   const speakerUnsupportedHint = document.getElementById('speakerUnsupportedHint');
@@ -165,6 +168,7 @@
   const callParticipantsState = new Map(); // userId -> { muted, deafened, cameraOn, screenOn }
   // chamada em grupo: uma RTCPeerConnection por pessoa da call (malha / "mesh"). Ver createPeer.
   const peers = new Map(); // userId -> peer (ver newPeer)
+  let voiceStatsTimer = null;
   let localScreenAudioTrack = null; // áudio da MINHA tela (pode vir à parte do vídeo, ex: app desktop)
   // compartilhamento pela placa de vídeo (app desktop): { encoderName, hardware, viewers:Set, stats }
   let nativeScreencast = null;
@@ -187,11 +191,11 @@
   let rawMicStream = null; // stream crua do getUserMedia, antes do reforço de ganho — precisa ser parada separadamente pra liberar o hardware do mic
   let micGainNode = null; // GainNode aplicado no mic durante a call de verdade — ajustável ao vivo pelo slider de configurações
   let micGateGainNode = null; // GainNode do gate de sensibilidade — abre/fecha via ganho, nunca via track.enabled
-  let micRnnoiseNode = null; // nó de supressão de ruído (DeepFilterNet3 ou RNNoise) ativo agora, se houver
   let micNsTeardown = null; // desliga/libera o nó de supressão atual
   let micNsActiveMode = 'off'; // qual supressão está de fato rodando ('deepfilter' | 'rnnoise' | 'off')
   let selfMonitorGainNode = null; // "ouvir a si mesmo" — toca o próprio mic de volta no fone, só localmente
-  let selfMonitorSourceStream = null; // qual stream (cru) já está conectada nesse grafo
+  let selfMonitorSourceNode = null;
+  let selfMonitorSourceStream = null;
   // reforço de volume acima de 100% pro áudio remoto: o <audio> nativo só vai até 100% (volume=1),
   // então pra chegar em até 200% somamos por cima um GainNode em paralelo (ver applyLocalOverridesToRemoteAudio)
 
@@ -229,9 +233,12 @@
   // ---------- preferências de dispositivo (mic / saída / câmera) ----------
   const DEVICE_PREF_KEYS = { mic: 'didiscord:device:mic', speaker: 'didiscord:device:speaker', camera: 'didiscord:device:camera' };
   const SUPPORTS_SINK_ID = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
-  let settingsStream = null; // stream de mic+câmera aberta só pra pré-visualização dentro do modal
-  let settingsAnalyser = null;
-  let settingsMeterRAF = null;
+  let settingsStream = null; // captura que pertence ao modal, separada da call
+  let settingsMicGraph = null;
+  let settingsMicFallback = null;
+  let settingsPreviewId = 0;
+  let micTest = null;
+  let settingsMeterTimer = null;
 
   function getSavedDeviceId(kind) {
     try { return localStorage.getItem(DEVICE_PREF_KEYS[kind]) || ''; } catch (_) { return ''; }
@@ -280,10 +287,8 @@
   function getSavedMicSensitivity() {
     try {
       const v = parseInt(localStorage.getItem(MIC_SENSITIVITY_KEY), 10);
-      // teto de 60 (não 100): a níveis muito altos, a voz quase nunca cruza o limiar durante uma
-      // call de verdade (a calibração na pré-visualização das configurações usa uma captura de áudio
-      // separada da call e pode registrar níveis mais altos), o que deixava o mic mudo sem erro nenhum.
-      // isso também re-limita, na hora, qualquer valor alto que já esteja salvo no navegador.
+      // A escala do medidor vai até 100, mas é uma média do espectro: fala normal pode
+      // ficar longe do máximo mesmo com ganho alto. O teto continua protegendo contra mic mudo.
       return Number.isFinite(v) ? Math.min(60, Math.max(0, v)) : 0;
     } catch (_) { return 0; }
   }
@@ -5608,24 +5613,143 @@
   // ---------- modal de configurações de voz e vídeo ----------
 
   function stopSettingsStream() {
-    if (settingsMeterRAF) { cancelAnimationFrame(settingsMeterRAF); settingsMeterRAF = null; }
-    settingsAnalyser = null;
-    stopSelfMonitor();
-    if (settingsStream) {
-      settingsStream.getTracks().forEach((t) => t.stop());
-      settingsStream = null;
-    }
+    settingsPreviewId++;
+    if (settingsMeterTimer) clearTimeout(settingsMeterTimer);
+    settingsMeterTimer = null;
+    micMeterFill.style.width = '0%';
+    if (settingsMicGraph) settingsMicGraph.teardown();
+    settingsMicGraph = null;
+    settingsMicFallback = null;
+    if (settingsStream) settingsStream.getTracks().forEach((t) => t.stop());
+    settingsStream = null;
     cameraPreview.srcObject = null;
+    resetMicTest();
+    if (micTestBtn) micTestBtn.disabled = true;
   }
 
   function runMicMeter() {
+    let gateOpenUntil = 0;
     function loop() {
-      if (!settingsAnalyser) { settingsMeterRAF = null; return; }
-      micMeterFill.style.width = getAnalyserLevel(settingsAnalyser) + '%';
-      settingsMeterRAF = requestAnimationFrame(loop);
+      const analyser = voiceChannel && localStream ? localAnalyser : settingsMicGraph?.analyser || settingsMicFallback;
+      const level = analyser ? getAnalyserLevel(analyser) : 0;
+      micMeterFill.style.width = level + '%';
+      if (settingsMicGraph) {
+        gateOpenUntil = updateMicGate(settingsMicGraph.gateGainNode, level, getSavedMicSensitivity(), gateOpenUntil, performance.now());
+      }
+      settingsMeterTimer = setTimeout(loop, SPEAKING_TICK_MS);
     }
-    if (!settingsMeterRAF) settingsMeterRAF = requestAnimationFrame(loop);
+    if (!settingsMeterTimer) loop();
   }
+
+  function resetMicTest() {
+    const test = micTest;
+    micTest = null;
+    if (test) {
+      clearTimeout(test.stopTimer);
+      clearInterval(test.gateTimer);
+      if (test.recorder && test.recorder.state !== 'inactive') test.recorder.stop();
+      test.graph?.teardown();
+      test.clonedTrack?.stop();
+      micTestPlayback.pause();
+      micTestPlayback.removeAttribute('src');
+      micTestPlayback.load();
+      if (test.url) URL.revokeObjectURL(test.url);
+    }
+    if (micTestBtn) {
+      micTestPlayback.hidden = true;
+      micTestBtn.textContent = 'testar microfone';
+      micTestStatus.textContent = '';
+    }
+    updateSelfMonitor();
+  }
+
+  micTestBtn?.addEventListener('click', async () => {
+    const cancel = micTest?.recording;
+    resetMicTest();
+    if (cancel) return;
+    if (typeof MediaRecorder === 'undefined') {
+      micTestStatus.textContent = 'a gravação não está disponível neste navegador';
+      return;
+    }
+
+    let stream = voiceChannel && localStream ? localStream : settingsMicGraph?.stream || settingsStream;
+    if (!stream?.getAudioTracks().some((track) => track.readyState === 'live')) {
+      micTestStatus.textContent = 'nenhum microfone disponível para testar';
+      return;
+    }
+    const test = { recording: true };
+    micTest = test;
+    micTestBtn.textContent = 'cancelar teste';
+    micTestStatus.textContent = 'preparando microfone…';
+    updateSelfMonitor();
+    try {
+      if (voiceChannel && isMuted && rawMicStream) {
+        // Dá pra testar com a call mutada: essa cópia alimenta só a gravação local.
+        test.clonedTrack = rawMicStream.getAudioTracks()[0].clone();
+        test.clonedTrack.enabled = true;
+        const raw = new MediaStream([test.clonedTrack]);
+        const graph = isTauriApp() ? null : await tryBuildMicProcessingGraph(raw);
+        if (micTest !== test) { graph?.teardown(); return; }
+        test.graph = graph;
+        stream = graph?.stream || raw;
+        if (graph) {
+          let openUntil = 0;
+          const tick = () => {
+            const now = performance.now();
+            openUntil = updateMicGate(graph.gateGainNode, getAnalyserLevel(graph.analyser), getSavedMicSensitivity(), openUntil, now);
+          };
+          tick();
+          test.gateTimer = setInterval(tick, SPEAKING_TICK_MS);
+        }
+      }
+
+      const recorder = new MediaRecorder(stream);
+      test.recorder = recorder;
+      const chunks = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = () => {
+        if (micTest !== test) return;
+        resetMicTest();
+        micTestStatus.textContent = 'não consegui gravar o microfone';
+      };
+      recorder.onstop = async () => {
+        if (micTest !== test) return;
+        clearTimeout(test.stopTimer);
+        clearInterval(test.gateTimer);
+        test.graph?.teardown();
+        test.graph = null;
+        test.clonedTrack?.stop();
+        test.clonedTrack = null;
+        test.recording = false;
+        micTestBtn.textContent = 'testar de novo';
+        if (!chunks.length) {
+          resetMicTest();
+          micTestStatus.textContent = 'a gravação ficou vazia';
+          return;
+        }
+        test.url = URL.createObjectURL(new Blob(chunks, { type: recorder.mimeType || chunks[0].type }));
+        micTestPlayback.src = test.url;
+        micTestPlayback.hidden = false;
+        const speaker = getSavedDeviceId('speaker');
+        if (SUPPORTS_SINK_ID) await micTestPlayback.setSinkId(speaker).catch(() => {});
+        if (micTest !== test) return;
+        micTestStatus.textContent = 'gravação pronta';
+        await micTestPlayback.play().catch(() => {});
+        if (micTest === test) updateSelfMonitor();
+      };
+      recorder.start();
+      micTestStatus.textContent = 'gravando por 5 segundos…';
+      test.stopTimer = setTimeout(() => {
+        if (recorder.state !== 'inactive') recorder.stop();
+      }, 5000);
+    } catch (err) {
+      if (micTest !== test) return;
+      resetMicTest();
+      micTestStatus.textContent = 'não consegui gravar o microfone: ' + err.message;
+    }
+  });
+
+  for (const event of ['play', 'pause', 'ended']) micTestPlayback?.addEventListener(event, updateSelfMonitor);
 
   async function populateDeviceSelects() {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -5664,48 +5788,71 @@
 
   async function startSettingsPreview() {
     stopSettingsStream();
+    const previewId = settingsPreviewId;
+    const isCurrent = () => previewId === settingsPreviewId;
+    const previewMic = currentSettingsTab === 'microfone';
     settingsError.textContent = '';
 
-    const micId = micSelect.value || getSavedDeviceId('mic');
-    const cameraId = cameraSelect.value || getSavedDeviceId('camera');
+    if (previewMic && voiceChannel && localStream) {
+      // Na call, o medidor lê o próprio analisador do gate, sem abrir outro microfone.
+      runMicMeter();
+      if (micTestBtn) micTestBtn.disabled = false;
+      return;
+    }
 
+    let stream;
     try {
-      settingsStream = await navigator.mediaDevices.getUserMedia({
-        audio: micConstraints(micId),
-        video: cameraId ? { deviceId: { exact: cameraId } } : true,
-      });
-    } catch (_) {
-      // talvez não tenha câmera disponível — tenta só áudio pra não travar o mic também
-      try {
-        settingsStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(micId) });
-      } catch (err) {
-        settingsError.textContent = 'não consegui acessar microfone/câmera: ' + err.message;
+      if (previewMic) {
+        const micId = getSavedDeviceId('mic');
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(micId) });
+        } catch (err) {
+          if (!micId || !isCurrent()) throw err;
+          stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints('') });
+        }
+      } else {
+        const cameraId = getSavedDeviceId('camera');
+        stream = await navigator.mediaDevices.getUserMedia({ video: cameraId ? { deviceId: { exact: cameraId } } : true });
+      }
+    } catch (err) {
+      if (isCurrent()) {
+        settingsError.textContent = 'não consegui acessar ' + (previewMic ? 'o microfone: ' : 'a câmera: ') + err.message;
+        if (!previewMic) cameraPreviewEmpty.hidden = false;
+      }
+      return;
+    }
+    if (!isCurrent()) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    settingsStream = stream;
+
+    if (previewMic) {
+      const graph = isTauriApp() ? null : await tryBuildMicProcessingGraph(stream);
+      if (!isCurrent()) {
+        graph?.teardown();
         return;
       }
-    }
-
-    const videoTracks = settingsStream.getVideoTracks();
-    if (videoTracks.length > 0) {
-      cameraPreview.srcObject = settingsStream;
-      cameraPreviewEmpty.hidden = true;
-    } else {
-      cameraPreview.srcObject = null;
-      cameraPreviewEmpty.hidden = false;
-    }
-
-    try {
-      const ctx = getAudioCtx();
-      const src = ctx.createMediaStreamSource(settingsStream);
-      settingsAnalyser = ctx.createAnalyser();
-      settingsAnalyser.fftSize = 512;
-      src.connect(settingsAnalyser);
+      settingsMicGraph = graph;
+      if (!graph) {
+        settingsMicFallback = createRawMicAnalyser(stream);
+        if (!isTauriApp()) settingsError.textContent = 'processamento indisponível: o teste usa o áudio cru';
+      }
       runMicMeter();
-    } catch (_) { /* medidor é só um extra visual — segue sem ele se o Web Audio falhar */ }
+      updateSelfMonitor();
+      if (micTestBtn) micTestBtn.disabled = false;
+    } else {
+      cameraPreview.srcObject = stream;
+      cameraPreviewEmpty.hidden = true;
+    }
+    // Com a permissão concedida, o navegador já pode mostrar os nomes reais dos dispositivos.
+    await populateDeviceSelects().catch(() => {});
+  }
 
-    updateSelfMonitor(settingsStream);
-
-    // agora que temos permissão, os labels dos dispositivos ficam disponíveis — repopula pra mostrar nomes reais
-    await populateDeviceSelects();
+  function refreshVoiceSettings() {
+    if (!settingsModalBackdrop.hidden && currentSettingsTab === 'microfone') {
+      startSettingsPreview().catch(() => {});
+    }
   }
 
   // ---- abas das configurações ----
@@ -5771,7 +5918,7 @@
     }
   }
 
-  const SITE_VERSION = '0.6.0';
+  const SITE_VERSION = '0.6.1';
   function renderSettingsAppCard() {
     const card = document.getElementById('settingsAppCard');
     const desk = window.didiscordDesktop;
@@ -5828,8 +5975,8 @@
 
   micSelect.addEventListener('change', () => {
     saveDeviceId('mic', micSelect.value);
-    startSettingsPreview();
-    reacquireMicInCall(); // com a call aberta, já troca o mic que está sendo enviado
+    if (voiceChannel && rawMicStream && !isTauriApp()) reacquireMicInCall();
+    else refreshVoiceSettings();
   });
   cameraSelect.addEventListener('change', () => {
     saveDeviceId('camera', cameraSelect.value);
@@ -5849,12 +5996,15 @@
     saveMicGain(v);
     // ajusta ao vivo se já tiver uma call rolando, sem precisar reentrar no canal
     if (micGainNode) micGainNode.gain.value = v / 100;
+    if (settingsMicGraph) settingsMicGraph.gainNode.gain.value = v / 100;
   });
 
   // troca o microfone com a call aberta: abre o mic de novo (novo aparelho ou novo modo de
   // processamento) e remonta o processamento em cima dele, sem sair da call
   async function reacquireMicInCall() {
     if (!voiceChannel || !rawMicStream || isTauriApp()) return;
+    const channel = voiceChannel;
+    const captureId = ++micCaptureId;
     const savedMic = getSavedDeviceId('mic');
     let fresh;
     try {
@@ -5865,19 +6015,18 @@
         return;
       }
     }
-    if (!voiceChannel) { fresh.getTracks().forEach((t) => t.stop()); return; }
-    const old = rawMicStream;
-    rawMicStream = fresh;
-    await rebuildMicProcessing();
-    if (old && old !== rawMicStream) old.getTracks().forEach((t) => t.stop());
-    updateSelfMonitor(rawMicStream);
+    if (voiceChannel !== channel || captureId !== micCaptureId) {
+      fresh.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    await rebuildMicProcessing(fresh);
   }
 
   if (voiceProcessingSelect) {
     voiceProcessingSelect.value = getSavedVoiceProcessing();
     voiceProcessingSelect.addEventListener('change', async () => {
       saveVoiceProcessing(voiceProcessingSelect.value);
-      startSettingsPreview();
+      if (!voiceChannel || !rawMicStream || isTauriApp()) refreshVoiceSettings();
       voiceProcessingSelect.disabled = true;
       try { await reacquireMicInCall(); } finally { voiceProcessingSelect.disabled = false; }
     });
@@ -5885,7 +6034,7 @@
 
   selfMonitorCheckbox.addEventListener('change', () => {
     saveSelfMonitor(selfMonitorCheckbox.checked);
-    updateSelfMonitor(voiceChannel ? rawMicStream : settingsStream);
+    updateSelfMonitor();
   });
 
   notificationSoundsCheckbox.addEventListener('change', () => {
@@ -5919,10 +6068,12 @@
 
   noiseSuppressionSelect.addEventListener('change', async () => {
     saveNoiseSuppression(noiseSuppressionSelect.value);
-    if (voiceChannel && rawMicStream) {
+    if (voiceChannel && rawMicStream && !isTauriApp()) {
       noiseSuppressionStatus.textContent = 'aplicando…';
       noiseSuppressionSelect.disabled = true;
       try { await rebuildMicProcessing(); } finally { noiseSuppressionSelect.disabled = false; }
+    } else {
+      refreshVoiceSettings();
     }
   });
   screenResolutionSelect.addEventListener('change', () => {
@@ -6061,27 +6212,24 @@
     return Math.min(100, Math.round((sum / data.length) * 1.6));
   }
 
-  // "ouvir a si mesmo": toca o próprio mic (stream cru, sem passar pelo RTCPeerConnection) de volta
-  // no alto-falante/fone, baixinho. Funciona igual em qualquer motor (Chrome, Firefox, WebKitGTK do
-  // Tauri) porque nunca sai da página — é só reprodução local via Web Audio, não depende do bridging
-  // pro RTCPeerConnection que é o que quebra no app desktop Linux.
-  function updateSelfMonitor(rawStream) {
-    const enabled = getSavedSelfMonitor();
-    if (!enabled || !rawStream) {
+  // Toca a mesma saída que a call envia, com volume local reduzido pra evitar microfonia.
+  function updateSelfMonitor() {
+    const stream = localStream || settingsMicGraph?.stream || settingsStream;
+    if (!getSavedSelfMonitor() || !stream?.getAudioTracks().length || micTest?.recording || micTestPlayback?.paused === false) {
       stopSelfMonitor();
       return;
     }
-    if (selfMonitorSourceStream === rawStream && selfMonitorGainNode) return; // já montado pra esse stream
+    if (selfMonitorSourceStream === stream) return;
     stopSelfMonitor();
     try {
       const ctx = getAudioCtx();
-      const src = ctx.createMediaStreamSource(rawStream);
+      selfMonitorSourceNode = ctx.createMediaStreamSource(stream);
       selfMonitorGainNode = ctx.createGain();
-      selfMonitorGainNode.gain.value = 0.4; // baixo de propósito, pra reduzir risco de eco/microfonia
-      src.connect(selfMonitorGainNode);
-      selfMonitorGainNode.connect(ctx.destination);
-      selfMonitorSourceStream = rawStream;
+      selfMonitorGainNode.gain.value = 0.4;
+      selfMonitorSourceNode.connect(selfMonitorGainNode).connect(ctx.destination);
+      selfMonitorSourceStream = stream;
     } catch (err) {
+      stopSelfMonitor();
       console.warn('[call] não consegui montar o "ouvir a si mesmo":', err);
     }
   }
@@ -6128,6 +6276,8 @@
 
   function stopSelfMonitor() {
     if (selfMonitorGainNode) { try { selfMonitorGainNode.disconnect(); } catch (_) { /* já desconectado */ } selfMonitorGainNode = null; }
+    selfMonitorSourceNode?.disconnect();
+    selfMonitorSourceNode = null;
     selfMonitorSourceStream = null;
   }
 
@@ -6218,70 +6368,88 @@
     const ctx = getAudioCtx();
     const source = ctx.createMediaStreamSource(rawStream);
 
-    let node = source;
-    const ns = await createNoiseSuppressorNode(ctx, noiseMode);
-    if (ns.node) {
-      node.connect(ns.node);
-      node = ns.node;
-    }
-
     const gainNode = ctx.createGain();
-    gainNode.gain.value = gainValue / 100;
-    node.connect(gainNode);
-
     const gateGainNode = ctx.createGain();
-    gateGainNode.gain.value = 1;
-    gainNode.connect(gateGainNode);
-
-    // limitador de segurança: o reforço manual de ganho acima (padrão 150%, até 300%) soma com o
-    // autoGainControl do navegador (já ligado em micConstraints) e, sem isso, estoura o sinal acima de
-    // 1.0 — o GainNode sozinho não tem teto nenhum, então qualquer pico vira clipping puro na hora de
-    // virar PCM pro Opus. Isso é a causa mais provável do áudio saindo "robótico"/distorcido, e também
-    // explica por que só aparece quando fala (picos) e não no silêncio (sem estouro, sem distorção).
-    // ratio bem alto + attack rápido = age como um teto rígido em vez de compressão perceptível.
-    // teto em -1 dBFS (antes -3): só pega pico de verdade, sem achatar a fala normal
     const limiterNode = ctx.createDynamicsCompressor();
-    limiterNode.threshold.value = -1;
-    limiterNode.knee.value = 0;
-    limiterNode.ratio.value = 20;
-    limiterNode.attack.value = 0.001;
-    limiterNode.release.value = 0.1;
-    gateGainNode.connect(limiterNode);
-
+    const analyser = ctx.createAnalyser();
     const dest = ctx.createMediaStreamDestination();
-    limiterNode.connect(dest);
-
-    return {
-      stream: dest.stream, gainNode, gateGainNode, limiterNode,
-      rnnoiseNode: ns.node, noiseMode: ns.mode,
-      teardown: () => {
-        try { source.disconnect(); } catch (_) { /* já desligado */ }
-        if (ns.teardown) ns.teardown();
-      },
+    const ns = await createNoiseSuppressorNode(ctx, noiseMode);
+    const teardown = () => {
+      for (const node of [source, gainNode, gateGainNode, limiterNode]) node.disconnect();
+      ns.teardown?.();
+      dest.stream.getTracks().forEach((track) => track.stop());
     };
+
+    try {
+      if (ns.node) source.connect(ns.node);
+      (ns.node || source).connect(gainNode);
+      gainNode.gain.value = gainValue / 100;
+      gainNode.connect(gateGainNode).connect(limiterNode).connect(dest);
+
+      // Segura picos do ganho manual somado ao ajuste automático de volume do navegador.
+      limiterNode.threshold.value = -1;
+      limiterNode.knee.value = 0;
+      limiterNode.ratio.value = 20;
+      limiterNode.attack.value = 0.001;
+      limiterNode.release.value = 0.1;
+
+      // Call e prévia leem o mesmo ponto: depois da supressão e do ganho, antes do gate.
+      analyser.fftSize = 512;
+      gainNode.connect(analyser);
+      return { stream: dest.stream, gainNode, gateGainNode, analyser, noiseMode: ns.mode, teardown };
+    } catch (err) {
+      teardown();
+      throw err;
+    }
   }
 
-  // troca a supressão de ruído com a call aberta: monta um processamento novo a partir do mic cru,
-  // troca a faixa enviada pra todo mundo (sem renegociar nada) e desliga o processamento antigo
-  async function rebuildMicProcessing() {
-    if (!voiceChannel || !rawMicStream || isTauriApp()) return;
-    const previousStream = localStream;
+  async function tryBuildMicProcessingGraph(stream) {
+    try {
+      const graph = await buildMicProcessingGraph(stream, getSavedMicGain(), getSavedNoiseSuppression());
+      graph.gainNode.gain.value = getSavedMicGain() / 100; // o slider pode ter mudado enquanto carregava
+      return graph;
+    } catch (err) {
+      console.warn('[call] processamento do microfone indisponível, seguindo com o áudio cru:', err);
+      return null;
+    }
+  }
+
+  // Monta antes de trocar a faixa, pra manter o microfone anterior disponível durante o carregamento.
+  let micRebuildId = 0;
+  let micCaptureId = 0;
+  async function rebuildMicProcessing(input = rawMicStream) {
+    if (!voiceChannel || !input || isTauriApp()) return;
+    const channel = voiceChannel;
+    const previousRaw = rawMicStream;
+    const rebuildId = ++micRebuildId;
+    const graph = await tryBuildMicProcessingGraph(input);
+    if (voiceChannel !== channel || rebuildId !== micRebuildId) {
+      graph?.teardown();
+      if (input !== previousRaw) input.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
     const previousTeardown = micNsTeardown;
-    const boosted = await buildMicProcessingGraph(rawMicStream, getSavedMicGain(), getSavedNoiseSuppression());
-    if (!voiceChannel || !rawMicStream) { boosted.teardown(); return; } // saiu da call enquanto montava
-    if (micGateGainNode) boosted.gateGainNode.gain.value = micGateGainNode.gain.value;
-    localStream = boosted.stream;
-    micGainNode = boosted.gainNode;
-    micGateGainNode = boosted.gateGainNode;
-    micRnnoiseNode = boosted.rnnoiseNode;
-    micNsTeardown = boosted.teardown;
-    micNsActiveMode = boosted.noiseMode;
+    if (graph && micGateGainNode) graph.gateGainNode.gain.value = micGateGainNode.gain.value;
+    rawMicStream = input;
+    useCallMicGraph(graph);
     applyLocalTrackState();
-    await replaceOnAllPeers('mic', localStream.getAudioTracks()[0] || null);
-    setupLocalSpeakingDetection();
-    if (previousTeardown) previousTeardown();
-    if (previousStream && previousStream !== rawMicStream) previousStream.getTracks().forEach((t) => t.stop());
+    const replacement = replaceOnAllPeers('mic', localStream.getAudioTracks()[0] || null);
+    resetMicTest();
+    await replacement;
+    previousTeardown?.();
+    if (previousRaw !== input) previousRaw.getTracks().forEach((track) => track.stop());
     updateNoiseSuppressionStatus();
+  }
+
+  function useCallMicGraph(graph) {
+    localStream = graph?.stream || rawMicStream;
+    micGainNode = graph?.gainNode || null;
+    micGateGainNode = graph?.gateGainNode || null;
+    micNsTeardown = graph?.teardown || null;
+    micNsActiveMode = graph?.noiseMode || 'off';
+    localAnalyser = graph?.analyser || createRawMicAnalyser(rawMicStream);
+    runSpeakingLoop();
   }
 
   // ---------- áudio de cada pessoa da call ----------
@@ -6524,6 +6692,9 @@
 
   function applyLocalTrackState() {
     if (localStream) localStream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
+    if (rawMicStream && rawMicStream !== localStream) {
+      rawMicStream.getAudioTracks().forEach((track) => { track.enabled = !isMuted; });
+    }
   }
 
   function setMuted(val) {
@@ -6728,6 +6899,24 @@
           else applyLocalOverridesToRemoteAudio(entry.id);
         });
         el.appendChild(volWrap);
+      }
+
+      if (!entry.isSelf && !isBot) {
+        const peer = peers.get(entry.id);
+        const details = document.createElement('details');
+        details.className = 'call-voice-stats';
+        details.open = !!peer?.voiceStatsOpen;
+        const summary = document.createElement('summary');
+        const metrics = document.createElement('dl');
+        details.append(summary, metrics);
+        details.addEventListener('toggle', () => {
+          const current = peers.get(entry.id);
+          if (!current || !details.isConnected) return;
+          current.voiceStatsOpen = details.open;
+          if (details.open) renderPeerVoiceStats(details, current.voiceStats);
+        });
+        el.appendChild(details);
+        renderPeerVoiceStats(details, peer?.voiceStats);
       }
 
       callParticipants.appendChild(el);
@@ -7031,45 +7220,35 @@
     return getAnalyserLevel(analyser) > 12;
   }
 
+  // Mesmo limiar, hangover e rampa na prévia e na call.
+  function updateMicGate(gate, level, sensitivity, openUntil, now) {
+    if (sensitivity > 0 && level >= sensitivity) openUntil = now + 350;
+    if (gate) {
+      const open = sensitivity === 0 || now < openUntil;
+      gate.gain.setTargetAtTime(open ? 1 : 0, gate.context.currentTime, sensitivity === 0 ? 0.01 : 0.03);
+    }
+    return openUntil;
+  }
+
   function runSpeakingLoop() {
-    let micGateOpenUntil = 0; // hangover: mantém o mic aberto por um instante depois que o volume cai,
-                              // evitando que a gate corte o começo/fim das palavras de forma abrupta
+    let micGateOpenUntil = 0;
     function loop() {
       if (!voiceChannel) { speakingRAF = null; return; }
 
       let selfSpeaking = false;
-      if (localAnalyser) {
+      if (localAnalyser && !isMuted) {
         const level = getAnalyserLevel(localAnalyser);
         const sensitivity = getSavedMicSensitivity();
-        if (!isMuted) {
-          // o gate mexe só no GANHO do nó dedicado a isso (micGateGainNode) — nunca em track.enabled.
-          // isso roda por dentro do mesmo grafo de áudio que já funciona pro ganho manual, evitando
-          // qualquer efeito colateral de desabilitar a track de saída enquanto ela está sendo
-          // consumida por um RTCRtpSender ativo (era isso que deixava o mic totalmente mudo assim
-          // que a sensibilidade saía de 0%, em qualquer valor).
-          if (sensitivity === 0) {
-            if (micGateGainNode) {
-              micGateGainNode.gain.setTargetAtTime(1, getAudioCtx().currentTime, 0.01);
-            } else if (localStream) {
-              // sem grafo de processamento (Tauri) — track vem direto do getUserMedia, sem passar por
-              // nenhum MediaStreamDestinationNode, então track.enabled funciona normalmente aqui
-              localStream.getAudioTracks().forEach((t) => { if (!t.enabled) t.enabled = true; });
-            }
-            selfSpeaking = level >= 8;
-          } else {
-            const now = performance.now();
-            if (level >= sensitivity) micGateOpenUntil = now + 350; // segura aberto por mais 350ms
-            const shouldTransmit = now < micGateOpenUntil;
-            if (micGateGainNode) {
-              micGateGainNode.gain.setTargetAtTime(shouldTransmit ? 1 : 0, getAudioCtx().currentTime, 0.03);
-            } else if (localStream) {
-              localStream.getAudioTracks().forEach((t) => { t.enabled = shouldTransmit; });
-            }
-            selfSpeaking = shouldTransmit;
-          }
-        } else if (micGateGainNode) {
-          micGateGainNode.gain.setTargetAtTime(0, getAudioCtx().currentTime, 0.01);
+        const now = performance.now();
+        micGateOpenUntil = updateMicGate(micGateGainNode, level, sensitivity, micGateOpenUntil, now);
+        selfSpeaking = sensitivity === 0 ? level >= 8 : now < micGateOpenUntil;
+        if (!micGateGainNode && localStream && isTauriApp()) {
+          // No Tauri, preserva o gate legado via track.enabled.
+          // Se o grafo falhar num navegador, a faixa crua fica aberta pra garantir a transmissão.
+          localStream.getAudioTracks().forEach((track) => { track.enabled = sensitivity === 0 || selfSpeaking; });
         }
+      } else if (micGateGainNode && isMuted) {
+        micGateGainNode.gain.setTargetAtTime(0, micGateGainNode.context.currentTime, 0.01);
       }
       setParticipantSpeaking(currentUser.id, reportSelfSpeaking(selfSpeaking && !isMuted));
       for (const peer of peers.values()) setParticipantSpeaking(peer.userId, checkSpeaking(peer.analyser));
@@ -7078,27 +7257,16 @@
     if (!speakingRAF) speakingRAF = setTimeout(loop, 0);
   }
 
-  function setupLocalSpeakingDetection(rawStreamFallback) {
-    localAnalyser = null;
+  function createRawMicAnalyser(stream) {
+    if (!stream) return null;
     try {
       const ctx = getAudioCtx();
-      if (micGainNode) {
-        // conecta direto na saída do GainNode do reforço de mic (mesmo nó que alimenta o transceiver) —
-        // evita reconstruir um MediaStreamSource em cima do stream já processado, que em alguns
-        // navegadores fica com leitura zerada/instável
-        localAnalyser = ctx.createAnalyser();
-        localAnalyser.fftSize = 512;
-        micGainNode.connect(localAnalyser);
-      } else if (rawStreamFallback) {
-        // sem grafo de processamento (app desktop Linux/Tauri) — mede direto do stream cru.
-        // esse analyser é só local (medidor/borda verde), nunca cruza pro RTCPeerConnection
-        const src = ctx.createMediaStreamSource(rawStreamFallback);
-        localAnalyser = ctx.createAnalyser();
-        localAnalyser.fftSize = 512;
-        src.connect(localAnalyser);
-      }
-    } catch (_) { /* Web Audio pode falhar em contextos raros — call continua sem indicador visual */ }
-    runSpeakingLoop();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      return analyser;
+    } catch (_) { return null; }
   }
 
   // ===================================================================
@@ -7392,19 +7560,115 @@
     setCallConnectionStatus(reconnecting ? 'reconectando…' : baseCallStatus);
   }
 
-  // diagnóstico: conexão direta (P2P) ou passando pelo servidor TURN (relay)?
+  function getSelectedCandidatePair(stats, transportId) {
+    const transport = stats.get(transportId);
+    if (transport?.selectedCandidatePairId) return stats.get(transport.selectedCandidatePairId);
+    for (const report of stats.values()) {
+      if (report.type === 'transport' && report.selectedCandidatePairId) {
+        const pair = stats.get(report.selectedCandidatePairId);
+        if (pair) return pair;
+      }
+    }
+    return [...stats.values()].find((report) => report.type === 'candidate-pair' && report.selected);
+  }
+
+  function getCandidateRoute(stats, pair) {
+    const local = stats.get(pair?.localCandidateId)?.candidateType;
+    const remote = stats.get(pair?.remoteCandidateId)?.candidateType;
+    if (local === 'relay' || remote === 'relay') return 'via TURN';
+    return local && remote ? 'direta' : null;
+  }
+
   async function logSelectedCandidatePair(peer) {
     try {
       const stats = await peer.pc.getStats();
-      let pair = null;
-      stats.forEach((r) => { if (r.type === 'transport' && r.selectedCandidatePairId) pair = stats.get(r.selectedCandidatePairId); });
-      if (!pair) stats.forEach((r) => { if (r.type === 'candidate-pair' && r.selected) pair = r; });
-      if (!pair) return;
-      const local = stats.get(pair.localCandidateId);
-      const remote = stats.get(pair.remoteCandidateId);
-      const relay = (local && local.candidateType === 'relay') || (remote && remote.candidateType === 'relay');
-      console.log(`[call] conexão com ${peer.userId}: ${relay ? 'via TURN (relay)' : 'direta (P2P)'} — local ${local && local.candidateType}, remoto ${remote && remote.candidateType}`);
+      const route = getCandidateRoute(stats, getSelectedCandidatePair(stats));
+      if (route) console.log(`[call] conexão com ${peer.userId}: ${route}`);
     } catch (_) { /* só diagnóstico */ }
+  }
+
+  function readPeerVoiceStats(peer, stats) {
+    const mid = peer.mic?.mid;
+    const trackId = peer.mic?.receiver.track.id;
+    const inbound = [...stats.values()].find((report) =>
+      report.type === 'inbound-rtp' && (report.kind || report.mediaType) === 'audio' &&
+      ((mid != null && report.mid === mid) || (trackId && report.trackIdentifier === trackId))
+    );
+    const pair = getSelectedCandidatePair(stats, inbound?.transportId);
+    const previous = peer.voiceStatsPrevious;
+    peer.voiceStatsPrevious = inbound;
+
+    // Usa deltas da mesma faixa. Contadores de outra conexão ou que voltaram a zero
+    // não dizem nada sobre o intervalo atual.
+    function delta(key) {
+      if (!inbound || previous?.id !== inbound.id) return null;
+      const value = inbound[key] - previous[key];
+      return Number.isFinite(value) && value >= 0 ? value : null;
+    }
+    const received = delta('packetsReceived');
+    // A perda acumulada pode diminuir quando chegam pacotes atrasados.
+    const lost = inbound && previous?.id === inbound.id ? inbound.packetsLost - previous.packetsLost : NaN;
+    const loss = received !== null && Number.isFinite(lost) && received + Math.max(0, lost) > 0
+      ? 100 * Math.max(0, lost) / (received + Math.max(0, lost)) : null;
+    const elapsed = delta('timestamp');
+    const bytes = delta('bytesReceived');
+    const bitrate = elapsed > 0 && bytes !== null ? 8 * bytes / elapsed : null;
+    const concealed = delta('concealedSamples');
+    const samples = delta('totalSamplesReceived');
+    const concealment = samples > 0 && concealed !== null ? 100 * concealed / samples : null;
+    const jitter = Number.isFinite(inbound?.jitter) ? 1000 * inbound.jitter : null;
+    const rtt = Number.isFinite(pair?.currentRoundTripTime) ? 1000 * pair.currentRoundTripTime : null;
+
+    // Heurística local de diagnóstico. Classifica pelo pior dos sinais disponíveis.
+    const quality = [
+      [loss, 2, 5], [jitter, 25, 50], [rtt, 150, 300], [concealment, 2, 5],
+    ].reduce((worst, [value, medium, bad]) => value === null ? worst :
+      Math.max(worst, value >= bad ? 3 : value >= medium ? 2 : 1), 0);
+
+    return { loss, jitter, rtt, bitrate, concealed, concealment, quality, route: getCandidateRoute(stats, pair) };
+  }
+
+  function renderPeerVoiceStats(details, stats) {
+    const summary = details.querySelector('summary');
+    const quality = stats?.quality || 0;
+    const label = ['sem dados', 'bom', 'médio', 'ruim'][quality];
+    const heading = 'voz: ' + label;
+    if (summary.textContent !== heading) summary.textContent = heading;
+    details.dataset.quality = String(quality);
+    if (!details.open && details.lastElementChild.childElementCount) return;
+    const format = (value, unit, precision = 0) =>
+      Number.isFinite(value) ? `${value.toLocaleString('pt-BR', { maximumFractionDigits: precision })}${unit}` : '—';
+    const hiddenAudio = format(stats?.concealed, ' amostras');
+    const metrics = [
+      ['conexão', stats?.route || '—'],
+      ['perda recebida', format(stats?.loss, '%', 1)],
+      ['jitter', format(stats?.jitter, ' ms', 1)],
+      ['RTT', format(stats?.rtt, ' ms')],
+      ['bitrate recebido', format(stats?.bitrate, ' kb/s')],
+      ['áudio reconstruído', stats?.concealment == null ? hiddenAudio : `${hiddenAudio} (${format(stats.concealment, '%', 1)})`],
+    ];
+    const list = details.lastElementChild;
+    list.replaceChildren(...metrics.flatMap(([name, value]) => {
+      const term = document.createElement('dt');
+      const description = document.createElement('dd');
+      term.textContent = name;
+      description.textContent = value;
+      return [term, description];
+    }));
+  }
+
+  function updateVoiceStats() {
+    for (const peer of peers.values()) {
+      if (peer.voiceStatsPending || !['connected', 'completed'].includes(peer.iceState)) continue;
+      peer.voiceStatsPending = true;
+      peer.pc.getStats().then((stats) => {
+        if (peers.get(peer.userId) !== peer || !['connected', 'completed'].includes(peer.iceState)) return;
+        peer.voiceStats = readPeerVoiceStats(peer, stats);
+        const details = callParticipants.querySelector(`[data-user-id="${peer.userId}"] .call-voice-stats`);
+        if (details) renderPeerVoiceStats(details, peer.voiceStats);
+      }).catch(() => { /* diagnóstico opcional, sem interferir no áudio */ })
+        .finally(() => { peer.voiceStatsPending = false; });
+    }
   }
 
   // a conexão com alguém caiu: quem ligou originalmente liga de novo (só um lado, pra não cruzar)
@@ -7474,6 +7738,7 @@
     peer.isInitiator = isInitiator;
     peer.pc = new RTCPeerConnection({ iceServers });
     peers.set(userId, peer); // antes de qualquer await: candidatos que chegarem já acham a conexão
+    if (voiceStatsTimer === null) voiceStatsTimer = setInterval(updateVoiceStats, 1500);
     const pc = peer.pc;
     const isCurrent = () => peers.get(userId) === peer;
 
@@ -7518,6 +7783,12 @@
       if (!isCurrent()) return;
       const state = pc.iceConnectionState;
       peer.iceState = state;
+      if (state === 'disconnected' || state === 'failed') {
+        peer.voiceStats = null;
+        peer.voiceStatsPrevious = null;
+        const details = callParticipants.querySelector(`[data-user-id="${userId}"] .call-voice-stats`);
+        if (details) renderPeerVoiceStats(details, null);
+      }
       if (state === 'connected' || state === 'completed') {
         tuneAudioSenders(peer);
         if (peer.iceRestartTimer) { clearTimeout(peer.iceRestartTimer); peer.iceRestartTimer = null; }
@@ -7699,6 +7970,7 @@
     const peer = peers.get(userId);
     if (!peer) return;
     peers.delete(userId);
+    if (!peers.size) { clearInterval(voiceStatsTimer); voiceStatsTimer = null; }
     closeScreencastPc(peer);
     if (nativeScreencast && nativeScreencast.viewers.has(userId)) syncNativeViewer(userId, false);
     if (peer.iceRestartTimer) clearTimeout(peer.iceRestartTimer);
@@ -8090,34 +8362,8 @@
       hasMic = false;
     }
 
-    // aplica o reforço de ganho configurado (padrão 100%) + supressão de ruído (RNNoise, se ligada) —
-    // o que realmente vai pro transceiver e pro analyser de detecção de fala é essa versão
-    // processada, não o áudio cru do mic. EXCETO no app desktop Linux (Tauri/WebKitGTK), onde esse
-    // processamento quebra silenciosamente o envio (ver isTauriApp) — ali mandamos a track crua.
-    if (!hasMic) {
-      localStream = null;
-      micGainNode = null;
-      micGateGainNode = null;
-      micRnnoiseNode = null;
-      setupLocalSpeakingDetection(null);
-    } else if (isTauriApp()) {
-      localStream = rawMicStream;
-      micGainNode = null;
-      micGateGainNode = null;
-      micRnnoiseNode = null;
-      setupLocalSpeakingDetection(rawMicStream);
-    } else {
-      const boosted = await buildMicProcessingGraph(rawMicStream, getSavedMicGain(), getSavedNoiseSuppression());
-      localStream = boosted.stream;
-      micGainNode = boosted.gainNode;
-      micGateGainNode = boosted.gateGainNode;
-      micRnnoiseNode = boosted.rnnoiseNode;
-      micNsTeardown = boosted.teardown;
-      micNsActiveMode = boosted.noiseMode;
-      setupLocalSpeakingDetection();
-    }
-    updateNoiseSuppressionStatus();
-    updateSelfMonitor(rawMicStream);
+    const graph = hasMic && !isTauriApp() ? await tryBuildMicProcessingGraph(rawMicStream) : null;
+    useCallMicGraph(graph);
 
     // sem mic não tem o que transmitir — já entra mutado, e trava o botão de mutar (nada pra
     // desmutar). Isso é só um estado local por enquanto; o voice_update com isso vai logo abaixo,
@@ -8131,6 +8377,9 @@
     callViewMuteBtn.title = hasMic ? '' : 'nenhum microfone disponível';
 
     voiceChannel = ch;
+    updateNoiseSuppressionStatus();
+    refreshVoiceSettings();
+    updateSelfMonitor();
     playJoinSound();
     await refreshIceServers(); // credencial TURN fresca pra essa call
     applyLocalTrackState();
@@ -8163,9 +8412,8 @@
       rawMicStream.getTracks().forEach((t) => t.stop());
       rawMicStream = null;
     }
-    stopSelfMonitor();
+    resetMicTest();
     if (micNsTeardown) { micNsTeardown(); micNsTeardown = null; }
-    micRnnoiseNode = null;
     micNsActiveMode = 'off';
     micGainNode = null;
     micGateGainNode = null;
@@ -8203,6 +8451,9 @@
     setCallConnectionStatus('');
     const leftChannel = voiceChannel;
     voiceChannel = null;
+    micRebuildId++;
+    refreshVoiceSettings();
+    updateNoiseSuppressionStatus();
     updateMinibar();
 
     if (currentChannel && currentChannel.id === leftChannel.id) {
