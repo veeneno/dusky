@@ -1,5 +1,5 @@
 // DeepFilterNet3 (deepfilternet3-noise-filter 1.3.0, MIT OU Apache-2.0 — ver LICENSE-*), servido localmente
-// pelo didiscord. Única alteração: createWorkletModule idempotente (procure por [didiscord]).
+// pelo didiscord. Alterações locais marcadas com [didiscord].
 class AssetLoader {
     constructor(config = {}) {
         this.cdnUrl = config.cdnUrl ?? 'https://cdn.mezon.ai/AI/models/datas/noise_suppression/deepfilternet3';
@@ -98,11 +98,12 @@ class DeepFilterNet3Core {
         });
         return this.workletNode;
     }
-    setSuppressionLevel(level) {
-        if (!this.workletNode || typeof level !== 'number' || isNaN(level))
+    // [didiscord] a call e o teste local podem ter nós simultâneos no mesmo core.
+    setSuppressionLevel(level, node = this.workletNode) {
+        if (!node || typeof level !== 'number' || isNaN(level))
             return;
         const clampedLevel = Math.max(0, Math.min(100, Math.floor(level)));
-        this.workletNode.port.postMessage({
+        node.port.postMessage({
             type: WorkletMessageTypes.SET_SUPPRESSION_LEVEL,
             value: clampedLevel
         });

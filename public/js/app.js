@@ -41,6 +41,8 @@
   const micSensitivityValue = document.getElementById('micSensitivityValue');
   const noiseSuppressionSelect = document.getElementById('noiseSuppressionSelect');
   const voiceProcessingSelect = document.getElementById('voiceProcessingSelect');
+  const noiseSuppressionLevelField = document.getElementById('noiseSuppressionLevelField');
+  const noiseSuppressionLevelSelect = document.getElementById('noiseSuppressionLevelSelect');
   const noiseSuppressionStatus = document.getElementById('noiseSuppressionStatus');
   const screenResolutionSelect = document.getElementById('screenResolutionSelect');
   const screenFpsSelect = document.getElementById('screenFpsSelect');
@@ -191,7 +193,7 @@
   let rawMicStream = null; // stream crua do getUserMedia, antes do reforço de ganho — precisa ser parada separadamente pra liberar o hardware do mic
   let micGainNode = null; // GainNode aplicado no mic durante a call de verdade — ajustável ao vivo pelo slider de configurações
   let micGateGainNode = null; // GainNode do gate de sensibilidade — abre/fecha via ganho, nunca via track.enabled
-  let micNsTeardown = null; // desliga/libera o nó de supressão atual
+  let callMicGraph = null;
   let micNsActiveMode = 'off'; // qual supressão está de fato rodando ('deepfilter' | 'rnnoise' | 'off')
   let selfMonitorGainNode = null; // "ouvir a si mesmo" — toca o próprio mic de volta no fone, só localmente
   let selfMonitorSourceNode = null;
@@ -250,6 +252,8 @@
   // ---------- sensibilidade do microfone (gate de ruído) e supressão de ruído ----------
   const MIC_SENSITIVITY_KEY = 'didiscord:micSensitivity';
   const NOISE_SUPPRESSION_KEY = 'didiscord:noiseSuppression';
+  const NOISE_SUPPRESSION_LEVEL_KEY = 'didiscord:noiseSuppressionLevel';
+  const NOISE_SUPPRESSION_LEVELS = [20, 40, 60];
   const MIC_GAIN_KEY = 'didiscord:micGain';
 
   function getSavedMicGain() {
@@ -351,6 +355,15 @@
   function saveNoiseSuppression(mode) {
     try { localStorage.setItem(NOISE_SUPPRESSION_KEY, NOISE_MODES.includes(mode) ? mode : 'deepfilter'); } catch (_) { /* segue sem persistir */ }
   }
+
+  function getSavedNoiseSuppressionLevel() {
+    try {
+      const level = Number(localStorage.getItem(NOISE_SUPPRESSION_LEVEL_KEY));
+      if (NOISE_SUPPRESSION_LEVELS.includes(level)) return level;
+    } catch (_) { /* segue com a intensidade padrão */ }
+    return 40;
+  }
+
 
   // ---------- qualidade do compartilhamento de tela (resolução + fps + bitrate + com/sem áudio) ----------
   const SCREEN_RESOLUTION_KEY = 'didiscord:screenResolution';
@@ -5620,6 +5633,7 @@
     if (settingsMicGraph) settingsMicGraph.teardown();
     settingsMicGraph = null;
     settingsMicFallback = null;
+    updateNoiseSuppressionStatus();
     if (settingsStream) settingsStream.getTracks().forEach((t) => t.stop());
     settingsStream = null;
     cameraPreview.srcObject = null;
@@ -5834,6 +5848,7 @@
         return;
       }
       settingsMicGraph = graph;
+      updateNoiseSuppressionStatus();
       if (!graph) {
         settingsMicFallback = createRawMicAnalyser(stream);
         if (!isTauriApp()) settingsError.textContent = 'processamento indisponível: o teste usa o áudio cru';
@@ -5918,7 +5933,7 @@
     }
   }
 
-  const SITE_VERSION = '0.6.1';
+  const SITE_VERSION = '0.6.2';
   function renderSettingsAppCard() {
     const card = document.getElementById('settingsAppCard');
     const desk = window.didiscordDesktop;
@@ -5949,6 +5964,7 @@
     micSensitivityRange.value = getSavedMicSensitivity();
     updateMicSensitivityLabel();
     noiseSuppressionSelect.value = getSavedNoiseSuppression();
+    if (noiseSuppressionLevelSelect) noiseSuppressionLevelSelect.value = getSavedNoiseSuppressionLevel();
     updateNoiseSuppressionStatus();
     screenResolutionSelect.value = getSavedScreenResolution();
     screenFpsSelect.value = String(getSavedScreenFps());
@@ -6054,6 +6070,11 @@
   });
   // texto embaixo da opção: o que está de fato rodando na call agora (pode ter caído pro modo leve)
   function updateNoiseSuppressionStatus() {
+    if (noiseSuppressionLevelField) {
+      noiseSuppressionLevelField.hidden = getSavedNoiseSuppression() !== 'deepfilter' || isTauriApp();
+      const graph = voiceChannel && localStream ? callMicGraph : settingsMicGraph;
+      noiseSuppressionLevelSelect.disabled = !!graph && !graph.setSuppressionLevel;
+    }
     if (!noiseSuppressionStatus) return;
     const names = { deepfilter: 'avançada (DeepFilterNet3)', rnnoise: 'leve (RNNoise)', off: 'nenhuma' };
     if (!voiceChannel || !rawMicStream) {
@@ -6068,12 +6089,21 @@
 
   noiseSuppressionSelect.addEventListener('change', async () => {
     saveNoiseSuppression(noiseSuppressionSelect.value);
+    updateNoiseSuppressionStatus();
     if (voiceChannel && rawMicStream && !isTauriApp()) {
       noiseSuppressionStatus.textContent = 'aplicando…';
       noiseSuppressionSelect.disabled = true;
       try { await rebuildMicProcessing(); } finally { noiseSuppressionSelect.disabled = false; }
     } else {
       refreshVoiceSettings();
+    }
+  });
+  noiseSuppressionLevelSelect?.addEventListener('change', () => {
+    const level = Number(noiseSuppressionLevelSelect.value);
+    if (!NOISE_SUPPRESSION_LEVELS.includes(level)) return;
+    try { localStorage.setItem(NOISE_SUPPRESSION_LEVEL_KEY, String(level)); } catch (_) { /* vale nesta página */ }
+    for (const graph of [callMicGraph, settingsMicGraph, micTest?.graph]) {
+      graph?.setSuppressionLevel?.(level);
     }
   });
   screenResolutionSelect.addEventListener('change', () => {
@@ -6322,11 +6352,8 @@
   function loadDeepFilterCore() {
     if (!deepFilterCorePromise) {
       deepFilterCorePromise = (async () => {
-        const { DeepFilterNet3Core } = await import(`${DEEPFILTER_BASE}/index.esm.js`);
-        // noiseReductionLevel = limite de atenuação em dB; 100 = sem limite (tira o ruído inteiro, como a Krisp)
-        // noiseReductionLevel = quanto o ruído pode ser abaixado, em dB. 100 = sem limite: tira tudo,
-        // mas come pedaço da voz junto (som abafado/robótico). 40 dB já some com teclado/ventilador
-        // e deixa a voz inteira — é o ajuste que o próprio DeepFilterNet recomenda pra voz.
+        const { DeepFilterNet3Core } = await import(`${DEEPFILTER_BASE}/index.esm.js?v=2`);
+        // Os níveis são limites de atenuação em dB. 40 dB mantém o ajuste das calls anteriores.
         const core = new DeepFilterNet3Core({ sampleRate: 48000, noiseReductionLevel: 40, assetConfig: { cdnUrl: DEEPFILTER_BASE } });
         await core.initialize();
         return core;
@@ -6346,7 +6373,16 @@
       try {
         const core = await loadDeepFilterCore();
         const node = await core.createAudioWorkletNode(ctx);
-        return { node, mode: 'deepfilter', teardown: () => { try { node.disconnect(); } catch (_) { /* já desligado */ } } };
+        return {
+          node,
+          mode: 'deepfilter',
+          setSuppressionLevel: (level) => core.setSuppressionLevel(level, node),
+          teardown: () => {
+            node.disconnect();
+            node.port.close();
+            if (core.workletNode === node) core.workletNode = null;
+          },
+        };
       } catch (err) {
         console.warn('[call] supressão avançada (DeepFilterNet3) indisponível, usando a leve (RNNoise):', err);
         mode = 'rnnoise';
@@ -6364,39 +6400,112 @@
     return { node: null, mode: 'off', teardown: null };
   }
 
+  let micLimiterModulePromise = null;
+
+  async function createMicLimiterWorklet(ctx) {
+    if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') return null;
+    let timer;
+    try {
+      if (!micLimiterModulePromise) {
+        micLimiterModulePromise = ctx.audioWorklet.addModule('/js/worklets/mic-limiter.js?v=1').catch((err) => {
+          micLimiterModulePromise = null;
+          throw err;
+        });
+      }
+      // Se a conexão atrasar a carga do módulo, a captura segue com o compressor.
+      await Promise.race([
+        micLimiterModulePromise,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('tempo de carga excedido')), 1000);
+        }),
+      ]);
+      return new AudioWorkletNode(ctx, 'didiscord-mic-limiter', {
+        channelCount: 1, channelCountMode: 'explicit', outputChannelCount: [1],
+      });
+    } catch (err) {
+      console.warn('[call] limitador do microfone indisponível, usando o compressor:', err);
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function connectMicLimiter(input, dest, worklet) {
+    let limiter = worklet;
+    function connectCompressor() {
+      limiter = input.context.createDynamicsCompressor();
+      limiter.threshold.value = -1;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.001;
+      limiter.release.value = 0.1;
+      input.connect(limiter).connect(dest);
+    }
+    if (worklet) {
+      input.connect(worklet).connect(dest);
+      worklet.onprocessorerror = (err) => {
+        worklet.onprocessorerror = null;
+        input.disconnect(worklet);
+        worklet.disconnect();
+        worklet.port.close();
+        // Mantém a mesma track de saída mesmo se o processor parar no meio da call.
+        connectCompressor();
+        console.warn('[call] limitador do microfone falhou, usando o compressor:', err);
+      };
+    } else {
+      connectCompressor();
+    }
+    return () => {
+      if (worklet?.onprocessorerror) {
+        worklet.onprocessorerror = null;
+        worklet.port.postMessage('stop');
+        worklet.port.close();
+      }
+      limiter.disconnect();
+    };
+  }
+
   async function buildMicProcessingGraph(rawStream, gainValue, noiseMode) {
     const ctx = getAudioCtx();
     const source = ctx.createMediaStreamSource(rawStream);
 
+    // Corta vibração de mesa e rumble antes que entrem no supressor.
+    const highpass = ctx.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = 80;
+    highpass.Q.value = 20 * Math.log10(Math.SQRT1_2); // Butterworth; a Web Audio usa Q em dB aqui
+
     const gainNode = ctx.createGain();
     const gateGainNode = ctx.createGain();
-    const limiterNode = ctx.createDynamicsCompressor();
     const analyser = ctx.createAnalyser();
     const dest = ctx.createMediaStreamDestination();
-    const ns = await createNoiseSuppressorNode(ctx, noiseMode);
+    const [ns, worklet] = await Promise.all([
+      createNoiseSuppressorNode(ctx, noiseMode),
+      createMicLimiterWorklet(ctx),
+    ]);
+    let teardownLimiter;
     const teardown = () => {
-      for (const node of [source, gainNode, gateGainNode, limiterNode]) node.disconnect();
+      for (const node of [source, highpass, gainNode, gateGainNode]) node.disconnect();
+      teardownLimiter?.();
       ns.teardown?.();
       dest.stream.getTracks().forEach((track) => track.stop());
     };
 
     try {
-      if (ns.node) source.connect(ns.node);
-      (ns.node || source).connect(gainNode);
+      teardownLimiter = connectMicLimiter(gateGainNode, dest, worklet);
+      source.connect(highpass);
+      if (ns.node) highpass.connect(ns.node);
+      (ns.node || highpass).connect(gainNode);
       gainNode.gain.value = gainValue / 100;
-      gainNode.connect(gateGainNode).connect(limiterNode).connect(dest);
-
-      // Segura picos do ganho manual somado ao ajuste automático de volume do navegador.
-      limiterNode.threshold.value = -1;
-      limiterNode.knee.value = 0;
-      limiterNode.ratio.value = 20;
-      limiterNode.attack.value = 0.001;
-      limiterNode.release.value = 0.1;
+      gainNode.connect(gateGainNode);
 
       // Call e prévia leem o mesmo ponto: depois da supressão e do ganho, antes do gate.
       analyser.fftSize = 512;
       gainNode.connect(analyser);
-      return { stream: dest.stream, gainNode, gateGainNode, analyser, noiseMode: ns.mode, teardown };
+      return {
+        stream: dest.stream, gainNode, gateGainNode, analyser, noiseMode: ns.mode,
+        setSuppressionLevel: ns.setSuppressionLevel, teardown,
+      };
     } catch (err) {
       teardown();
       throw err;
@@ -6406,7 +6515,9 @@
   async function tryBuildMicProcessingGraph(stream) {
     try {
       const graph = await buildMicProcessingGraph(stream, getSavedMicGain(), getSavedNoiseSuppression());
-      graph.gainNode.gain.value = getSavedMicGain() / 100; // o slider pode ter mudado enquanto carregava
+      // A pessoa pode mexer nas configurações enquanto os módulos carregam.
+      graph.gainNode.gain.value = getSavedMicGain() / 100;
+      graph.setSuppressionLevel?.(getSavedNoiseSuppressionLevel());
       return graph;
     } catch (err) {
       console.warn('[call] processamento do microfone indisponível, seguindo com o áudio cru:', err);
@@ -6429,7 +6540,7 @@
       return;
     }
 
-    const previousTeardown = micNsTeardown;
+    const previousGraph = callMicGraph;
     if (graph && micGateGainNode) graph.gateGainNode.gain.value = micGateGainNode.gain.value;
     rawMicStream = input;
     useCallMicGraph(graph);
@@ -6437,7 +6548,7 @@
     const replacement = replaceOnAllPeers('mic', localStream.getAudioTracks()[0] || null);
     resetMicTest();
     await replacement;
-    previousTeardown?.();
+    previousGraph?.teardown();
     if (previousRaw !== input) previousRaw.getTracks().forEach((track) => track.stop());
     updateNoiseSuppressionStatus();
   }
@@ -6446,7 +6557,7 @@
     localStream = graph?.stream || rawMicStream;
     micGainNode = graph?.gainNode || null;
     micGateGainNode = graph?.gateGainNode || null;
-    micNsTeardown = graph?.teardown || null;
+    callMicGraph = graph;
     micNsActiveMode = graph?.noiseMode || 'off';
     localAnalyser = graph?.analyser || createRawMicAnalyser(rawMicStream);
     runSpeakingLoop();
@@ -8413,7 +8524,8 @@
       rawMicStream = null;
     }
     resetMicTest();
-    if (micNsTeardown) { micNsTeardown(); micNsTeardown = null; }
+    callMicGraph?.teardown();
+    callMicGraph = null;
     micNsActiveMode = 'off';
     micGainNode = null;
     micGateGainNode = null;

@@ -793,6 +793,15 @@
               <span class="field-help noise-status" id="noiseSuppressionStatus"></span>
             </div>
 
+            <div class="field" id="noiseSuppressionLevelField" hidden>
+              <label for="noiseSuppressionLevelSelect">intensidade da supressão avançada</label>
+              <select id="noiseSuppressionLevelSelect">
+                <option value="20">leve</option>
+                <option value="40" selected>média</option>
+                <option value="60">forte</option>
+              </select>
+            </div>
+
         </section>
 
         <section class="settings-tab-panel" data-settings-panel="audio" hidden>
@@ -921,6 +930,6 @@
   <script src="/js/realtime.js?v=20"></script>
   <script src="/js/markdown.js?v=20"></script>
   <script src="/js/emoji.js?v=20"></script>
-  <script src="/js/app.js?v=21"></script>
+  <script src="/js/app.js?v=22"></script>
 </body>
 </html>
