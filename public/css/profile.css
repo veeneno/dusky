@@ -1,0 +1,376 @@
+/* ===================================================================
+   perfil — barra do rodapé, cartão de perfil e edição
+   =================================================================== */
+
+/* ---------- barra de perfil clicável (rodapé da lateral) ---------- */
+.profile-bar { cursor: pointer; }
+.profile-bar:hover .profile-name { color: var(--amethyst-hi); }
+.profile-avatar { border-color: var(--pfp-ring, var(--amethyst)); }
+.profile-status {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.profile-status.has-custom { color: var(--text-lo); }
+
+/* ===================================================================
+   cartão de perfil
+   Um componente só (popout, prévia da edição e painel da DM). O cartão
+   todo é pintado com as cores da pessoa: --card-c1 (destaque) e --card-c2
+   (segunda cor, opcional). O conteúdo fica numa placa escura por cima,
+   então o cartão vira uma moldura colorida — é a identidade de cada um.
+   =================================================================== */
+.profile-card {
+  --card-c1: #9D5CE8;
+  --card-c2: var(--card-c1);
+  --card-plate: rgba(8, 6, 12, 0.84);
+  position: relative;
+  width: 340px;
+  padding: 4px;
+  border-radius: 20px;
+  color: var(--text-hi);
+  background:
+    linear-gradient(170deg, var(--card-c1) 0%, color-mix(in srgb, var(--card-c1) 45%, #0A0810) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.profile-card.has-gradient {
+  background: linear-gradient(170deg, var(--card-c1) 0%, var(--card-c2) 100%);
+}
+
+.pc-banner {
+  height: 112px;
+  border-radius: 16px 16px 0 0;
+  background-size: cover;
+  background-position: center;
+}
+
+.pc-avatar-row {
+  position: relative;
+  height: 50px;
+}
+
+.pc-avatar {
+  position: absolute;
+  left: 14px;
+  top: -50px;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 6px solid var(--card-c1);
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pc-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+.pc-initials {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.pc-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 5px solid var(--card-c1);
+  background: var(--text-faint);
+}
+.pc-dot.is-online { background: var(--online); }
+
+.pc-body {
+  background: var(--card-plate);
+  border-radius: 16px;
+  padding: 14px 16px 16px;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.pc-name {
+  font-size: 24px;
+  line-height: 1.15;
+  word-break: break-word;
+}
+.pc-status {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--text-lo);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.pc-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.pc-section h4 {
+  margin: 0 0 4px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-hi);
+  opacity: 0.72;
+}
+.pc-section p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-lo);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pc-bio { color: var(--text-hi) !important; }
+.pc-bio.is-empty { color: var(--text-faint) !important; font-style: italic; }
+
+.pc-mutuals { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pc-mutual {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  border: none;
+  padding: 0;
+  background: var(--overlay);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s var(--ease);
+}
+.pc-mutual:hover { transform: translateY(-2px); }
+.pc-mutual img { width: 100%; height: 100%; object-fit: cover; }
+.pc-mutual .server-initials { font-size: 12px; }
+
+.pc-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+.pc-actions .btn { width: 100%; }
+
+/* variações de onde o cartão aparece */
+.profile-popout-backdrop {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  z-index: 250;
+}
+.profile-card.is-popout {
+  position: fixed;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 24px 60px rgba(5, 4, 6, 0.65);
+  animation: popout-in 0.15s var(--ease) both;
+  scrollbar-width: none;
+}
+.profile-card.is-popout::-webkit-scrollbar { display: none; }
+@keyframes popout-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+.profile-card.is-static,
+.profile-card.is-panel { width: 100%; }
+
+/* ===================================================================
+   modal de edição do próprio perfil
+   =================================================================== */
+.profile-modal {
+  max-width: min(980px, calc(100vw - 32px));
+  max-height: 92vh;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.profile-modal-head h3 { font-size: 22px; }
+
+.profile-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--ink);
+  border-radius: var(--radius-md);
+}
+.profile-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-lo);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+.profile-tab:hover { color: var(--text-hi); }
+.profile-tab.active { background: var(--elevated); color: var(--text-hi); }
+
+.profile-tab-panel {
+  overflow-y: auto;
+  padding: 24px;
+}
+.profile-tab-panel[hidden] { display: none; }
+
+.profile-edit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 40px;
+  align-items: start;
+}
+@media (max-width: 820px) {
+  .profile-edit-layout { grid-template-columns: 1fr; }
+  .profile-edit-preview-col { position: static; order: -1; }
+  .profile-edit-preview-col .profile-card { max-width: 340px; }
+}
+
+.profile-edit-fields { display: flex; flex-direction: column; gap: 24px; }
+
+.profile-edit-group .field:last-child { margin-bottom: 0; }
+.profile-edit-group-title {
+  margin: 0 0 10px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-lo);
+}
+
+/* miniatura de banner + avatar (só mostra; os botões ficam embaixo, sempre visíveis) */
+.profile-edit-images {
+  position: relative;
+  margin-bottom: 34px;
+}
+.profile-edit-banner {
+  --card-c1: #9D5CE8;
+  --card-c2: var(--card-c1);
+  height: 96px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(170deg, var(--card-c1), var(--card-c2));
+  background-size: cover;
+  background-position: center;
+}
+.profile-edit-banner.has-image { background-color: var(--overlay); }
+.profile-edit-avatar {
+  position: absolute;
+  left: 16px;
+  bottom: -26px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 4px solid var(--amethyst);
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 20px;
+}
+.profile-edit-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.profile-edit-image-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.profile-edit-group .field-help { margin-top: 8px; }
+
+.profile-edit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.profile-edit-footer .field-error { flex: 1; min-height: 0; }
+
+.profile-edit-preview-col {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.profile-edit-preview-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-lo);
+}
+
+.profile-account { max-width: 360px; }
+
+/* ---------- seletor de cor ---------- */
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.color-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s var(--ease);
+}
+.color-swatch:hover { transform: scale(1.1); }
+.color-swatch.active {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--text-hi);
+}
+
+.color-swatch-custom {
+  -webkit-appearance: none;
+  appearance: none;
+  overflow: hidden;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: conic-gradient(#ff5c5c, #ffd45c, #7cd9a0, #5cc8e8, #9d5ce8, #e85c9d, #ff5c5c);
+}
+.color-swatch-custom::-webkit-color-swatch-wrapper { padding: 0; }
+.color-swatch-custom::-webkit-color-swatch { border: none; border-radius: 50%; opacity: 0; }
+
+/* "sem segunda cor" — volta o cartão pra cor única */
+.color-swatch-none {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: var(--elevated);
+  cursor: pointer;
+  position: relative;
+}
+.color-swatch-none::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 2px;
+  background: var(--text-faint);
+  transform: translateY(-50%) rotate(-45deg);
+}
+.color-swatch-none:hover { border-color: var(--text-faint); }
+.color-swatch-none.active { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--text-hi); }
+
+.profile-logout { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); }
+.profile-logout .field-help { margin: 0 0 12px; }

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>didiscord</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #1e1f22; color: #b5bac1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px; user-select: none;
+    font: 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 0 24px; box-sizing: border-box; text-align: center;
+  }
+  .spinner {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 4px solid #313338; border-top-color: #5865f2;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  h1 { margin: 0; font-size: 20px; color: #f2f3f5; font-weight: 600; }
+  p { margin: 0; line-height: 1.45; }
+  .url { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #949ba4; user-select: text; word-break: break-all; }
+  .card {
+    width: 100%; max-width: 440px; background: #2b2d31; border-radius: 8px; padding: 20px;
+    box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; text-align: left;
+  }
+  .card p { color: #b5bac1; }
+  label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; color: #b5bac1; }
+  input {
+    width: 100%; box-sizing: border-box; padding: 10px; border-radius: 4px; border: 0; outline: 0;
+    background: #1e1f22; color: #dbdee1; font: 14px ui-monospace, Menlo, Consolas, monospace; user-select: text;
+  }
+  input:focus { box-shadow: 0 0 0 2px #5865f2; }
+  .row { display: flex; gap: 8px; justify-content: flex-end; }
+  button {
+    border: 0; border-radius: 4px; padding: 9px 16px; font: 600 14px system-ui, sans-serif; cursor: pointer;
+    background: #5865f2; color: #fff;
+  }
+  button:hover { background: #4752c4; }
+  button:disabled { opacity: .6; cursor: default; }
+  button.secondary { background: transparent; color: #dbdee1; }
+  button.secondary:hover { text-decoration: underline; background: transparent; }
+  .card .error { color: #f23f43; font-size: 13px; min-height: 1em; }
+  .hint { font-size: 12px; color: #949ba4; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <!-- conectando -->
+  <div id="connecting" hidden>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:18px">
+      <div class="spinner"></div>
+      <h1>didiscord</h1>
+      <p>conectando ao servidor…</p>
+      <p class="url" id="connectingUrl"></p>
+    </div>
+  </div>
+
+  <!-- demorando: oferece trocar o endereço (as tentativas continuam por trás) -->
+  <div class="card" id="stuck" hidden>
+    <p><b>não está carregando?</b> o servidor pode estar desligado, ou o endereço mudou
+      (o endereço do túnel do Cloudflare muda toda vez que o servidor reinicia).</p>
+    <div class="row"><button id="openChange">mudar endereço</button></div>
+  </div>
+
+  <!-- escolher endereço -->
+  <h1 id="formTitle" hidden>didiscord</h1>
+  <form class="card" id="form" hidden autocomplete="off">
+    <p id="formIntro">qual é o endereço do servidor? pede pra quem hospeda — aparece quando ele roda <code>npm start</code>.</p>
+    <label for="addr">endereço do servidor</label>
+    <input id="addr" spellcheck="false" placeholder="didiscord.veneno.space">
+    <p class="hint">pode colar o link inteiro. também aceita IP (ex: 203.0.113.5:3000).</p>
+    <p class="error" id="err"></p>
+    <div class="row">
+      <button type="button" class="secondary" id="cancel" hidden>cancelar</button>
+      <button type="submit" id="go">conectar</button>
+    </div>
+  </form>
+
+<script>
+  'use strict';
+  const api = window.didiscordShell;
+  const $ = (id) => document.getElementById(id);
+  let status = { phase: 'connecting', url: null, attempts: 0 };
+  let formOpen = false; // a pessoa abriu o formulário no meio do "conectando"
+  let busy = false;
+
+  function render() {
+    const askFor = status.phase === 'setup' || status.phase === 'change';
+    const showForm = askFor || formOpen;
+    $('connecting').hidden = showForm;
+    $('connectingUrl').textContent = status.url || '';
+    // ~3 tentativas falhas (uns 5s) -> oferece trocar o endereço
+    $('stuck').hidden = showForm || status.phase !== 'connecting' || status.attempts < 3 || status.fixedByEnv;
+    $('form').hidden = !showForm;
+    $('formTitle').hidden = !showForm;
+    $('cancel').hidden = !(status.url && (status.phase === 'change' || formOpen));
+    $('formIntro').textContent = status.phase === 'setup'
+      ? 'qual é o endereço do servidor? pede pra quem hospeda — aparece quando ele roda npm start.'
+      : `não consegui conectar em ${status.url || '?'}. se o servidor reiniciou, o endereço mudou — cola o novo aqui.`;
+    if (status.phase === 'change') $('formIntro').textContent = 'novo endereço do servidor:';
+  }
+
+  function openForm() {
+    formOpen = true;
+    render();
+    const input = $('addr');
+    if (!input.value && status.url) input.value = status.url.replace(/^https:\/\//, '');
+    input.focus();
+    input.select();
+  }
+
+  $('openChange').addEventListener('click', openForm);
+  $('cancel').addEventListener('click', () => {
+    $('err').textContent = '';
+    if (status.phase === 'change') { api.cancelChange(); return; }
+    formOpen = false;
+    render();
+  });
+
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    busy = true;
+    $('go').disabled = true;
+    $('go').textContent = 'testando…';
+    $('err').textContent = '';
+    try {
+      const res = await api.setServer($('addr').value);
+      if (!res || !res.ok) {
+        $('err').textContent = (res && res.error) || 'não deu certo';
+      } else {
+        formOpen = false; // o processo principal recarrega esta tela já conectando no novo endereço
+        if (res.relaunching) $('go').textContent = 'reabrindo…';
+      }
+    } catch (err) {
+      $('err').textContent = String(err && err.message || err);
+    } finally {
+      busy = false;
+      $('go').disabled = false;
+      if ($('go').textContent === 'testando…') $('go').textContent = 'conectar';
+    }
+  });
+
+  if (api) {
+    api.onStatus((st) => { status = st; render(); });
+    api.getStatus().then((st) => {
+      if (st) status = st;
+      render();
+      if (status.phase === 'setup' || status.phase === 'change') openForm();
+    });
+  } else {
+    render();
+  }
+</script>
+</body>
+</html>

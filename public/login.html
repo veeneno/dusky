@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>entrar — didiscord</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/theme.css?v=8">
+  <link rel="stylesheet" href="/css/auth.css?v=8">
+</head>
+<body>
+  <div class="auth-screen">
+    <div class="auth-card card">
+      <div class="auth-mark">
+        <svg class="mark-duo" width="56" height="28" viewBox="0 0 56 28" xmlns="http://www.w3.org/2000/svg">
+          <path d="M 10 14 C 20 2, 36 26, 46 14" />
+          <circle cx="10" cy="14" r="6"></circle>
+          <circle cx="46" cy="14" r="6"></circle>
+        </svg>
+      </div>
+
+      <h1 class="auth-title display" id="formTitle">bem-vindo de volta</h1>
+      <p class="auth-tagline" id="formTagline">entre para continuar</p>
+
+      <!-- aparece quando a pessoa chega por um link de convite -->
+      <div class="auth-invite" id="authInvite" hidden>
+        <div class="auth-invite-icon" id="authInviteIcon"></div>
+        <div class="auth-invite-text">
+          <span id="authInviteLead">você foi convidado pra</span>
+          <strong id="authInviteName"></strong>
+        </div>
+      </div>
+
+      <div class="auth-banner error" id="authBanner"></div>
+
+      <form class="auth-form" id="authForm" autocomplete="off">
+        <div class="field">
+          <label for="username">usuário</label>
+          <input type="text" id="username" name="username" placeholder="seu nome de usuário" required minlength="2" maxlength="32" autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="password">senha</label>
+          <input type="password" id="password" name="password" placeholder="••••••••" required minlength="6" autocomplete="current-password">
+        </div>
+
+        <button type="submit" class="btn btn-primary auth-submit" id="submitBtn">entrar</button>
+      </form>
+
+      <p class="auth-switch">
+        <span id="switchText">ainda não tem conta?</span>
+        <button type="button" id="switchBtn">criar conta</button>
+      </p>
+    </div>
+  </div>
+
+  <script src="/js/auth.js?v=8"></script>
+</body>
+</html>

@@ -1,0 +1,200 @@
+/* ===================================================================
+   didiscord — design tokens
+   =================================================================== */
+:root {
+  /* superfícies */
+  --ink:      #050406;
+  --panel:    #0A0810;
+  --elevated: #131019;
+  --overlay:  #1C1826;
+  --line:     #2B2438;
+
+  /* texto */
+  --text-hi: #F1E9FB;
+  --text-lo: #9A8FB0;
+  --text-faint: #5C5470;
+
+  /* acento */
+  --amethyst:      #A855F7;
+  --amethyst-hi:   #C58BFF;
+  --amethyst-ink:  #120A1C;
+  --ember:         #FF8F66;
+  --online:        #7CD9A0;
+
+  /* tipografia */
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+
+  /* forma */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* movimento */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ink);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+a { color: inherit; }
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+input, textarea, select, button {
+  font-size: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--amethyst);
+  color: var(--amethyst-ink);
+}
+
+/* scrollbar discreta */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--overlay);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--line); }
+
+/* foco visível — acessibilidade, não decoração */
+:focus-visible {
+  outline: 2px solid var(--amethyst-hi);
+  outline-offset: 2px;
+}
+
+/* garante que o atributo hidden sempre esconda, mesmo em elementos com display
+   forçado por outra classe (ex: .btn define display: inline-flex) */
+[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===================================================================
+   componentes reutilizáveis
+   =================================================================== */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-size: 14px;
+  transition: transform 0.15s var(--ease), background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: var(--amethyst);
+  color: var(--amethyst-ink);
+}
+.btn-primary:hover { background: var(--amethyst-hi); }
+.btn-primary:disabled {
+  background: var(--overlay);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text-lo);
+}
+.btn-ghost:hover {
+  border-color: var(--amethyst);
+  color: var(--text-hi);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-lo);
+}
+
+.field input,
+.field textarea {
+  background: var(--elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 11px 14px;
+  color: var(--text-hi);
+  transition: border-color 0.15s var(--ease);
+}
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--amethyst);
+  outline: none;
+}
+.field input::placeholder,
+.field textarea::placeholder { color: var(--text-faint); }
+.field textarea {
+  font-family: var(--font-body);
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.4;
+}
+
+.field-error {
+  font-size: 13px;
+  color: var(--ember);
+  min-height: 1em;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+/* marca: duas bolinhas conectadas — vocês dois */
+.mark-duo {
+  display: block;
+  flex-shrink: 0;
+}
+.mark-duo circle { fill: var(--amethyst-hi); }
+.mark-duo path {
+  stroke: var(--line);
+  stroke-width: 1.5;
+  fill: none;
+}

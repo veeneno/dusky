@@ -1,0 +1,25 @@
+node_modules/
+.env
+server/db/*.db
+server/db/*.db-shm
+server/db/*.db-wal
+
+# arquivos enviados pelo pessoal (fotos, banners, ícones, anexos) — só as pastas vão pro git
+public/uploads/avatars/*
+public/uploads/banners/*
+public/uploads/attachments/*
+public/uploads/server/*
+!public/uploads/*/.gitkeep
+
+# gerados ao rodar
+tunnel-url.txt
+server/bots/musicBot/bin/
+
+# app desktop (Electron)
+electron/node_modules/
+electron/dist/
+
+# testes e rascunhos locais
+_teste_nvenc.h264
+prompt.txt
+*.orig

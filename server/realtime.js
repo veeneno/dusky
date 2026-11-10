@@ -1,0 +1,441 @@
+const { WebSocketServer } = require('ws');
+const wsTickets = require('./wsTickets');
+const db = require('./db');
+const access = require('./access');
+
+const clients = new Set();
+const onlineCounts = new Map(); // userId -> quantidade de conexões abertas (várias abas)
+
+// pseudo-userId reservado pro bot de música — nunca existe na tabela users (ids reais começam
+// em 1, autoincrement), então -1 nunca colide. Usado só pra presença (aparecer como "participante"
+// na sidebar/call view) — o áudio do bot chega por um stream HTTP à parte (ver
+// server/bots/musicBot/stream.js + routes/musicbot.js), não por uma RTCPeerConnection de
+// verdade, então ele nunca troca rtc_signal e o front-end nunca tenta abrir peer connection
+// com ele (ver tratamento especial de BOT_USER_ID em public/js/app.js).
+const BOT_USER_ID = -1;
+
+// heartbeat em nível de aplicação (mensagens JSON, não frame de controle WS cru): manda
+// tráfego de verdade periodicamente, o que (a) evita que proxies/NAT/Cloudflare derrubem a
+// conexão por "ociosidade" achando que morreu, e (b) detecta conexões zumbis (aquelas que o
+// SO ainda acha que estão abertas mas não respondem mais) bem mais rápido do que esperar o
+// TCP falhar sozinho — sem isso, o estado de chamada de voz podia ficar "preso" por minutos
+// depois de alguém perder conexão de verdade.
+const HEARTBEAT_INTERVAL_MS = 20 * 1000; // intervalo entre pings — bem abaixo de timeouts
+                                          // típicos de proxy ocioso (30-60s)
+const HEARTBEAT_TIMEOUT_MS = 45 * 1000;  // sem pong há mais que isso = considera morta
+
+// estado de chamada de voz em memória — chave: userId, valor: { channelId, serverId, muted, deafened, cameraOn, screenOn, ws }
+// `ws` guarda qual conexão específica "é dona" desse estado, pra lidar direito com múltiplas abas.
+// `serverId` é o servidor do canal de voz — eventos de voz só vão pros membros desse servidor.
+const voiceStates = new Map();
+
+function init(server) {
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    verifyClient: (info, cb) => {
+      const url = new URL(info.req.url, 'http://localhost');
+      const ticket = url.searchParams.get('ticket');
+      const entry = ticket ? wsTickets.consume(ticket) : null;
+      if (!entry) return cb(false, 401, 'unauthorized');
+      info.req.userId = entry.userId;
+      cb(true);
+    },
+  });
+
+  wss.on('connection', (ws, req) => {
+    ws.userId = req.userId;
+    ws.lastPongAt = Date.now(); // considera viva no momento em que conecta
+    clients.add(ws);
+    console.log(`[ws] conexão aberta — userId=${ws.userId} (total de clientes: ${clients.size})`);
+
+    const prevCount = onlineCounts.get(ws.userId) || 0;
+    onlineCounts.set(ws.userId, prevCount + 1);
+    if (prevCount === 0) {
+      sendToUsers(access.relatedUserIds(ws.userId), { type: 'presence_online', userId: ws.userId });
+    }
+
+    ws.on('message', (raw) => {
+      let msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch (_) {
+        return; // mensagem malformada, ignora
+      }
+      handleClientMessage(ws, msg);
+    });
+
+    ws.on('close', () => {
+      clients.delete(ws);
+      console.log(`[ws] conexão fechada — userId=${ws.userId} (restam: ${clients.size})`);
+
+      // se essa conexão era a "dona" da presença em chamada de voz do usuário, sai da call
+      leaveVoiceIfOwner(ws);
+
+      const count = (onlineCounts.get(ws.userId) || 1) - 1;
+      if (count <= 0) {
+        onlineCounts.delete(ws.userId);
+        sendToUsers(access.relatedUserIds(ws.userId), { type: 'presence_offline', userId: ws.userId });
+      } else {
+        onlineCounts.set(ws.userId, count);
+      }
+    });
+    ws.on('error', () => {});
+  });
+
+  const heartbeatInterval = setInterval(() => {
+    const now = Date.now();
+    for (const ws of clients) {
+      if (now - ws.lastPongAt > HEARTBEAT_TIMEOUT_MS) {
+        console.log(`[ws] userId=${ws.userId} sem pong há mais de ${HEARTBEAT_TIMEOUT_MS}ms — encerrando conexão zumbi`);
+        ws.terminate(); // fecha à força (não espera handshake de close), dispara 'close' -> limpa estado de voz
+        continue;
+      }
+      send(ws, { type: 'ping' });
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+
+  wss.on('close', () => clearInterval(heartbeatInterval));
+
+  return wss;
+}
+
+// ===================================================================
+// sinalização de chamada de voz (WebRTC)
+// o WS aqui só relaia mensagens entre os dois clientes — quem faz a
+// lógica de RTCPeerConnection é o front (public/js/app.js)
+// ===================================================================
+
+function handleClientMessage(ws, msg) {
+  if (!msg || typeof msg.type !== 'string') return;
+
+  switch (msg.type) {
+    case 'pong':
+      ws.lastPongAt = Date.now();
+      return;
+    case 'voice_join':
+      return handleVoiceJoin(ws, msg);
+    case 'voice_leave':
+      return handleVoiceLeave(ws);
+    case 'voice_update':
+      return handleVoiceUpdate(ws, msg);
+    case 'rtc_signal':
+      return handleRtcSignal(ws, msg);
+    default:
+      return; // tipo desconhecido, ignora
+  }
+}
+
+function handleVoiceJoin(ws, msg) {
+  const channelId = Number(msg.channelId);
+  if (!channelId) { console.log('[voice] voice_join sem channelId válido, ignorando:', msg); return; }
+
+  // só entra em canal de voz que a pessoa pode ver E em que o cargo dela deixa entrar
+  const ch = access.canConnectChannel(channelId, ws.userId);
+  if (!ch) {
+    console.log(`[voice] userId=${ws.userId} tentou entrar no canal ${channelId} sem permissão, ignorando`);
+    send(ws, { type: 'voice_join_denied', channelId });
+    return;
+  }
+  const serverId = ch.server_id;
+  console.log(`[voice] userId=${ws.userId} entrando no canal ${channelId} (servidor ${serverId})`);
+
+  // se essa pessoa já estava numa call (nessa aba ou em outra), sai dela primeiro — avisando todo
+  // mundo menos esta conexão, que já sabe que está trocando de canal
+  const prev = voiceStates.get(ws.userId);
+  if (prev) removeVoiceState(ws.userId, prev, ws);
+
+  const state = { channelId, serverId, muted: false, deafened: false, cameraOn: false, screenOn: false, ws };
+  voiceStates.set(ws.userId, state);
+  persistVoiceState(ws.userId, state);
+
+  // manda pro recém-chegado a lista de quem já está na sala — é ele quem inicia a oferta WebRTC
+  const participants = [...voiceStates.entries()]
+    .filter(([userId, s]) => userId !== ws.userId && s.channelId === channelId)
+    .map(([userId, s]) => ({ userId, muted: s.muted, deafened: s.deafened, cameraOn: s.cameraOn, screenOn: s.screenOn }));
+  const bot = botStates.get(serverId);
+  if (bot && bot.channelId === channelId) {
+    participants.push({ userId: BOT_USER_ID, muted: bot.muted, deafened: bot.deafened, cameraOn: false, screenOn: false });
+  }
+
+  send(ws, { type: 'voice_channel_state', channelId, participants });
+
+  // avisa quem enxerga esse canal que alguém novo entrou (pra call e pra pré-visualização na sidebar)
+  broadcastToChannel(channelId, { type: 'voice_user_joined', channelId, userId: ws.userId, muted: false, deafened: false, cameraOn: false, screenOn: false }, ws);
+}
+
+function handleVoiceLeave(ws) {
+  console.log(`[voice] userId=${ws.userId} mandou voice_leave`);
+  leaveVoiceIfOwner(ws);
+}
+
+function handleVoiceUpdate(ws, msg) {
+  const state = voiceStates.get(ws.userId);
+  if (!state || state.ws !== ws) return; // não está em call, ou é uma aba "fantasma"
+  state.muted = !!msg.muted;
+  state.deafened = !!msg.deafened;
+  state.cameraOn = !!msg.cameraOn;
+  state.screenOn = !!msg.screenOn;
+  persistVoiceState(ws.userId, state);
+  broadcastToChannel(state.channelId, { type: 'voice_state_update', channelId: state.channelId, userId: ws.userId, muted: state.muted, deafened: state.deafened, cameraOn: state.cameraOn, screenOn: state.screenOn });
+}
+
+// relay de sinalização (offer/answer/ice candidate/assistir tela) entre duas pessoas NA MESMA call.
+// Vai só pra aba que está de fato na call do destinatário — com várias abas abertas, as outras
+// não têm conexão nenhuma pra negociar. Fora da mesma call, não entrega nada.
+function handleRtcSignal(ws, msg) {
+  const targetUserId = Number(msg.to);
+  if (!targetUserId || !msg.data) return;
+  const mine = voiceStates.get(ws.userId);
+  const theirs = voiceStates.get(targetUserId);
+  if (!mine || mine.ws !== ws || !theirs || !theirs.ws || theirs.channelId !== mine.channelId) return;
+  send(theirs.ws, { type: 'rtc_signal', from: ws.userId, data: msg.data });
+}
+
+// ===================================================================
+// API usada pelo bot de música (server/bots/musicBot) pra aparecer como "presente" num canal de
+// voz sem ser uma conexão ws de verdade — o áudio em si vai por HTTP (routes/musicbot.js)
+// ===================================================================
+
+// bot "entra" no canal de voz — não persiste no banco (voice_state tem FK pra users(id), e o
+// bot não é uma linha real ali; além disso o estado dele é puramente efêmero mesmo)
+// cada servidor tem o seu bot (ver musicBot/queue.js): a presença dele fica aqui, uma por servidor,
+// separada de voiceStates (que é por pessoa). Pros clientes ele sempre aparece como BOT_USER_ID —
+// como cada pessoa só está numa call por vez, ninguém vê dois bots ao mesmo tempo.
+const botStates = new Map(); // serverId -> { channelId, serverId, muted, deafened, cameraOn, screenOn }
+
+function botJoinVoice(serverId, channelId) {
+  const ch = access.getChannel(channelId);
+  if (!ch || ch.server_id !== serverId) return;
+  botLeaveVoice(serverId);
+  botStates.set(serverId, { channelId, serverId, muted: true, deafened: false, cameraOn: false, screenOn: false });
+  broadcastToChannel(channelId, { type: 'voice_user_joined', channelId, userId: BOT_USER_ID, muted: true, deafened: false, cameraOn: false, screenOn: false });
+}
+
+function botLeaveVoice(serverId) {
+  const state = botStates.get(serverId);
+  if (!state) return;
+  botStates.delete(serverId);
+  broadcastToChannel(state.channelId, { type: 'voice_user_left', channelId: state.channelId, userId: BOT_USER_ID });
+}
+
+// em qual canal de voz um usuário específico está agora (null se não está em nenhum) — usado
+// pelo comando /play pra descobrir pra onde o bot deve entrar
+function voiceChannelOf(userId) {
+  const state = voiceStates.get(userId);
+  return state ? state.channelId : null;
+}
+
+// lista os userIds de humanos (exclui o próprio BOT_USER_ID) presentes num canal de voz agora —
+// usado pelo bot pra saber se ainda tem alguém ouvindo (ex: pra decidir se sai sozinho do canal
+// quando o último humano sai no meio de uma música tocando)
+function humansInChannel(channelId) {
+  const ids = [];
+  for (const [userId, s] of voiceStates.entries()) {
+    if (userId !== BOT_USER_ID && s.channelId === channelId) ids.push(userId);
+  }
+  return ids;
+}
+
+// sai da chamada de voz se essa conexão específica é a "dona" do estado do usuário
+function leaveVoiceIfOwner(ws) {
+  const state = voiceStates.get(ws.userId);
+  if (!state || state.ws !== ws) return;
+  removeVoiceState(ws.userId, state);
+}
+
+// quem quer saber quando alguém sai de uma call (o bot de música usa pra parar quando a call esvazia)
+const voiceLeaveListeners = [];
+function onVoiceLeave(fn) { voiceLeaveListeners.push(fn); }
+
+function removeVoiceState(userId, state, except) {
+  voiceStates.delete(userId);
+  persistVoiceState(userId, { channelId: null, muted: false, deafened: false, cameraOn: false, screenOn: false });
+  // avisa quem enxerga o canal (e a própria pessoa, caso ela já não enxergue mais — ex: foi
+  // expulsa ou perdeu o cargo — e precise saber que caiu da call)
+  const audience = new Set(access.channelAudience(state.channelId));
+  audience.add(userId);
+  sendToUsers([...audience], { type: 'voice_user_left', channelId: state.channelId, userId }, except);
+  for (const fn of voiceLeaveListeners) {
+    try { fn(state.channelId, userId); } catch (err) { console.error('[voice] erro num ouvinte de saída:', err); }
+  }
+}
+
+// ------------------------------------------------------------------
+// moderação de voz (admin): desconectar, mover, e derrubar quem perdeu permissão
+// ------------------------------------------------------------------
+
+function voiceStateOf(userId) {
+  const s = voiceStates.get(userId);
+  return s ? { channelId: s.channelId, serverId: s.serverId } : null;
+}
+
+// tira alguém da call. `by` = quem fez (pra mostrar no aviso). false se a pessoa não estava em call.
+function disconnectUser(userId, by) {
+  const state = voiceStates.get(userId);
+  if (!state || userId === BOT_USER_ID) return false;
+  if (state.ws) send(state.ws, { type: 'voice_disconnected', channelId: state.channelId, by: by || null });
+  removeVoiceState(userId, state);
+  return true;
+}
+
+// manda a aba que está na call da pessoa trocar pra outro canal de voz. A troca em si (fechar as
+// conexões e abrir as novas) acontece no navegador dela, igual quando ela mesma clica no canal.
+function moveUser(userId, channel, by) {
+  const state = voiceStates.get(userId);
+  if (!state || !state.ws || state.channelId === channel.id) return false;
+  send(state.ws, {
+    type: 'voice_move',
+    channel: { id: channel.id, name: channel.name, type: channel.type, server_id: channel.server_id },
+    by: by || null,
+  });
+  return true;
+}
+
+// depois de mudar cargos/permissões: quem está numa call em que não pode mais estar cai dela
+function enforceVoicePermissions(serverId) {
+  for (const [uid, state] of [...voiceStates.entries()]) {
+    if (state.serverId !== serverId || uid === BOT_USER_ID) continue;
+    if (!access.canConnectChannel(state.channelId, uid)) {
+      if (state.ws) send(state.ws, { type: 'voice_disconnected', channelId: state.channelId, reason: 'permission' });
+      removeVoiceState(uid, state);
+    }
+  }
+}
+
+// tira alguém da call se ela for de um canal desse servidor — usado quando a pessoa sai/é
+// expulsa do servidor, ou quando o servidor é apagado (userId omitido = todo mundo)
+function kickFromServerVoice(serverId, userId) {
+  for (const [uid, state] of [...voiceStates.entries()]) {
+    if (state.serverId !== serverId) continue;
+    if (userId != null && uid !== userId) continue;
+    removeVoiceState(uid, state);
+  }
+  if (userId == null) botLeaveVoice(serverId); // servidor apagado: o bot sai junto
+}
+
+// todo mundo sai de um canal de voz específico — usado quando o canal é apagado
+function kickFromChannelVoice(channelId) {
+  for (const [uid, state] of [...voiceStates.entries()]) {
+    if (state.channelId !== channelId) continue;
+    removeVoiceState(uid, state);
+  }
+  for (const [serverId, bot] of [...botStates.entries()]) {
+    if (bot.channelId === channelId) botLeaveVoice(serverId);
+  }
+}
+
+function persistVoiceState(userId, state) {
+  try {
+    db.prepare(`
+      INSERT INTO voice_state (user_id, channel_id, muted, deafened, camera_on, screen_on, updated_at)
+      VALUES (@userId, @channelId, @muted, @deafened, @cameraOn, @screenOn, datetime('now'))
+      ON CONFLICT(user_id) DO UPDATE SET
+        channel_id = excluded.channel_id,
+        muted = excluded.muted,
+        deafened = excluded.deafened,
+        camera_on = excluded.camera_on,
+        screen_on = excluded.screen_on,
+        updated_at = excluded.updated_at
+    `).run({
+      userId,
+      channelId: state.channelId ?? null,
+      muted: state.muted ? 1 : 0,
+      deafened: state.deafened ? 1 : 0,
+      cameraOn: state.cameraOn ? 1 : 0,
+      screenOn: state.screenOn ? 1 : 0,
+    });
+  } catch (err) {
+    console.error('erro ao persistir voice_state:', err.message);
+  }
+}
+
+// envia um evento pra todos os clientes conectados (exceto `except`, se passado) — só pra coisas
+// realmente globais; o normal é usar sendToUsers / broadcastToServer / broadcastToChannel
+function broadcast(event, except) {
+  const payload = JSON.stringify(event);
+  for (const ws of clients) {
+    if (ws !== except && ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
+
+// envia um evento pra todas as conexões (abas) desses usuários
+function sendToUsers(userIds, event, except) {
+  const targets = new Set(userIds);
+  if (targets.size === 0) return;
+  const payload = JSON.stringify(event);
+  for (const ws of clients) {
+    if (ws !== except && targets.has(ws.userId) && ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
+
+function broadcastToServer(serverId, event, except) {
+  sendToUsers(access.serverMemberIds(serverId), event, except);
+}
+
+// membros do servidor do canal, ou os 2 participantes se for DM
+function broadcastToChannel(channelId, event, except) {
+  sendToUsers(access.channelAudience(channelId), event, except);
+}
+
+function send(ws, event) {
+  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event));
+}
+
+function isOnline(userId) {
+  return (onlineCounts.get(userId) || 0) > 0;
+}
+
+// manda um último aviso e fecha todas as abas conectadas dessa pessoa (conta suspensa, senha redefinida)
+function dropUserConnections(userId, finalEvent) {
+  for (const ws of [...clients]) {
+    if (ws.userId !== userId) continue;
+    try {
+      if (finalEvent) ws.send(JSON.stringify(finalEvent));
+      ws.close(4001, 'sessão encerrada');
+    } catch (_) { /* já fechada */ }
+  }
+}
+
+// quem está em qual call agora, em todo o site (só o painel de admin usa)
+function voiceOccupancyAll() {
+  const out = [...voiceStates.entries()].map(([userId, s]) => ({ userId, channelId: s.channelId, serverId: s.serverId }));
+  for (const bot of botStates.values()) out.push({ userId: BOT_USER_ID, channelId: bot.channelId, serverId: bot.serverId });
+  return out;
+}
+
+function onlineUserIds() {
+  return [...onlineCounts.keys()];
+}
+
+// snapshot de quem está em qual canal de voz agora (pra pré-visualização na sidebar, inclusive
+// pra canais que o usuário não está ocupando no momento) — filtrado pros servidores dos quais
+// `viewerId` é membro, pra ninguém ver quem está em call num servidor que não é o seu
+function voiceOccupancy(viewerId) {
+  const visible = new Map(); // channelId -> pode ver? (cache, pra não consultar o banco por pessoa)
+  const canSee = (channelId) => {
+    if (!visible.has(channelId)) visible.set(channelId, !!access.canAccessChannel(channelId, viewerId));
+    return visible.get(channelId);
+  };
+  const entries = [...voiceStates.entries()];
+  for (const bot of botStates.values()) entries.push([BOT_USER_ID, bot]);
+  return entries
+    .filter(([, s]) => canSee(s.channelId))
+    .map(([userId, s]) => ({
+      userId,
+      channelId: s.channelId,
+      muted: s.muted,
+      deafened: s.deafened,
+      cameraOn: s.cameraOn,
+      screenOn: s.screenOn,
+    }));
+}
+
+module.exports = {
+  init, broadcast, sendToUsers, broadcastToServer, broadcastToChannel,
+  isOnline, onlineUserIds, voiceOccupancy, kickFromServerVoice, kickFromChannelVoice,
+  voiceStateOf, disconnectUser, moveUser, enforceVoicePermissions, onVoiceLeave,
+  dropUserConnections, voiceOccupancyAll,
+  BOT_USER_ID, botJoinVoice, botLeaveVoice,
+  humansInChannel, voiceChannelOf,
+};

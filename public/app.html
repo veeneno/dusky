@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>concord</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/theme.css?v=18">
+  <link rel="stylesheet" href="/css/app.css?v=18">
+  <link rel="stylesheet" href="/css/chat.css?v=18">
+  <link rel="stylesheet" href="/css/members.css?v=18">
+  <link rel="stylesheet" href="/css/profile.css?v=18">
+  <link rel="stylesheet" href="/css/voice.css?v=18">
+  <link rel="stylesheet" href="/css/settings.css?v=18">
+  <link rel="stylesheet" href="/css/servers.css?v=18">
+  <link rel="stylesheet" href="/css/call-roles.css?v=18">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- barra de servidores (esquerda) -->
+    <nav class="server-rail" id="serverRail" aria-label="servidores">
+      <button type="button" class="rail-item rail-home" id="railHomeBtn" title="mensagens diretas" aria-label="mensagens diretas">
+        <span class="rail-pill"></span>
+        <span class="rail-icon">
+          <svg class="mark-duo" width="26" height="13" viewBox="0 0 56 28" xmlns="http://www.w3.org/2000/svg">
+            <path d="M 10 14 C 20 2, 36 26, 46 14" />
+            <circle cx="10" cy="14" r="6"></circle>
+            <circle cx="46" cy="14" r="6"></circle>
+          </svg>
+        </span>
+        <span class="rail-badge" id="railHomeBadge" hidden></span>
+      </button>
+      <div class="rail-sep"></div>
+      <div class="rail-servers" id="railServers"></div>
+      <button type="button" class="rail-item rail-admin" id="railAdminBtn" title="painel de admin do site" aria-label="painel de admin do site" hidden>
+        <span class="rail-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </span>
+      </button>
+      <button type="button" class="rail-item rail-add" id="railAddBtn" title="criar ou entrar num servidor" aria-label="criar ou entrar num servidor">
+        <span class="rail-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </span>
+      </button>
+    </nav>
+
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <button type="button" class="server-header-btn" id="serverHeaderBtn" aria-haspopup="menu" aria-expanded="false">
+          <span class="server-header-name display" id="serverHeaderName">carregando...</span>
+          <svg class="server-header-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="server-menu" id="serverMenu" role="menu" hidden></div>
+      </div>
+
+      <div class="channel-groups" id="channelGroups">
+        <!-- preenchido via js/app.js -->
+      </div>
+
+      <!-- minibar de chamada em andamento — some quando não tem call ativa -->
+      <div class="call-minibar" id="callMinibar" hidden>
+        <div class="call-minibar-info">
+          <span class="call-minibar-dot"></span>
+          <div class="call-minibar-text">
+            <span class="call-minibar-label">chamada de voz</span>
+            <span class="call-minibar-name" id="callMinibarName"></span>
+          </div>
+        </div>
+        <button class="icon-btn danger" id="callMinibarLeaveBtn" title="sair da chamada" aria-label="sair da chamada">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 4.28 1.36 2 2 0 0 1 1.72 2v3.5a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 5.11 3.5h3.5a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 1.36 4.28 2 2 0 0 1-.45 2.11z"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+        </button>
+      </div>
+
+      <div class="profile-bar" id="profileBar" title="editar perfil">
+        <div class="profile-avatar" id="profileAvatar" style="--pfp-ring: var(--amethyst)">?</div>
+        <div class="profile-meta">
+          <div class="profile-name" id="profileName">carregando...</div>
+          <div class="profile-status" id="profileStatus">online</div>
+        </div>
+        <div class="profile-actions">
+          <button class="icon-btn" id="muteBtn" title="mutar microfone" aria-label="mutar microfone">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+          </button>
+          <button class="icon-btn" id="deafenBtn" title="mutar áudio" aria-label="mutar áudio">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+          </button>
+          <button class="icon-btn" id="settingsBtn" title="configurações de voz e vídeo" aria-label="configurações de voz e vídeo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <div class="main-empty" id="mainEmpty">
+        <h2 class="display">carregando...</h2>
+        <p></p>
+      </div>
+
+      <section class="chat-view" id="chatView" hidden>
+        <header class="chat-header">
+          <span class="icon" id="chatChannelIcon"></span>
+          <h2 class="chat-channel-name" id="chatChannelName"></h2>
+          <div class="chat-header-spacer"></div>
+          <button class="icon-btn" id="membersToggleBtn" title="membros" aria-label="mostrar membros">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </button>
+        </header>
+
+        <div class="chat-body">
+          <div class="chat-messages" id="chatMessages"></div>
+
+          <aside class="member-panel" id="memberPanel">
+            <div class="member-section" id="memberSectionOnline">
+              <div class="member-section-label">online</div>
+            </div>
+            <div class="member-section" id="memberSectionOffline">
+              <div class="member-section-label">offline</div>
+            </div>
+            <div class="member-section" id="memberSectionBots">
+              <div class="member-section-label">bots</div>
+            </div>
+          </aside>
+
+          <!-- na DM, no lugar da lista de membros, aparece o perfil da outra pessoa -->
+          <aside class="dm-profile-panel" id="dmProfilePanel" hidden>
+            <div class="profile-card is-panel" id="dmProfileCard"></div>
+          </aside>
+        </div>
+
+        <div class="attachment-preview" id="attachmentPreview" hidden>
+          <div class="attachment-preview-thumb" id="attachmentPreviewThumb"></div>
+          <div class="attachment-preview-info">
+            <span class="attachment-preview-name" id="attachmentPreviewName"></span>
+            <div class="attachment-preview-progress-track" id="attachmentPreviewProgressTrack" hidden>
+              <div class="attachment-preview-progress-fill" id="attachmentPreviewProgressFill"></div>
+            </div>
+            <span class="attachment-preview-progress-text" id="attachmentPreviewProgressText" hidden></span>
+          </div>
+          <button type="button" class="attachment-preview-remove" id="attachmentPreviewRemove" title="remover anexo">×</button>
+        </div>
+
+        <div class="reply-preview" id="replyPreview" hidden>
+          <span class="reply-preview-text">respondendo a <strong id="replyPreviewName"></strong>: <span id="replyPreviewSnippet"></span></span>
+          <button type="button" class="reply-preview-remove" id="replyPreviewRemove" title="cancelar resposta">×</button>
+        </div>
+
+        <div class="composer-error" id="composerError" hidden></div>
+
+        <div class="gif-picker" id="gifPicker" hidden>
+          <div class="gif-picker-header">
+            <div class="gif-picker-tabs" id="gifPickerTabs">
+              <button type="button" class="gif-picker-tab active" data-kind="gifs">gifs</button>
+              <button type="button" class="gif-picker-tab" data-kind="stickers">figurinhas</button>
+            </div>
+            <input type="text" id="gifSearchInput" placeholder="buscar gif no giphy..." autocomplete="off">
+          </div>
+          <div class="gif-picker-grid" id="gifPickerGrid"></div>
+        </div>
+
+        <form class="chat-composer" id="chatComposer">
+          <!-- menu de comandos "/" e sugestões do /play (ver updateCommandPopup em app.js) -->
+          <div class="command-popup" id="commandPopup" role="listbox" aria-label="comandos" hidden></div>
+          <button type="button" class="icon-btn composer-attach-btn" id="attachBtn" title="anexar arquivo" aria-label="anexar arquivo">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <input type="file" id="attachInput" hidden>
+          <button type="button" class="icon-btn composer-gif-btn" id="gifBtn" title="enviar gif" aria-label="enviar gif">GIF</button>
+          <input type="text" id="chatInput" placeholder="mandar mensagem..." autocomplete="off" maxlength="4000">
+          <button type="submit" class="btn btn-primary" id="chatSendBtn">enviar</button>
+        </form>
+      </section>
+
+      <!-- view de chamada de voz — mostrada quando o canal selecionado é de voz -->
+      <section class="call-view" id="callView" hidden>
+        <header class="call-header">
+          <div class="call-header-info">
+          <span class="icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+          </span>
+          <h2 class="chat-channel-name" id="callChannelName"></h2>
+        </div>
+        <span class="call-connection-status" id="callConnectionStatus" hidden></span>
+        </header>
+
+        <div class="call-screenshare-area" id="callScreenShareArea" hidden></div>
+
+        <div class="call-participants" id="callParticipants">
+          <!-- preenchido via js/app.js -->
+        </div>
+
+        <div class="call-controls">
+          <button class="call-control-btn" id="callViewMuteBtn" title="mutar microfone" aria-label="mutar microfone">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+          </button>
+          <button class="call-control-btn" id="callViewDeafenBtn" title="mutar áudio" aria-label="mutar áudio">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+          </button>
+          <button class="call-control-btn" id="callViewCameraBtn" title="ligar câmera" aria-label="ligar câmera">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          </button>
+          <button class="call-control-btn" id="callViewScreenBtn" title="compartilhar tela" aria-label="compartilhar tela">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </button>
+          <button class="call-control-btn danger" id="callViewLeaveBtn" title="sair da chamada" aria-label="sair da chamada">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 4.28 1.36 2 2 0 0 1 1.72 2v3.5a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 5.11 3.5h3.5a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 1.36 4.28 2 2 0 0 1-.45 2.11z"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+          </button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- modal: criar canal -->
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <div class="modal card">
+      <h3 class="display" id="modalTitle">criar canal</h3>
+      <div class="field">
+        <label>tipo</label>
+        <div class="channel-type-picker" id="channelTypePicker">
+          <button type="button" class="channel-type-option" data-type="text">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span><strong>texto</strong><small>mensagens, imagens, gifs</small></span>
+          </button>
+          <button type="button" class="channel-type-option" data-type="voice">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+            <span><strong>voz</strong><small>chamada, câmera e tela</small></span>
+          </button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="newChannelName">nome do canal</label>
+        <input id="newChannelName" type="text" maxlength="40" placeholder="novo-canal">
+      </div>
+      <div class="field-error" id="modalError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modalCancelBtn" type="button">cancelar</button>
+        <button class="btn btn-primary" id="modalCreateBtn" type="button">criar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: editar perfil -->
+  <div class="modal-backdrop" id="profileModalBackdrop" hidden>
+    <div class="modal card profile-modal" id="profileEditCard" role="dialog" aria-labelledby="profileModalTitle">
+      <header class="profile-modal-head">
+        <h3 class="display" id="profileModalTitle">seu perfil</h3>
+        <div class="profile-tabs" id="profileTabs" role="tablist">
+          <button type="button" class="profile-tab active" data-tab="perfil" role="tab">perfil</button>
+          <button type="button" class="profile-tab" data-tab="conta" role="tab">conta</button>
+        </div>
+        <button type="button" class="icon-btn modal-close" id="profileCloseBtn" aria-label="fechar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </header>
+
+      <div class="profile-tab-panel" data-tab-panel="perfil">
+        <div class="profile-edit-layout">
+          <div class="profile-edit-fields">
+            <section class="profile-edit-group">
+              <h4 class="profile-edit-group-title">imagens</h4>
+              <div class="profile-edit-images">
+                <div class="profile-edit-banner" id="profileEditBanner"></div>
+                <div class="profile-edit-avatar" id="profileEditAvatar"></div>
+              </div>
+              <div class="profile-edit-image-actions">
+                <button type="button" class="btn btn-ghost btn-sm" id="avatarUploadBtn">trocar avatar</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="bannerUploadBtn">trocar banner</button>
+                <button type="button" class="btn btn-ghost btn-sm btn-quiet" id="bannerRemoveBtn" hidden>remover banner</button>
+              </div>
+              <p class="field-help">png, jpg, webp ou gif animado, até 15MB. Sem banner, o topo do cartão usa as suas cores.</p>
+              <input type="file" id="avatarInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+              <input type="file" id="bannerInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+            </section>
+
+            <section class="profile-edit-group">
+              <div class="field">
+                <label for="profileUsernameInput">nome de usuário</label>
+                <input id="profileUsernameInput" type="text" maxlength="32" autocomplete="off">
+              </div>
+              <div class="field">
+                <label for="profileStatusInput">status</label>
+                <input id="profileStatusInput" type="text" maxlength="80" placeholder="o que você anda fazendo?" autocomplete="off">
+              </div>
+              <div class="field">
+                <label for="profileBioInput">sobre mim <span class="field-hint" id="profileBioCount">0/190</span></label>
+                <textarea id="profileBioInput" maxlength="190" rows="4" placeholder="conta um pouco sobre você"></textarea>
+              </div>
+            </section>
+
+            <section class="profile-edit-group">
+              <div class="field">
+                <label>cor do perfil</label>
+                <div class="color-swatches" id="colorSwatches"></div>
+              </div>
+              <div class="field">
+                <label>segunda cor <span class="field-hint">cria um degradê no cartão</span></label>
+                <div class="color-swatches" id="colorSwatches2"></div>
+              </div>
+            </section>
+
+            <div class="profile-edit-footer">
+              <div class="field-error" id="profileInfoError"></div>
+              <button class="btn btn-primary" id="profileInfoSaveBtn" type="button">salvar alterações</button>
+            </div>
+          </div>
+
+          <div class="profile-edit-preview-col">
+            <span class="profile-edit-preview-label">como os outros veem</span>
+            <div class="profile-card is-static" id="profileLivePreview"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-tab-panel" data-tab-panel="conta" hidden>
+        <section class="profile-edit-group profile-account">
+          <h4 class="profile-edit-group-title">trocar senha</h4>
+          <div class="field">
+            <label for="currentPasswordInput">senha atual</label>
+            <input id="currentPasswordInput" type="password" autocomplete="current-password">
+          </div>
+          <div class="field">
+            <label for="newPasswordInput">nova senha</label>
+            <input id="newPasswordInput" type="password" autocomplete="new-password">
+          </div>
+          <div class="field-error" id="profilePasswordError"></div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="profilePasswordSaveBtn" type="button">trocar senha</button>
+          </div>
+        </section>
+
+        <section class="profile-edit-group profile-account profile-logout">
+          <h4 class="profile-edit-group-title">sair</h4>
+          <p class="field-help">Encerra a sessão neste navegador. Suas mensagens e servidores continuam aqui quando você voltar.</p>
+          <button class="btn btn-danger-ghost" id="logoutBtn" type="button">sair da conta</button>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- popout: cartão de perfil de alguém (flutua perto de onde você clicou) -->
+  <div class="profile-popout-backdrop" id="viewProfileBackdrop" hidden>
+    <div class="profile-card is-popout" id="viewProfileCard" role="dialog"></div>
+  </div>
+
+  <!-- modal: criar ou entrar num servidor -->
+  <div class="modal-backdrop" id="addServerBackdrop" hidden>
+    <div class="modal card add-server-modal" role="dialog">
+      <div class="add-server-step" data-step="choose">
+        <h3 class="display">um lugar pra sua turma</h3>
+        <p class="modal-lead">Crie um servidor pros seus amigos ou entre num que já existe com o link de convite.</p>
+        <div class="add-server-choices">
+          <button type="button" class="add-server-choice" data-goto="create">
+            <span class="add-server-choice-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </span>
+            <span><strong>criar meu servidor</strong><small>você vira dono e chama quem quiser</small></span>
+          </button>
+          <button type="button" class="add-server-choice" data-goto="join">
+            <span class="add-server-choice-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </span>
+            <span><strong>entrar com convite</strong><small>cole o link que alguém te mandou</small></span>
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-close>cancelar</button>
+        </div>
+      </div>
+
+      <div class="add-server-step" data-step="create" hidden>
+        <h3 class="display">criar servidor</h3>
+        <p class="modal-lead">Dá pra trocar o nome e o ícone depois, nas configurações do servidor.</p>
+        <div class="field">
+          <label for="createServerName">nome do servidor</label>
+          <input id="createServerName" type="text" maxlength="40" autocomplete="off">
+        </div>
+        <div class="field-error" id="createServerError"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-goto="choose">voltar</button>
+          <button class="btn btn-primary" type="button" id="createServerBtn">criar servidor</button>
+        </div>
+      </div>
+
+      <div class="add-server-step" data-step="join" hidden>
+        <h3 class="display">entrar num servidor</h3>
+        <p class="modal-lead">Cole o link de convite inteiro ou só o código do final.</p>
+        <div class="field">
+          <label for="joinServerInput">link de convite</label>
+          <input id="joinServerInput" type="text" autocomplete="off" placeholder="https://.../invite/aB3dE5fG">
+        </div>
+        <div class="field-error" id="joinServerError"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-goto="choose">voltar</button>
+          <button class="btn btn-primary" type="button" id="joinServerBtn">entrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: convidar pessoas -->
+  <div class="modal-backdrop" id="inviteBackdrop" hidden>
+    <div class="modal card invite-modal" role="dialog">
+      <h3 class="display">convide pessoas pra <span id="inviteServerName"></span></h3>
+      <p class="modal-lead">Mande esse link pros seus amigos. Quem ainda não tem conta cria uma na hora e já entra no servidor.</p>
+      <div class="invite-link-row">
+        <input type="text" id="inviteLinkInput" readonly aria-label="link de convite">
+        <button type="button" class="btn btn-primary" id="inviteCopyBtn">copiar</button>
+      </div>
+      <p class="field-help" id="inviteHint"></p>
+      <div class="invite-options">
+        <div class="field">
+          <label for="inviteExpirySelect">expira em</label>
+          <select id="inviteExpirySelect">
+            <option value="1">1 hora</option>
+            <option value="24">1 dia</option>
+            <option value="168" selected>7 dias</option>
+            <option value="720">30 dias</option>
+            <option value="0">nunca</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="inviteUsesSelect">pode ser usado</label>
+          <select id="inviteUsesSelect">
+            <option value="0" selected>sem limite</option>
+            <option value="1">1 vez</option>
+            <option value="5">5 vezes</option>
+            <option value="10">10 vezes</option>
+            <option value="25">25 vezes</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-close>pronto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: configurações do servidor (só dono) -->
+  <div class="modal-backdrop" id="serverSettingsBackdrop" hidden>
+    <div class="modal card server-settings-modal" role="dialog">
+      <h3 class="display">configurações do servidor</h3>
+      <div class="server-settings-identity">
+        <button type="button" class="server-settings-icon" id="serverSettingsIcon" title="trocar ícone"></button>
+        <div class="server-settings-icon-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="serverSettingsIconBtn">trocar ícone</button>
+          <button type="button" class="btn btn-ghost btn-sm btn-quiet" id="serverSettingsIconRemoveBtn" hidden>remover</button>
+          <p class="field-help">quadrado fica melhor. png, jpg, webp ou gif.</p>
+        </div>
+        <input type="file" id="serverSettingsIconInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+      </div>
+      <div class="field">
+        <label for="serverSettingsNameInput">nome do servidor</label>
+        <input id="serverSettingsNameInput" type="text" maxlength="40" autocomplete="off">
+      </div>
+      <div class="field-error" id="serverSettingsError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-close>fechar</button>
+        <button class="btn btn-primary" type="button" id="serverSettingsSaveBtn">salvar</button>
+      </div>
+      <section class="roles-section">
+        <div class="roles-section-head">
+          <h4>cargos</h4>
+          <button class="btn btn-ghost btn-sm" type="button" id="roleCreateBtn">novo cargo</button>
+        </div>
+        <p class="field-help">Dá cargos pras pessoas pelo perfil delas (clique no nome na lista de membros). Administradores gerenciam o servidor, os canais, os cargos e as calls.</p>
+        <div class="roles-list" id="rolesList"></div>
+      </section>
+      <div class="danger-zone" id="serverDangerZone">
+        <div>
+          <strong>apagar servidor</strong>
+          <p>Apaga todos os canais e mensagens pra sempre. Não dá pra desfazer.</p>
+        </div>
+        <button class="btn btn-danger" type="button" id="serverSettingsDeleteBtn">apagar servidor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: aceitar convite (quando a pessoa abre um link /invite/...) -->
+  <div class="modal-backdrop" id="joinInviteBackdrop" hidden>
+    <div class="modal card join-invite-modal" role="dialog">
+      <div class="join-invite-icon" id="joinInviteIcon"></div>
+      <p class="join-invite-lead" id="joinInviteLead"></p>
+      <h3 class="display join-invite-name" id="joinInviteName"></h3>
+      <div class="join-invite-counts" id="joinInviteCounts"></div>
+      <div class="field-error" id="joinInviteError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-close>agora não</button>
+        <button class="btn btn-primary" type="button" id="joinInviteAcceptBtn">entrar no servidor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: nova conversa (DM) -->
+  <div class="modal-backdrop" id="newDmBackdrop" hidden>
+    <div class="modal card new-dm-modal" role="dialog">
+      <h3 class="display">nova conversa</h3>
+      <p class="modal-lead">Você pode conversar com qualquer pessoa que esteja em algum servidor com você.</p>
+      <input type="text" class="new-dm-search" id="newDmSearch" placeholder="procurar pelo nome" autocomplete="off">
+      <div class="new-dm-list" id="newDmList"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-close>cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: editar canal (administradores) -->
+  <div class="modal-backdrop" id="channelEditBackdrop" hidden>
+    <div class="modal card channel-edit-modal" role="dialog" aria-labelledby="channelEditTitle">
+      <h3 class="display" id="channelEditTitle">editar canal</h3>
+      <div class="field">
+        <label for="channelEditName">nome do canal</label>
+        <input id="channelEditName" type="text" maxlength="40" autocomplete="off">
+      </div>
+      <section class="perm-block">
+        <label class="perm-toggle">
+          <span><strong>canal privado</strong><small>só os cargos marcados conseguem ver este canal</small></span>
+          <input type="checkbox" id="channelEditPrivateView">
+        </label>
+        <div class="perm-roles" id="channelEditViewRoles"></div>
+      </section>
+      <section class="perm-block" id="channelEditConnectBlock">
+        <label class="perm-toggle">
+          <span><strong>restringir quem entra na call</strong><small>quem não tiver um dos cargos marcados vê o canal, mas não entra</small></span>
+          <input type="checkbox" id="channelEditPrivateConnect">
+        </label>
+        <div class="perm-roles" id="channelEditConnectRoles"></div>
+      </section>
+      <p class="field-help">O dono e os administradores sempre veem e entram em todos os canais.</p>
+      <div class="field-error" id="channelEditError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-close>cancelar</button>
+        <button class="btn btn-primary" type="button" id="channelEditSaveBtn">salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- visualizador de imagens e vídeos -->
+  <div class="media-viewer" id="mediaViewer" role="dialog" aria-label="visualizar mídia" hidden>
+    <header class="media-viewer-top">
+      <div class="media-viewer-author">
+        <span class="media-viewer-avatar" id="mediaViewerAvatar"></span>
+        <span class="media-viewer-who"><strong id="mediaViewerName"></strong><small id="mediaViewerDate"></small></span>
+      </div>
+      <span class="media-viewer-count" id="mediaViewerCount"></span>
+      <div class="media-viewer-actions">
+        <div class="media-viewer-zoom" id="mediaViewerZoom">
+          <button type="button" id="mediaViewerZoomOut" title="diminuir (-)" aria-label="diminuir zoom">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button type="button" id="mediaViewerZoomReset" class="media-viewer-zoom-label" title="ajustar à tela (0)">100%</button>
+          <button type="button" id="mediaViewerZoomIn" title="aumentar (+)" aria-label="aumentar zoom">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <a id="mediaViewerOpen" target="_blank" rel="noopener" title="abrir original numa aba nova" aria-label="abrir original">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+        <a id="mediaViewerDownload" download title="baixar" aria-label="baixar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </a>
+        <button type="button" id="mediaViewerClose" title="fechar (Esc)" aria-label="fechar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </header>
+    <div class="media-viewer-stage" id="mediaViewerStage"></div>
+    <button type="button" class="media-viewer-nav is-prev" id="mediaViewerPrev" aria-label="anterior (←)">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <button type="button" class="media-viewer-nav is-next" id="mediaViewerNext" aria-label="próxima (→)">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <footer class="media-viewer-caption" id="mediaViewerCaption"></footer>
+  </div>
+
+  <!-- painel de admin do site (só aparece pro admin) -->
+  <div class="modal-backdrop" id="adminBackdrop" hidden>
+    <div class="modal card admin-modal" role="dialog" aria-labelledby="adminTitle">
+      <header class="admin-head">
+        <h3 class="display" id="adminTitle">painel de admin</h3>
+        <nav class="admin-tabs" id="adminTabs">
+          <button type="button" data-admin-tab="overview">visão geral</button>
+          <button type="button" data-admin-tab="users">usuários</button>
+          <button type="button" data-admin-tab="servers">servidores</button>
+          <button type="button" data-admin-tab="announce">aviso geral</button>
+        </nav>
+        <button type="button" class="icon-btn modal-close" data-close aria-label="fechar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </header>
+      <div class="admin-body" id="adminBody"></div>
+    </div>
+  </div>
+
+  <div class="toast-host" id="toastHost" aria-live="polite"></div>
+
+  <!-- modal: configurações de voz e vídeo -->
+  <div class="modal-backdrop" id="settingsModalBackdrop" hidden>
+    <div class="modal card settings-modal">
+      <h3 class="display">voz e vídeo</h3>
+
+      <div class="settings-tabs" id="settingsTabs">
+        <button type="button" class="settings-tab active" data-settings-tab="microfone">microfone</button>
+        <button type="button" class="settings-tab" data-settings-tab="audio">áudio</button>
+        <button type="button" class="settings-tab" data-settings-tab="video">vídeo</button>
+      </div>
+
+      <div class="settings-tab-panel" data-settings-panel="microfone">
+        <div class="field">
+          <label for="micSelect">microfone</label>
+          <select id="micSelect"></select>
+          <div class="mic-meter"><div class="mic-meter-fill" id="micMeterFill"></div><div class="mic-meter-threshold" id="micMeterThreshold"></div></div>
+        </div>
+
+        <div class="field">
+          <label for="micGainRange">ganho do microfone <span id="micGainValue" class="field-hint">100%</span></label>
+          <input type="range" id="micGainRange" min="50" max="300" value="100">
+          <span class="field-help">reforça o volume do seu microfone antes de mandar pra call — aumenta se sua voz chega baixa do outro lado</span>
+        </div>
+
+        <div class="field">
+          <label for="micSensitivityRange">sensibilidade do microfone <span id="micSensitivityValue" class="field-hint">desligada</span></label>
+          <input type="range" id="micSensitivityRange" min="0" max="60" value="0">
+          <span class="field-help">acima de 0, o microfone só transmite quando o volume ultrapassa a linha marcada no medidor acima</span>
+        </div>
+
+        <div class="field field-checkbox">
+          <label class="checkbox-label">
+            <input type="checkbox" id="selfMonitorCheckbox">
+            ouvir a si mesmo
+          </label>
+          <span class="field-help">toca seu próprio microfone de volta no seu fone, baixinho — use fone de ouvido pra não causar eco/microfonia. Ótimo pra confirmar que o mic tá pegando sua voz de verdade, além da borda verde</span>
+        </div>
+
+        <div class="field-help" id="tauriMicWarning" hidden style="color: var(--ember);">
+          este app desktop (Linux) roda num motor com suporte incompleto a áudio processado via WebRTC — reforço de ganho e supressão de ruído (RNNoise) não têm efeito aqui, mesmo aparecendo nesta tela. Use o navegador (Chrome/Firefox) se precisar dessas duas.
+        </div>
+
+        <div class="field">
+          <label for="voiceProcessingSelect">processamento da voz</label>
+          <select id="voiceProcessingSelect">
+            <option value="speakers">caixa de som — cancela o eco (padrão)</option>
+            <option value="headphones">fone de ouvido — voz mais natural (recomendado com fone)</option>
+            <option value="studio">estúdio — sem processamento nenhum (mic bom + fone)</option>
+          </select>
+          <span class="field-help">o cancelamento de eco é o que mais "metaliza" a voz e corta quando duas pessoas falam juntas. Com fone de ouvido ele não é necessário. "estúdio" também desliga o ajuste automático de volume — regule pelo ganho acima. Dá pra trocar com a call aberta.</span>
+        </div>
+
+        <div class="field">
+          <label for="noiseSuppressionSelect">supressão de ruído</label>
+          <select id="noiseSuppressionSelect">
+            <option value="deepfilter">avançada — parecida com a Krisp do Discord (recomendado)</option>
+            <option value="rnnoise">leve — pra computador mais fraco</option>
+            <option value="off">nenhuma</option>
+          </select>
+          <span class="field-help">a avançada usa uma rede neural (DeepFilterNet3) rodando no seu computador: tira teclado, ventilador, barulho de rua e eco do cômodo, e deixa só a sua voz. Na primeira vez baixa uns 24 MB. Dá pra trocar com a call aberta.</span>
+          <span class="field-help noise-status" id="noiseSuppressionStatus"></span>
+        </div>
+      </div>
+
+      <div class="settings-tab-panel" data-settings-panel="audio" hidden>
+        <div class="field" id="speakerField">
+          <label for="speakerSelect">saída de áudio (fone/headset)</label>
+          <div class="settings-row">
+            <select id="speakerSelect"></select>
+            <button type="button" class="btn btn-ghost settings-test-btn" id="speakerTestBtn">testar</button>
+          </div>
+        </div>
+        <div class="field-help" id="speakerUnsupportedHint" hidden>
+          este app não consegue trocar a saída de áudio por aqui (limitação do motor usado no app desktop). Troque o dispositivo de saída padrão direto nas configurações de som do sistema operacional.
+        </div>
+
+        <div class="field field-checkbox">
+          <label class="checkbox-label">
+            <input type="checkbox" id="notificationSoundsCheckbox" checked>
+            sons de notificação
+          </label>
+          <span class="field-help">toca um som curto quando alguém entra ou sai de uma chamada de voz, e quando você recebe uma mensagem</span>
+        </div>
+      </div>
+
+      <div class="settings-tab-panel" data-settings-panel="video" hidden>
+        <div class="field">
+          <label for="cameraSelect">câmera</label>
+          <select id="cameraSelect"></select>
+          <div class="camera-preview-wrap">
+            <video id="cameraPreview" autoplay playsinline muted></video>
+            <div class="camera-preview-empty" id="cameraPreviewEmpty">sem pré-visualização</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="screenResolutionSelect">qualidade do compartilhamento de tela</label>
+          <div class="settings-row">
+            <select id="screenResolutionSelect">
+              <option value="1280x720">720p</option>
+              <option value="1920x1080">1080p</option>
+              <option value="2560x1440">1440p (2K)</option>
+              <option value="3840x2160">2160p (4K)</option>
+            </select>
+            <select id="screenFpsSelect">
+              <option value="15">15 fps</option>
+              <option value="30">30 fps</option>
+              <option value="60">60 fps</option>
+              <option value="120">120 fps</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <select id="screenPrioritySelect" title="o que sacrificar quando faltar processador ou internet">
+              <option value="balanced">prioridade: equilibrado (recomendado)</option>
+              <option value="smooth">prioridade: fluidez — jogos e vídeos</option>
+              <option value="sharp">prioridade: nitidez — texto e código</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <select id="screenBitrateSelect">
+              <option value="0">bitrate automático (até 16 Mbps)</option>
+              <option value="1000">1 Mbps</option>
+              <option value="2500">2.5 Mbps</option>
+              <option value="4000">4 Mbps</option>
+              <option value="8000">8 Mbps</option>
+              <option value="12000">12 Mbps</option>
+              <option value="16000">16 Mbps</option>
+            </select>
+            <label class="checkbox-label">
+              <input type="checkbox" id="screenAudioCheckbox" checked>
+              compartilhar com som
+            </label>
+          </div>
+          <span class="field-help">resolução e fps valem a partir da próxima vez que compartilhar; prioridade e bitrate valem na hora. A prioridade decide o que cai quando falta processador ou internet: "equilibrado" segura o fps baixando um pouco a resolução (bom pra jogo e vídeo), "nitidez" mantém o texto legível e deixa o fps cair. Cada pessoa assistindo é mais um vídeo saindo do seu PC — se o fps cair com muita gente, quem não está olhando pode clicar em "parar de assistir".</span>
+        </div>
+      </div>
+
+      <div class="field-error" id="settingsError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="settingsCloseBtn" type="button">concluído</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/realtime.js?v=18"></script>
+  <script src="/js/app.js?v=18"></script>
+</body>
+</html>
