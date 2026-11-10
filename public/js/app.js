@@ -5943,7 +5943,7 @@
     }
   }
 
-  const SITE_VERSION = '0.6.3';
+  const SITE_VERSION = '0.6.4';
   function renderSettingsAppCard() {
     const card = document.getElementById('settingsAppCard');
     const desk = window.didiscordDesktop;
@@ -7859,6 +7859,10 @@
     const elapsed = delta('timestamp');
     const bytes = delta('bytesReceived');
     const bitrate = elapsed > 0 && bytes !== null ? 8 * bytes / elapsed : null;
+    const discarded = delta('packetsDiscarded');
+    const delay = delta('jitterBufferDelay');
+    const emitted = delta('jitterBufferEmittedCount');
+    const bufferMs = emitted > 0 && delay !== null ? 1000 * delay / emitted : null;
     const concealed = delta('concealedSamples');
     const samples = delta('totalSamplesReceived');
     const concealment = samples > 0 && concealed !== null ? 100 * concealed / samples : null;
@@ -7871,7 +7875,11 @@
     ].reduce((worst, [value, medium, bad]) => value === null ? worst :
       Math.max(worst, value >= bad ? 3 : value >= medium ? 2 : 1), 0);
 
-    return { loss, jitter, rtt, bitrate, concealed, concealment, quality, route: getCandidateRoute(stats, pair) };
+    return {
+      loss, jitter, rtt, bitrate, discarded, bufferMs, concealed, concealment, quality,
+      route: getCandidateRoute(stats, pair),
+      micRed: peer.micRed,
+    };
   }
 
   function renderPeerVoiceStats(details, stats) {
@@ -7891,6 +7899,9 @@
       ['jitter', format(stats?.jitter, ' ms', 1)],
       ['RTT', format(stats?.rtt, ' ms')],
       ['bitrate recebido', format(stats?.bitrate, ' kb/s')],
+      ['redundância de voz', stats?.micRed == null ? '—' : stats.micRed ? 'Opus + RED' : 'Opus (FEC)'],
+      ['buffer de voz', format(stats?.bufferMs, ' ms', 1)],
+      ['piso do buffer', stats ? (stats.bufferTarget ? format(stats.bufferTarget, ' ms') : 'automática') : '—'],
       ['áudio reconstruído', stats?.concealment == null ? hiddenAudio : `${hiddenAudio} (${format(stats.concealment, '%', 1)})`],
     ];
     const list = details.lastElementChild;
@@ -7903,6 +7914,42 @@
     }));
   }
 
+  function updateVoiceJitterBuffer(peer, stats) {
+    const receiver = peer.mic?.receiver;
+    if (!receiver || peer.voiceBufferUnsupported) return;
+    const property = 'jitterBufferTarget' in receiver ? 'jitterBufferTarget'
+      : 'playoutDelayHint' in receiver ? 'playoutDelayHint' : null;
+    if (!property) {
+      peer.voiceBufferUnsupported = true;
+      return;
+    }
+
+    const current = peer.voiceBufferTarget || null;
+    const { jitter, discarded, concealment } = stats;
+    let target = current;
+    if (jitter !== null && (jitter >= 25 || (jitter >= 10 && (discarded > 0 || concealment >= 2)))) {
+      // No Chromium o valor funciona como piso. Aumenta só quando há variação na
+      // chegada dos pacotes, pois segurar áudio não recupera perda pura de rede.
+      target = Math.max(current || 0, Math.min(100, Math.max(40, Math.ceil(jitter / 10) * 20)));
+      peer.voiceBufferCleanSamples = 0;
+    } else if (current && jitter !== null && jitter < 15) {
+      // NetEQ também pode descartar cópias RED. Com chegada estável, deixa o navegador
+      // reduzir o atraso, mesmo se os contadores ainda mostrarem descartes ou perda.
+      peer.voiceBufferCleanSamples = (peer.voiceBufferCleanSamples || 0) + 1;
+      if (peer.voiceBufferCleanSamples >= 4) target = null;
+    } else {
+      peer.voiceBufferCleanSamples = 0;
+    }
+
+    if (target === current) return;
+    try {
+      receiver[property] = property === 'jitterBufferTarget' || target === null ? target : target / 1000;
+      peer.voiceBufferTarget = target;
+    } catch (_) {
+      peer.voiceBufferUnsupported = true;
+    }
+  }
+
   function updateVoiceStats() {
     for (const peer of peers.values()) {
       if (peer.voiceStatsPending || !['connected', 'completed'].includes(peer.iceState)) continue;
@@ -7910,6 +7957,8 @@
       peer.pc.getStats().then((stats) => {
         if (peers.get(peer.userId) !== peer || !['connected', 'completed'].includes(peer.iceState)) return;
         peer.voiceStats = readPeerVoiceStats(peer, stats);
+        updateVoiceJitterBuffer(peer, peer.voiceStats);
+        peer.voiceStats.bufferTarget = peer.voiceBufferTarget;
         const details = callParticipants.querySelector(`[data-user-id="${peer.userId}"] .call-voice-stats`);
         if (details) renderPeerVoiceStats(details, peer.voiceStats);
       }).catch(() => { /* diagnóstico opcional, sem interferir no áudio */ })
@@ -7944,6 +7993,9 @@
       list.forEach((t) => { if (t) t.direction = 'sendrecv'; });
     }
     [peer.mic, peer.camera, peer.screen, peer.screenAudio] = list;
+    if (isInitiator || descriptionPrefersMicRed(peer.pc.remoteDescription)) {
+      peer.micRedCapable = setMicRedPreferences(peer.mic, !isInitiator);
+    }
 
     const micTrack = localStream && localStream.getAudioTracks()[0];
     if (micTrack && peer.mic) peer.mic.sender.replaceTrack(micTrack).catch(() => {});
@@ -7982,7 +8034,13 @@
     closePeer(userId);
     const peer = newPeer(userId);
     peer.isInitiator = isInitiator;
-    peer.pc = new RTCPeerConnection({ iceServers });
+    // Os quatro transceivers compartilham ICE/DTLS quando o outro cliente aceita BUNDLE.
+    // Mantém a conexão do auxiliar de screencast fora desta configuração.
+    try {
+      peer.pc = new RTCPeerConnection({ iceServers, bundlePolicy: 'max-bundle' });
+    } catch (_) {
+      peer.pc = new RTCPeerConnection({ iceServers });
+    }
     peers.set(userId, peer); // antes de qualquer await: candidatos que chegarem já acham a conexão
     if (voiceStatsTimer === null) voiceStatsTimer = setInterval(updateVoiceStats, 1500);
     const pc = peer.pc;
@@ -8032,11 +8090,11 @@
       if (state === 'disconnected' || state === 'failed') {
         peer.voiceStats = null;
         peer.voiceStatsPrevious = null;
+        peer.voiceBufferCleanSamples = 0;
         const details = callParticipants.querySelector(`[data-user-id="${userId}"] .call-voice-stats`);
         if (details) renderPeerVoiceStats(details, null);
       }
       if (state === 'connected' || state === 'completed') {
-        tuneAudioSenders(peer);
         if (peer.iceRestartTimer) { clearTimeout(peer.iceRestartTimer); peer.iceRestartTimer = null; }
         logSelectedCandidatePair(peer);
       } else if (state === 'disconnected') {
@@ -8053,10 +8111,11 @@
 
     if (isInitiator) {
       setupTransceivers(peer, true);
-      const offer = withStartBitrate(await pc.createOffer());
+      const offer = await setLocalVoiceDescription(peer, 'offer');
       if (!isCurrent()) return peer;
-      await pc.setLocalDescription(offer);
-      Realtime.send('rtc_signal', { to: userId, data: { kind: 'offer', sdp: offer } });
+      Realtime.send('rtc_signal', { to: userId, data: {
+        kind: 'offer', sdp: offer, micRed: peer.micRedCapable && !!micSdpPayloads(offer)?.hasRed,
+      } });
       // se eu já tinha parado de assistir a tela dessa pessoa, avisa de novo na conexão nova
       if (unwatchedScreens.has(userId)) Realtime.send('rtc_signal', { to: userId, data: { kind: 'watch', screen: false } });
     }
@@ -8069,29 +8128,99 @@
   // razoável; daí pra frente o controle de congestionamento ajusta normalmente, pra cima ou pra baixo.
   const VIDEO_START_BITRATE_KBPS = 2500;
 
-  // ---------- qualidade do áudio (Opus) ----------
-  // Sem isso o WebRTC usa o Opus no padrão: ~32 kbps, MONO, pensado pra telefone. O Discord manda a
-  // voz a 64–96 kbps e o som da tela em estéreo com bitrate alto. Aqui: voz 96 kbps com correção de
-  // perda de pacote (FEC), som da tela 192 kbps ESTÉREO. Os parâmetros vão no SDP que CADA lado
-  // manda ("é assim que eu quero receber") — o outro lado codifica seguindo isso.
-  const OPUS_PARAMS = {
-    mic: { maxaveragebitrate: 96000, maxplaybackrate: 48000, stereo: 0, 'sprop-stereo': 0, useinbandfec: 1, usedtx: 0, cbr: 0 },
-    screen: { maxaveragebitrate: 192000, maxplaybackrate: 48000, stereo: 1, 'sprop-stereo': 1, useinbandfec: 1, usedtx: 0, cbr: 0 },
-  };
+  // ---------- qualidade do áudio (Opus / RED) ----------
+  const RED_MIC_BITRATE = 64000;
   const AUDIO_MAX_BITRATE = { mic: 96000, screen: 192000 };
+  const OPUS_PARAMS = {
+    mic: { maxaveragebitrate: AUDIO_MAX_BITRATE.mic, maxplaybackrate: 48000, stereo: 0, 'sprop-stereo': 0, useinbandfec: 1, usedtx: 0, cbr: 0 },
+    screen: { maxaveragebitrate: AUDIO_MAX_BITRATE.screen, maxplaybackrate: 48000, stereo: 1, 'sprop-stereo': 1, useinbandfec: 1, usedtx: 0, cbr: 0 },
+  };
 
-  function audioEncoding(kind) {
-    // prioridade alta: com a banda apertada (tela 1080p60 junto), o áudio é o último a perder qualidade
-    return { maxBitrate: AUDIO_MAX_BITRATE[kind], priority: 'high', networkPriority: 'high' };
+  function audioEncoding(kind, micRed = false) {
+    // Prioridade alta: com a banda apertada, o áudio é o último a perder qualidade.
+    const maxBitrate = kind === 'mic' && micRed ? RED_MIC_BITRATE : AUDIO_MAX_BITRATE[kind];
+    return { maxBitrate, priority: 'high', networkPriority: 'high' };
+  }
+
+  function getMicRedPreferences(preferRed) {
+    const codecs = RTCRtpReceiver.getCapabilities?.('audio')?.codecs || [];
+    const opus = codecs.find((codec) => codec.mimeType.toLowerCase() === 'audio/opus' && codec.clockRate === 48000);
+    const red = codecs.find((codec) => codec.mimeType.toLowerCase() === 'audio/red' &&
+      codec.clockRate === 48000 && codec.channels === opus?.channels);
+    if (!opus || !red) return null;
+    const first = preferRed ? [red, opus] : [opus, red];
+    return first.concat(codecs.filter((codec) => codec !== red && codec !== opus));
+  }
+
+  function setMicRedPreferences(transceiver, preferRed) {
+    if (!transceiver?.setCodecPreferences) return false;
+    try {
+      const codecs = getMicRedPreferences(preferRed);
+      if (!codecs) return false;
+      transceiver.setCodecPreferences(codecs);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function audioSdpPayloads(section) {
+    const lines = section.split('\r\n');
+    const payloads = lines[0].trim().split(/ +/).slice(3);
+    const formats = new Map();
+    for (const line of lines) {
+      const match = /^a=rtpmap:(\d+) (opus|red)\/48000(?:\/|$)/i.exec(line);
+      if (match) formats.set(match[2].toLowerCase(), match[1]);
+    }
+    const opus = formats.get('opus');
+    const red = formats.get('red');
+    const wrapped = lines.find((line) => line.startsWith(`a=fmtp:${red} `))?.slice(`a=fmtp:${red} `.length).trim().split('/');
+    const redIndex = payloads.indexOf(red);
+    const opusIndex = payloads.indexOf(opus);
+    const hasRed = redIndex >= 0 && opusIndex >= 0 && wrapped?.length >= 2 && wrapped.every((id) => id === opus);
+    return { opus, red, hasRed, prefersRed: hasRed && redIndex < opusIndex };
+  }
+
+  function micSdpPayloads(description) {
+    const mic = description?.sdp?.split(/(?=^m=)/m).find((section) => section.startsWith('m=audio '));
+    return mic ? audioSdpPayloads(mic) : null;
+  }
+
+  function descriptionPrefersMicRed(description) {
+    return !!micSdpPayloads(description)?.prefersRed;
+  }
+
+  function acceptMicRedOffer(description, offered) {
+    if (!offered || !window.RTCRtpTransceiver?.prototype.setCodecPreferences) return description;
+    const mic = micSdpPayloads(description);
+    if (!mic?.hasRed || mic.prefersRed) return description;
+    try {
+      if (!getMicRedPreferences(true)) return description;
+    } catch (_) {
+      return description;
+    }
+    // Oferece Opus primeiro para clientes antigos. Quando os dois lados anunciam
+    // suporte, prioriza o RED já oferecido para que o libwebrtc o use no envio.
+    const sdp = description.sdp.replace(/^m=audio [^\r\n]+/m, (line) => {
+      const fields = line.trim().split(/ +/);
+      const payloads = fields.slice(3).filter((pt) => pt !== mic.red);
+      payloads.splice(payloads.indexOf(mic.opus), 0, mic.red);
+      return fields.slice(0, 3).concat(payloads).join(' ');
+    });
+    return { type: description.type, sdp };
   }
 
   async function tuneAudioSenders(peer) {
+    // O outro lado pode remover RED da resposta. Confere a negociação antes de baixar a taxa.
+    const local = micSdpPayloads(peer.pc.localDescription);
+    peer.micRed = !!local?.hasRed && descriptionPrefersMicRed(peer.pc.remoteDescription) &&
+      (peer.isInitiator || local.prefersRed);
     for (const [kind, tr] of [['mic', peer.mic], ['screen', peer.screenAudio]]) {
-      if (!tr || !tr.sender) continue;
+      if (!tr?.sender) continue;
       try {
         const params = tr.sender.getParameters();
         if (!params.encodings || !params.encodings.length) params.encodings = [{}];
-        Object.assign(params.encodings[0], audioEncoding(kind));
+        Object.assign(params.encodings[0], audioEncoding(kind, peer.micRed));
         await tr.sender.setParameters(params);
       } catch (err) {
         console.warn('[call] não consegui ajustar o áudio enviado (' + kind + '):', err && err.message);
@@ -8099,50 +8228,91 @@
     }
   }
 
-  // 1ª seção de áudio do SDP = microfone, 2ª = som da tela (mesma ordem dos transceivers)
-  function tuneOpusSdp(sdp) {
-    const lines = sdp.split('\r\n');
-    let audioIndex = -1;
-    let section = null; // { kind, opusPt, fmtpAt, rtpmapAt }
-    const sections = [];
-    lines.forEach((line, i) => {
-      if (line.startsWith('m=')) {
-        section = null;
-        if (line.startsWith('m=audio')) {
-          audioIndex++;
-          section = { kind: audioIndex === 0 ? 'mic' : audioIndex === 1 ? 'screen' : null, opusPt: null, fmtpAt: -1, rtpmapAt: -1 };
-          sections.push(section);
-        }
-        return;
-      }
-      if (!section) return;
-      const rm = /^a=rtpmap:(\d+) opus\/48000/i.exec(line);
-      if (rm) { section.opusPt = rm[1]; section.rtpmapAt = i; }
-      if (section.opusPt && line.startsWith(`a=fmtp:${section.opusPt} `)) section.fmtpAt = i;
-    });
-    const inserts = [];
-    for (const sec of sections) {
-      if (!sec.kind || !sec.opusPt) continue;
-      const wanted = OPUS_PARAMS[sec.kind];
-      const current = {};
-      if (sec.fmtpAt >= 0) {
-        for (const kv of lines[sec.fmtpAt].slice(`a=fmtp:${sec.opusPt} `.length).split(';')) {
-          const [k, v] = kv.split('=');
-          if (k && k.trim()) current[k.trim()] = v === undefined ? '' : v.trim();
-        }
-      }
-      Object.assign(current, wanted);
-      const fmtp = `a=fmtp:${sec.opusPt} ` + Object.entries(current).map(([k, v]) => (v === '' ? k : `${k}=${v}`)).join(';');
-      if (sec.fmtpAt >= 0) lines[sec.fmtpAt] = fmtp;
-      else inserts.push([sec.rtpmapAt, fmtp]);
+  function separateMicPayloadTypes(sections) {
+    const micIndex = sections.findIndex((section) => section.startsWith('m=audio '));
+    const screen = sections.slice(micIndex + 1).find((section) => section.startsWith('m=audio '));
+    if (micIndex < 0 || !screen) return;
+    const mic = audioSdpPayloads(sections[micIndex]);
+    const screenAudio = audioSdpPayloads(screen);
+    if (!mic.opus || !screenAudio.opus) return;
+    const used = new Set(sections.filter((section) => section.startsWith('m='))
+      .flatMap((section) => section.split('\r\n', 1)[0].trim().split(/ +/).slice(3)));
+    const available = Array.from({ length: 32 }, (_, i) => String(i + 96)).filter((pt) => !used.has(pt));
+    const remap = new Map();
+    if (mic.opus === screenAudio.opus) remap.set(mic.opus, available.shift());
+    if (mic.red && (mic.red === screenAudio.red || mic.red === screenAudio.opus)) remap.set(mic.red, available.shift());
+    if (!remap.size || [...remap.values()].some((pt) => !pt)) return;
+
+    // O mesmo PT dentro de BUNDLE não pode significar Opus mono no mic e estéreo na tela.
+    // Só ofertas nossas ganham IDs separados; respostas usam os IDs do outro lado.
+    const lines = sections[micIndex].split('\r\n');
+    lines[0] = lines[0].split(/ +/).map((value, i) => i >= 3 ? remap.get(value) || value : value).join(' ');
+    for (let i = 1; i < lines.length; i++) {
+      const match = /^a=(rtpmap|fmtp|rtcp-fb):(\d+) (.*)$/.exec(lines[i]);
+      if (!match) continue;
+      const [, attribute, payload, value] = match;
+      const params = attribute === 'fmtp' && payload === mic.red
+        ? value.split('/').map((pt) => remap.get(pt) || pt).join('/') : value;
+      lines[i] = `a=${attribute}:${remap.get(payload) || payload} ${params}`;
     }
-    for (const [at, fmtp] of inserts.sort((a, b) => b[0] - a[0])) lines.splice(at + 1, 0, fmtp);
-    return lines.join('\r\n');
+    sections[micIndex] = lines.join('\r\n');
   }
 
-  function withStartBitrate(desc) {
+  function tuneOpusSdp(sdp, answer, separateMic) {
+    const sections = sdp.split(/(?=^m=)/m);
+    if (separateMic) separateMicPayloadTypes(sections);
+    let audioIndex = 0;
+    return sections.map((section) => {
+      if (!section.startsWith('m=audio ')) return section;
+      const kind = ['mic', 'screen'][audioIndex++];
+      if (!kind) return section;
+      const { opus, prefersRed } = audioSdpPayloads(section);
+      if (!opus) return section;
+      const lines = section.split('\r\n');
+      const rtpmapAt = lines.findIndex((line) => line.startsWith(`a=rtpmap:${opus} `));
+      const prefix = `a=fmtp:${opus} `;
+      const fmtpAt = lines.findIndex((line) => line.startsWith(prefix));
+      const params = new Map();
+      if (fmtpAt >= 0) {
+        for (const pair of lines[fmtpAt].slice(prefix.length).split(';')) {
+          const [name, value = ''] = pair.split('=');
+          if (name.trim()) params.set(name.trim(), value.trim());
+        }
+      }
+      for (const [name, value] of Object.entries(OPUS_PARAMS[kind])) params.set(name, value);
+      // Na oferta mantém 96 kb/s até o outro lado aceitar RED. O teto de envio
+      // de quem responde também é ajustado depois da negociação (tuneAudioSenders).
+      if (kind === 'mic' && answer && prefersRed) params.set('maxaveragebitrate', RED_MIC_BITRATE);
+      const fmtp = prefix + [...params].map(([name, value]) => value === '' ? name : `${name}=${value}`).join(';');
+      if (fmtpAt >= 0) lines[fmtpAt] = fmtp;
+      else lines.splice(rtpmapAt + 1, 0, fmtp);
+      return lines.join('\r\n');
+    }).join('');
+  }
+
+  async function setLocalVoiceDescription(peer, type) {
+    const pc = peer.pc;
+    const offer = type === 'offer';
+    const create = () => offer ? pc.createOffer() : pc.createAnswer();
+    try {
+      const desc = withStartBitrate(await create(), offer);
+      await pc.setLocalDescription(desc);
+      return desc;
+    } catch (err) {
+      if (pc.signalingState !== (offer ? 'stable' : 'have-remote-offer')) throw err;
+      // Se a preferência ou o remapeamento não funcionar nesta implementação, volta
+      // ao SDP compatível que o didiscord usava antes.
+      if (peer.micRedCapable) peer.mic.setCodecPreferences([]);
+      peer.micRedCapable = false;
+      const desc = withStartBitrate(await create());
+      await pc.setLocalDescription(desc);
+      return desc;
+    }
+  }
+
+  function withStartBitrate(desc, separateMic = false) {
     if (!desc || !desc.sdp) return desc;
-    desc = { type: desc.type, sdp: tuneOpusSdp(desc.sdp) };
+    desc = { type: desc.type, sdp: tuneOpusSdp(desc.sdp, desc.type === 'answer', separateMic) };
     const lines = desc.sdp.split('\r\n');
     const videoPts = new Set();
     let inVideo = false;
@@ -8188,18 +8358,22 @@
 
     if (data.kind === 'offer') {
       const peer = await createPeer(from, false);
-      await peer.pc.setRemoteDescription(new RTCSessionDescription(withStartBitrate(data.sdp)));
+      const offer = acceptMicRedOffer(data.sdp, data.micRed === true);
+      await peer.pc.setRemoteDescription(new RTCSessionDescription(withStartBitrate(offer)));
       if (peers.get(from) !== peer) return;
       setupTransceivers(peer, false);
       await flushPendingIceCandidates(peer);
-      const answer = withStartBitrate(await peer.pc.createAnswer());
-      await peer.pc.setLocalDescription(answer);
+      const answer = await setLocalVoiceDescription(peer, 'answer');
+      if (peers.get(from) !== peer) return;
       Realtime.send('rtc_signal', { to: from, data: { kind: 'answer', sdp: answer } });
+      tuneAudioSenders(peer);
       if (unwatchedScreens.has(from)) Realtime.send('rtc_signal', { to: from, data: { kind: 'watch', screen: false } });
     } else if (data.kind === 'answer') {
       const peer = peers.get(from);
       if (!peer || peer.pc.signalingState !== 'have-local-offer') return;
       await peer.pc.setRemoteDescription(new RTCSessionDescription(withStartBitrate(data.sdp)));
+      if (peers.get(from) !== peer) return;
+      tuneAudioSenders(peer);
       await flushPendingIceCandidates(peer);
     } else if (data.kind === 'candidate') {
       const peer = peers.get(from);
