@@ -1,199 +1,246 @@
 # didiscord
 
-Um clone minimalista do Discord, feito pra **um servidor privado de exatamente 2 pessoas**. Sem contas ilimitadas, sem múltiplos servidores, sem frescura — só chat de texto, chamada de voz/vídeo com WebRTC (incluindo áudio da tela compartilhada, com volume 0–200% ajustável por botão direito), e as customizações de perfil que dão a cara de Discord (avatar, banner, cor de destaque, bio, gifs via GIPHY).
+Um Discord próprio, feito pra mim e pros meus amigos. Tem servidores com convite, canais de texto e voz, DMs, cargos, chamadas de voz/vídeo, compartilhamento de tela pela placa de vídeo, bot de música e um app desktop. Tudo roda num PC de casa, com banco SQLite e um front-end em JavaScript puro (sem framework, sem build).
 
-Feito pra rodar em casa/VPS pequena, com banco SQLite local e front-end vanilla (sem framework, sem build step).
+O site fica em **https://didiscord.veneno.space**, por um túnel do Cloudflare. O repositório é privado: [`veeneno/didiscord`](https://github.com/veeneno/didiscord).
 
-> **Compartilhamento de tela no app desktop:** codifica UMA vez na placa de vídeo e manda o mesmo vídeo pra cada pessoa (auxiliar `electron/native/screencast`, em Go/Pion).
-> - **X11 / Windows:** ffmpeg captura e codifica (NVENC → VA-API/QSV/AMF → x264).
-> - **Wayland (Hyprland, GNOME, KDE):** o auxiliar abre o portal do sistema (`org.freedesktop.portal.ScreenCast`), recebe o fd do PipeWire e o GStreamer captura e codifica (`nvh264enc` → `vah264lpenc`/`vah264enc` → `x264enc`). Precisa de `gst-plugin-pipewire` + `gst-plugins-bad` (NVENC/VA-API) e, sem placa, `gst-plugins-ugly` (x264). O som é escolhido antes, no seletor do didiscord (PipeWire), porque o Wayland não diz de qual app é a janela escolhida.
-> - Sem nada disso, cai pro `getDisplayMedia` do Chromium (codifica no processador, uma vez por pessoa).
-> - Medido (RTX 3060, Hyprland): 1080p60 ≈ 8% de um núcleo; 720p60 reduzido pelo OpenGL na placa, 60 fps.
+## O que tem
 
-## Stack
+**Contas e perfil**
+- Cadastro aberto e login. Conta nova não vê nada até entrar num servidor por convite.
+- Perfil com avatar e banner (podem ser gif), cor de destaque (sólida ou degradê), bio e status.
+- Troca de senha. Senha redefinida ou conta suspensa derruba todas as sessões abertas.
 
-- **Backend**: Node.js + Express (CommonJS, sem TypeScript)
-- **Banco**: SQLite via `better-sqlite3` (arquivo único, `server/db/didiscord.db`)
-- **Tempo real**: WebSocket puro (`ws`) — chat ao vivo, presença online/offline, sinalização WebRTC
-- **Chamadas de voz/vídeo**: WebRTC (peer-to-peer), com STUN/TURN via [Metered](https://www.metered.ca/) (opcional) + fallback público (Google STUN + Open Relay Project)
-- **Auth**: sessão via cookie (`cookie-session`), senha com `bcrypt`
-- **Uploads**: `multer` (avatares, banners, ícone do servidor, anexos de mensagem — imagem/vídeo/gif)
-- **Front-end**: HTML/CSS/JS puro, sem framework nem bundler — servido estático direto de `public/`
-- **App desktop**: [Electron](https://www.electronjs.org/) — janela nativa (Chromium completo) carregando o site hospedado
+**Servidores**
+- Criar servidor, trocar nome e ícone, apagar, sair.
+- Convites por link (`https://didiscord.veneno.space/invite/CODIGO`), com limite de usos e validade.
+- Cargos: administrador, cargo "mostrado separado" na lista de membros, e canais restritos a alguns cargos (só ver, ou ver e entrar na call).
+- Moderação: expulsar membro, apagar mensagem de qualquer um, desconectar ou mover alguém de call.
+
+**Chat**
+- Canais de texto e DMs (só entre quem divide algum servidor).
+- Enviar, editar, apagar e responder mensagens. Histórico carregado em páginas ao rolar pra cima.
+- Anexos de qualquer tipo até 2 GB: imagem e vídeo com prévia, o resto vira um botão de download.
+- GIFs e stickers do GIPHY. Links viram clicáveis.
+- Marcação de canais com mensagem nova (por enquanto só na memória do navegador: some ao recarregar).
+
+**Calls (voz, câmera e tela)**
+- WebRTC direto entre as pessoas (malha: cada um tem uma conexão com cada outro).
+- Mutar, ensurdecer e volume de cada pessoa de 0 a 200% (botão direito na pessoa).
+- Áudio em qualidade alta: voz em Opus 96 kbps com correção de perda, som da tela em 192 kbps estéreo.
+- Supressão de ruído: avançada (DeepFilterNet3, parecida com a Krisp), leve (RNNoise) ou nenhuma.
+- Processamento da voz: caixa de som (cancela eco), fone de ouvido (voz mais natural) ou estúdio (nada).
+- Ganho do microfone, sensibilidade (corta o mic abaixo de um volume) e "ouvir a si mesmo".
+- Compartilhamento de tela com som, com volume próprio, e opção de "parar de assistir" a tela de alguém.
+
+**Bot de música** (um por servidor, toca na call de quem pediu)
+
+| Comando | O que faz |
+|---|---|
+| `/play <link ou nome>` | toca link do YouTube, música/playlist/álbum do Spotify, ou busca pelo nome |
+| `/search <nome>` | mostra os 5 primeiros resultados; depois `/play <número>` escolhe |
+| `/skip`, `/skipto <n>` | pula a música, ou vai direto pra posição `n` da fila |
+| `/pause`, `/stop` | pausa/continua, ou para e limpa tudo |
+| `/shuffle`, `/volume <0–100>` | embaralha a fila, ou muda o volume |
+| `/queue`, `/queue clear` | mostra a fila, ou limpa |
+
+O áudio sempre vem do YouTube (a API do Spotify só dá o nome, o artista e a capa). Ele é mandado como um "rádio" em mp3 pra cada pessoa da call.
+
+**Painel de admin do site** (só a conta marcada como admin)
+- Números gerais (usuários, mensagens, quem está em call, memória, espaço em disco).
+- Usuários: suspender, reativar, gerar senha temporária.
+- Servidores: ver e apagar.
+- Aviso geral que aparece pra todo mundo conectado.
+
+**App desktop** (Electron, Linux e Windows): abre direto no site, pede permissão de mic/câmera/tela sozinho e compartilha a tela pela placa de vídeo. Detalhes mais abaixo.
 
 ## Como rodar
 
+Precisa do **Node 22 ou mais novo** e do **ffmpeg** (pro bot de música). O `yt-dlp` é baixado e atualizado sozinho na primeira vez.
+
 ```bash
 npm install
-npm start        # produção
-npm run dev       # com --watch (reinicia sozinho ao salvar)
+npm start          # servidor + túnel do Cloudflare (didiscord.veneno.space)
+npm run start:local  # só o servidor, em http://localhost:3000
+npm run dev          # só o servidor, reiniciando sozinho a cada arquivo salvo
 ```
 
-O servidor sobe em `http://localhost:3000` (ou na porta da env `PORT`). O banco SQLite é criado automaticamente na primeira execução (`server/db/didiscord.db`), aplicando `server/db/schema.sql` e as migrações leves em `server/db/index.js`.
+O banco SQLite é criado sozinho na primeira vez (`server/db/didiscord.db`), a partir de `server/db/schema.sql` e das migrações leves em `server/db/index.js`.
 
-Em produção, `npm start` sobe o servidor **e** o túnel nomeado do Cloudflare: o site fica em **https://didiscord.veneno.space** (endereço fixo, o app desktop já abre nele). Configurado no `.env` (`CLOUDFLARE_TUNNEL_MODE=nomeado`, `CLOUDFLARE_TUNNEL_NAME=didiscord-veneno`, `CLOUDFLARE_TUNNEL_HOSTNAME`), com as credenciais em `~/.cloudflared`. Pra montar em outro PC: `cloudflared tunnel login`, e copiar `~/.cloudflared/<id>.json` ou criar outro túnel com `cloudflared tunnel create` + `cloudflared tunnel route dns <nome> didiscord.veneno.space`. Sem `CLOUDFLARE_TUNNEL_MODE`, volta pro túnel rápido (endereço aleatório `*.trycloudflare.com`, muda a cada reinício).
+`bcrypt` e `better-sqlite3` são compilados na instalação. O npm novo bloqueia isso por padrão: os dois já estão liberados em `allowScripts` no `package.json`. Se trocar a versão do Node e o servidor reclamar de `NODE_MODULE_VERSION`, roda `npm rebuild bcrypt better-sqlite3`.
 
-### Variáveis de ambiente (`.env`, não commitado)
+### Túnel do Cloudflare
 
-Todas são **opcionais** — sem elas, a feature correspondente simplesmente cai num modo mais simples:
+O `npm start` sobe o servidor e o `cloudflared` juntos. Com o `.env` configurado pro túnel nomeado, o site fica no endereço fixo e o terminal mostra `túnel no ar: https://didiscord.veneno.space` quando conecta. O site só fica no ar enquanto esse terminal estiver aberto.
 
-| Variável | Pra quê serve | Sem ela |
+As credenciais do túnel ficam em `~/.cloudflared` (fora do projeto). Pra montar em outro PC:
+
+```bash
+cloudflared tunnel login
+# ou copia ~/.cloudflared/<id>.json deste PC, ou cria outro túnel:
+cloudflared tunnel create didiscord-veneno
+cloudflared tunnel route dns didiscord-veneno didiscord.veneno.space
+```
+
+Nunca rode o servidor em dois PCs com o mesmo túnel ao mesmo tempo: o Cloudflare divide as visitas entre os dois, cada um com o próprio banco.
+
+Sem `CLOUDFLARE_TUNNEL_MODE` no `.env`, ele volta pro túnel rápido: um endereço aleatório `*.trycloudflare.com`, que muda a cada reinício.
+
+Alternativa sem Cloudflare: `deploy/setup-vm.sh` prepara uma VM Ubuntu com Node, ffmpeg, systemd e Caddy (HTTPS automático).
+
+### Variáveis de ambiente (`.env`, fora do git)
+
+Todas são opcionais: sem uma delas, a função correspondente cai num modo mais simples ou fica desligada.
+
+| Variável | Pra quê | Sem ela |
 |---|---|---|
-| `PORT` | porta do servidor | usa `3000` |
-| `SESSION_SECRET` | assina o cookie de sessão | usa um valor padrão inseguro — **troque antes de expor o site na internet** |
-| `METERED_DOMAIN` / `METERED_SECRET_KEY` | credenciais TURN do [Metered](https://www.metered.ca/) pra chamadas atravessarem NAT/redes diferentes | cai pro fallback público (Google STUN + Open Relay Project TURN) |
-| `GIPHY_API_KEY` | busca de gifs/stickers no chat | a busca de GIPHY fica desabilitada (erro 503 nessa rota) |
-
-## Conceito do produto (o que é "fixo" de propósito)
-
-Isso não é um Discord genérico — é um app com regras hardcoded pra um caso de uso específico:
-
-- **Máximo de 2 usuários** (`MAX_USERS` em `server/routes/auth.js`). Depois disso, `/api/auth/register` recusa novas contas.
-- **Um único "servidor"** (não existe lista de servidores/guilds). `server_settings` no banco é sempre a linha `id = 1`.
-- **Canais são só texto ou voz**, sem categorias, sem permissões por cargo — os dois usuários podem tudo (criar/apagar canal, apagar mensagem de qualquer um, trocar ícone/nome do servidor).
-- **Bots são um registro estático vazio** (`server/routes/bots.js`, array `BOTS = []`). A ideia é que, se algum dia quiser um bot, é só empurrar um objeto nesse array — a estrutura de exibição (mensagens com `bot_name` em vez de `user_id`) já existe no schema.
-
-Se algum humano ou IA for expandir isso pra suportar mais gente, esses são os pontos que precisam mudar primeiro.
+| `PORT` | porta do servidor | `3000` |
+| `SESSION_SECRET` | assina o cookie de login | usa uma chave padrão que está no código |
+| `SITE_ADMINS` | conta(s) marcada(s) como admin do site no primeiro boot (separadas por vírgula) | `veneno` |
+| `METERED_DOMAIN`, `METERED_SECRET_KEY` | servidor TURN do [Metered](https://www.metered.ca/), pra calls entre redes difíceis (4G, NAT) | STUN do Google + TURN público |
+| `GIPHY_API_KEY` | busca de GIFs e stickers | busca de GIF desligada |
+| `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | links do Spotify no `/play` | só YouTube e busca por nome |
+| `CLOUDFLARE_TUNNEL_MODE` | `nomeado` = túnel com endereço fixo | túnel rápido (endereço aleatório) |
+| `CLOUDFLARE_TUNNEL_NAME` / `CLOUDFLARE_TUNNEL_TOKEN` | qual túnel nomeado usar (pelo nome em `~/.cloudflared`, ou por token do painel) | — |
+| `CLOUDFLARE_TUNNEL_HOSTNAME` | endereço mostrado no terminal quando o túnel sobe | não mostra |
+| `YTDLP_PATH`, `FFMPEG_PATH` | usar um `yt-dlp`/`ffmpeg` específico | `yt-dlp` baixado pelo bot e `ffmpeg` do sistema |
 
 ## Estrutura do projeto
 
 ```
 didiscord/
 ├── server/
-│   ├── index.js          # bootstrap: express, sessão, monta rotas, sobe HTTP+WS
-│   ├── config.js          # lê chaves externas (Metered, GIPHY) do .env
-│   ├── realtime.js        # servidor WebSocket: chat ao vivo, presença, sinalização WebRTC
-│   ├── upload.js           # configuração do multer (avatar/banner/ícone/anexos)
-│   ├── wsTickets.js        # tickets de curta duração pra autenticar o handshake do WS
-│   ├── middleware/auth.js  # requireAuth — exige sessão válida, popula req.user
-│   ├── db/
-│   │   ├── index.js         # abre o SQLite, aplica schema.sql + migrações leves
-│   │   ├── schema.sql        # definição das tabelas
-│   │   └── didiscord.db      # arquivo do banco (gerado, não commitado)
-│   ├── bots/                # (vazio por enquanto — ver seção "bots" acima)
+│   ├── index.js            # liga o Express, a sessão, as rotas, o HTTP e o WebSocket
+│   ├── config.js           # chaves de serviços externos lidas do .env
+│   ├── access.js           # TODAS as regras de "quem pode ver/fazer o quê" (servidor, canal, DM, cargos)
+│   ├── realtime.js         # WebSocket: chat ao vivo, presença, estado de voz, sinalização WebRTC
+│   ├── upload.js           # multer: avatar, banner, ícone, anexos
+│   ├── wsTickets.js        # ticket de uso único pra autenticar o WebSocket
+│   ├── middleware/auth.js  # requireAuth: exige login (e derruba conta suspensa / sessão antiga)
+│   ├── db/                 # schema.sql, migrações (index.js), consultas de mensagem
+│   ├── bots/musicBot/      # bot de música: comandos, fila, yt-dlp → ffmpeg → mp3, Spotify
 │   └── routes/
-│       ├── auth.js          # registro / login / logout / me
-│       ├── channels.js      # listar / criar / apagar canais
-│       ├── messages.js      # histórico, enviar texto/anexo/gif, apagar mensagem
-│       ├── members.js       # lista os 2 membros do servidor + status online
-│       ├── profile.js       # editar perfil (nome, cor, bio), trocar senha, avatar/banner
-│       ├── server.js        # nome e ícone do "servidor" (sidebar)
-│       ├── bots.js          # lista de bots (estática, vazia)
-│       ├── rtc.js           # devolve ICE servers (STUN/TURN) pro WebRTC
-│       ├── giphy.js         # proxy autenticado pra API do GIPHY (a key nunca vai pro client)
-│       └── ws.js            # emite o ticket usado pra abrir a conexão WebSocket
+│       ├── auth.js         # cadastro, login, logout, /me
+│       ├── servers.js      # servidores, membros, canais, convites, cargos, moderação de voz
+│       ├── channels.js     # editar/apagar canal, quem está em qual call
+│       ├── messages.js     # histórico, enviar (texto, anexo, gif), editar, apagar
+│       ├── dms.js          # conversas diretas
+│       ├── invites.js      # prévia e aceite de convite
+│       ├── users.js        # perfil de outra pessoa, contatos
+│       ├── profile.js      # editar o próprio perfil, senha, avatar, banner
+│       ├── admin.js        # painel de admin do site
+│       ├── musicbot.js     # stream de áudio e estado do bot
+│       ├── rtc.js          # servidores STUN/TURN pro WebRTC
+│       ├── giphy.js        # proxy do GIPHY (a chave nunca vai pro navegador)
+│       ├── ws.js           # emite o ticket do WebSocket
+│       ├── bots.js         # lista de bots (estática)
+│       └── server.js, members.js  # restos do modelo antigo de um servidor só (não estão ligados)
 ├── public/
-│   ├── login.html / app.html
-│   ├── css/                 # um arquivo por área (chat, members, profile, settings, voice, tema)
-│   ├── js/
-│   │   ├── auth.js           # lógica da tela de login/registro
-│   │   ├── app.js            # SPA principal: chat, canais, perfil, chamadas WebRTC
-│   │   └── realtime.js        # cliente WebSocket (reconexão, dispatch de eventos)
-│   ├── vendor/               # libs de terceiros servidas localmente
-│   └── uploads/              # avatares/banners/ícones/anexos enviados (gitignored, exceto .gitkeep)
-├── electron/                  # app desktop (Electron) — ver seção abaixo
-│   ├── package.json           # projeto Electron auto-contido (não mistura deps com o servidor)
-│   ├── main.js                 # janela principal, guarda de navegação, permissões de mídia
-│   ├── pickerPreload.js          # ponte de IPC só pra janelinha de escolher tela/janela
-│   ├── loading.html               # casca local: fica testando até o site hospedado responder
-│   ├── picker.html                 # seletor próprio de tela/janela pro compartilhamento
-│   └── icons/icon.png               # ícone do app (256×256)
-├── .env                      # segredos locais (gitignored)
-└── package.json
+│   ├── login.html, app.html
+│   ├── css/                # um arquivo por área
+│   ├── js/app.js           # o site inteiro: chat, servidores, perfil, calls, tela, configurações
+│   ├── js/realtime.js      # cliente WebSocket (reconexão, eventos)
+│   ├── js/auth.js          # tela de login/cadastro
+│   ├── vendor/             # DeepFilterNet3 e RNNoise (supressão de ruído, em WebAssembly)
+│   └── uploads/            # arquivos enviados pelo pessoal (fora do git)
+├── electron/               # app desktop (ver abaixo)
+├── scripts/start.js        # npm start: servidor + túnel
+└── deploy/setup-vm.sh      # instalação numa VM Ubuntu (alternativa ao túnel)
 ```
 
-## Modelo de dados (visão rápida)
+## Modelo de dados
 
-- **`users`** — os (no máx. 2) usuários: login, avatar/banner (podem ser gif), cor de destaque (com opção de degradê via `accent_color_2`), bio, status.
-- **`channels`** — canais de texto ou voz, com posição pra ordenação manual.
-- **`messages`** — mensagens de um canal; `user_id` nulo + `bot_name` preenchido significa que foi um bot; suporta anexo (imagem/vídeo/gif) e resposta a outra mensagem (`reply_to_id`).
-- **`server_settings`** — linha única (`id = 1`) com nome e ícone exibidos no topo da sidebar.
-- **`voice_state`** — estado de quem está em call (canal, mudo, surdo, câmera, compartilhamento de tela); persiste no banco pra sobreviver a um restart do servidor, mas quem manda de verdade é o estado em memória de `realtime.js` enquanto o processo está de pé.
+- **`users`**: contas. Perfil, `is_site_admin`, suspensão (`banned_at`) e `session_version` (sobe quando a senha é redefinida, pra derrubar sessões antigas).
+- **`servers`**, **`server_members`**, **`invites`**: servidores, quem está em cada um, e convites (usos, validade).
+- **`channels`**: canais de texto/voz de um servidor. `server_id` nulo = DM, com os 2 participantes em **`dm_members`**.
+- **`messages`**: mensagens, com anexo, resposta (`reply_to_id`), edição, e `embed_json` pras respostas do bot de música.
+- **`roles`**, **`member_roles`**, **`channel_role_access`**: cargos, quem tem cada um, e quais cargos veem/entram em cada canal restrito.
+- **`voice_state`**: quem está em qual call (sobrevive a um reinício; enquanto o servidor está de pé, quem manda é a memória do `realtime.js`).
+- **`server_settings`**: resto do modelo antigo de um servidor só (migrado pra `servers` automaticamente).
 
-## Tempo real: como o chat e as calls funcionam
+## Como o tempo real e as calls funcionam
 
-1. O cliente pede um **ticket** de curta duração (`GET /api/ws/ticket`, exige sessão) e abre o WebSocket em `/ws?ticket=...`. O ticket existe porque o handshake do WS não tem acesso direto ao cookie de sessão da mesma forma que uma request HTTP normal.
-2. Depois de conectado, o servidor faz **broadcast** de tudo pra todo mundo (`channel_created`, `message_created`, `profile_updated`, `presence_online/offline`, etc.) — não tem lógica de "salas"/rooms porque só existe um servidor com 2 pessoas.
-3. **Chamadas de voz/vídeo** são WebRTC peer-to-peer de verdade: o WebSocket só relaia sinalização (`voice_join`, `rtc_signal` com offer/answer/ICE candidates). Toda a lógica de `RTCPeerConnection` mora no front-end (`public/js/app.js`). O backend só entrega a lista de ICE servers (`GET /api/rtc/ice-servers`).
-   - A conexão usa **4 transceivers fixos**, sempre nessa ordem (`setupTransceivers` em `app.js`): `0` mic (áudio), `1` câmera (vídeo), `2` tela (vídeo), `3` áudio da tela compartilhada. O lado que recebe (`ontrack`) identifica cada faixa pela **posição** do transceiver, não por metadado — então os dois usuários precisam estar rodando a mesma versão do `app.js` numa call, senão a indexação desalinha.
-   - O áudio da tela toca separado do áudio do mic (elemento `<audio id="callRemoteScreenAudio">` dedicado), com volume 0–200% próprio por participante (botão direito na tile da tela compartilhada), independente do volume da voz da pessoa.
-4. A credencial TURN do Metered é cacheada em memória por ~50min (`server/routes/rtc.js`) porque o plano free tem cota total de credenciais geradas, não por hora — gerar uma nova a cada entrada em call estourava a cota rápido.
+1. O navegador pede um **ticket** de uso único (`GET /api/ws/ticket`) e abre o WebSocket em `/ws?ticket=...`.
+2. Cada evento (mensagem nova, alguém entrou na call, perfil mudou...) vai só pra quem pode ver aquilo. As regras ficam todas em `server/access.js`.
+3. As calls são **WebRTC direto entre as pessoas**. O servidor só repassa a sinalização (ofertas, respostas, candidatos ICE) entre quem está na mesma call. Voz, câmera e tela não passam por ele.
+   - Cada conexão tem **4 canais fixos, sempre nessa ordem**: 0 microfone, 1 câmera, 2 tela, 3 som da tela. Quem recebe identifica cada faixa pela posição. Por isso todo mundo numa call precisa estar com a mesma versão do `app.js` (recarregar a página resolve).
+   - A qualidade do Opus é definida no SDP que cada lado manda ("é assim que eu quero receber"). Quem estiver com um `app.js` antigo recebe o som na qualidade padrão do WebRTC (32 kbps mono).
+4. A credencial do TURN do Metered fica guardada por ~50 min (`server/routes/rtc.js`), porque o plano grátis tem um limite total de credenciais. O site pede uma nova ao entrar na call, ao começar a compartilhar a tela e ao reconectar.
 
-## Coisas a saber antes de mexer
+## App desktop (Electron)
 
-- **Sem TypeScript, sem framework de front-end, sem bundler.** É JS puro de propósito — mantenha assim a menos que haja um motivo forte pra mudar.
-- **`.env` nunca vai pro git** (está no `.gitignore`). Se adicionar uma chave nova em `config.js`, documente aqui na tabela de variáveis de ambiente.
-- **Uploads e o arquivo `.db` também são gitignored** — o repo só carrega código, não dados de usuário.
-- Praticamente todas as rotas exigem sessão (`requireAuth`) — as únicas exceções são `POST /api/auth/register` e `POST /api/auth/login`.
-- Não existe sistema de permissões/cargos: qualquer um dos 2 usuários pode apagar mensagem/canal do outro, trocar nome/ícone do servidor, etc. Isso é intencional pro caso de uso (servidor de confiança entre 2 pessoas), não um bug.
-- Os comentários no código já estão em português explicando o "porquê" de decisões não óbvias (cache de credencial TURN, tickets de WS, etc.) — vale ler antes de refatorar essas partes.
-
-## App desktop com Electron
-
-O app desktop (Linux e Windows, via [Electron](https://www.electronjs.org/)) **não sobe o servidor Node sozinho** — ele só abre uma janela nativa apontando pro servidor. Na primeira vez, pergunta o endereço (o do túnel, ou um IP tipo `203.0.113.5:3000`) e guarda; se um dia não carregar, oferece trocar. Também dá pra trocar pelo menu **Servidor → Mudar endereço do servidor…** (o menu aparece apertando Alt). O servidor é subido separadamente (na VPS/casa), do jeito de sempre (`npm start`).
-
-> Esse projeto trocou de [Tauri](https://tauri.app/) (Rust + WebKitGTK) pra Electron porque o WebKitGTK no Linux tinha bugs de longa data em `getUserMedia`/Web Audio (mic ficava mudo em certas configurações) e em `getDisplayMedia` (compartilhamento de tela instável via PipeWire). Electron usa o Chromium completo em todas as plataformas — o mesmo motor já validado funcionando no navegador —, o que elimina essa categoria inteira de bug. É também a mesma escolha que o Discord de verdade faz.
-
-### Como funciona a janela
-
-1. A janela abre carregando uma "casca" local embutida no app (`electron/loading.html`) — uma tela de loading simples, sem depender de rede nenhuma pra aparecer.
-2. Se ainda não tem endereço salvo, a casca pergunta. Com endereço, fica testando (`fetch` com backoff, até 10s entre tentativas) se o servidor está no ar.
-3. Assim que responde, a página navega de verdade (`window.location.href`) pro site — daí em diante é o mesmo front-end de sempre (`public/`), só que dentro de uma janela nativa em vez do navegador.
-4. Se o servidor estiver fora do ar, a tela de loading continua tentando e, depois de uns segundos, oferece **mudar endereço** (o do túnel muda quando o servidor reinicia).
-5. Por segurança, a navegação da janela é restrita em `electron/main.js` (`ALLOWED_NAVIGATION_HOSTS`) só ao servidor escolhido (+ localhost em modo dev, via `DIDISCORD_DEV=1`). Servidor por IP é HTTP puro: o app marca só esse endereço como seguro pro Chromium (`--unsafely-treat-insecure-origin-as-secure`), senão mic/câmera/tela ficariam bloqueados — evita que a janela nativa acabe navegando pra um domínio arbitrário. Links/`target=_blank` pra fora do domínio também são bloqueados (`setWindowOpenHandler`).
-
-### Permissões de mic/câmera
-
-Como esse app só roda pros 2 usuários de confiança do didiscord, `session.setPermissionRequestHandler` em `main.js` libera `media`/`audioCapture`/`videoCapture`/`display-capture` direto, sem diálogo de confirmação do sistema.
-
-### Compartilhamento de tela
-
-Electron não mostra um seletor nativo de tela/janela sozinho no Linux (ao contrário do Chrome/Edge de verdade, que têm um picker do sistema). Por isso `main.js` implementa `session.setDisplayMediaRequestHandler`, que:
-
-1. Lista as fontes disponíveis via `desktopCapturer.getSources` (telas inteiras + janelas individuais, com miniatura);
-2. Abre uma janelinha modal própria (`electron/picker.html`, via `pickerPreload.js`) mostrando essas opções;
-3. Devolve a fonte escolhida pro `getDisplayMedia()` que o front-end (`public/js/app.js`) já chama normalmente — nenhuma mudança foi necessária no código de chamada em si, só no lado do Electron que intercepta esse pedido.
-
-**Áudio de sistema durante o compartilhamento ainda é limitado no Linux** — ver próximo tópico.
-
-### Rodando pela primeira vez
+O app **não roda o servidor**: é uma janela do Chromium que abre o site. Saiu do Tauri pro Electron porque o motor do Tauri no Linux (WebKitGTK) tinha bugs de microfone e de compartilhamento de tela.
 
 ```bash
 cd electron
-npm install       # baixa o electron (binário do Chromium, ~300MB) + electron-builder
-npm run dev        # abre a janela em modo dev
+npm install
+npm start          # abre em https://didiscord.veneno.space
+npm run dev        # abre em http://localhost:3000 (servidor local)
+npm run build      # gera AppImage + .deb (Linux) e instalador .exe (Windows) em electron/dist/
 ```
 
-Pra empacotar (gera `.deb`/AppImage no Linux, `.exe` via NSIS no Windows):
+- **Endereço**: já abre em `https://didiscord.veneno.space`. Dá pra trocar pela tela de "conectando…" ou pelo menu **Servidor** (aparece apertando Alt). `DIDISCORD_URL` força um endereço.
+- **Segurança da janela**: só navega pro servidor escolhido; links de fora abrem no navegador do sistema. Mic, câmera e tela são liberados sem perguntar, só pra esse endereço.
+- **Seletor de tela**: no X11/Windows é um seletor próprio com miniaturas (`electron/picker/`). No Wayland quem mostra é o próprio sistema (o seletor do Hyprland, GNOME ou KDE).
+
+### Compartilhamento de tela pela placa de vídeo
+
+Pelo navegador, a tela é codificada no processador uma vez **por pessoa assistindo**: em 1080p60 isso era ~1 núcleo por pessoa, derrubando o fps dos jogos. No app desktop, a tela é codificada **uma vez só, na placa de vídeo**, e o auxiliar `electron/native/screencast` (em Go, com a biblioteca WebRTC Pion) manda o mesmo vídeo pra cada um.
+
+| Sistema | Captura e codificação |
+|---|---|
+| Linux X11, Windows | ffmpeg: NVENC → VA-API/QSV/AMF → x264 (processador), o primeiro que funcionar |
+| Linux Wayland (Hyprland, GNOME, KDE) | o auxiliar abre o portal de captura do sistema, recebe o vídeo pelo PipeWire, e o GStreamer codifica: `nvh264enc` → `vah264lpenc`/`vah264enc` → `x264enc` |
+| macOS, ou sem nada disso instalado | cai pro jeito do navegador |
+
+Medido numa RTX 3060 no Hyprland: 1080p60 a ~8% de um núcleo, e 720p60 com a redução de tamanho feita na própria placa. Um quadro-chave sai a cada 1 s, pra quem entra no meio começar rápido.
+
+No Wayland precisa de `gst-plugin-pipewire` e `gst-plugins-bad` (NVENC/VA-API); sem placa de vídeo compatível, também `gst-plugins-ugly` (x264).
+
+Se a conexão da tela com alguém cair, ela é refeita sozinha, com credencial TURN nova.
+
+### Som da tela
+
+O Electron não sabe capturar o som de um app só, então cada sistema tem um captador próprio, que manda o áudio cru pro site:
+
+- **Linux** (`electron/audio/linux.js`): um `pw-record` desligado de tudo, e o app liga nele (com `pw-link`) só as saídas de som certas.
+  - Compartilhando uma janela: só o som do processo daquela janela.
+  - Compartilhando a tela inteira: todo o som do PC, menos o do próprio didiscord (senão quem assiste ouviria a própria voz de volta).
+  - No Wayland o sistema não diz de qual app é a janela escolhida, então o som é escolhido antes, num seletor do didiscord (tudo, um app específico, ou nada).
+- **Windows** (`electron/native/audiocap.cpp`): WASAPI Process Loopback, com a mesma regra (incluir só o app da janela, ou excluir o didiscord).
+
+### Recompilar os auxiliares
+
+Os executáveis prontos ficam em `electron/native/bin/` (dentro do git, porque sem eles não dá pra gerar o app).
 
 ```bash
-npm run build
+# compartilhamento de tela (Go 1.26+)
+cd electron/native/screencast
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/didiscord-screencast .
+GOOS=windows CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/didiscord-screencast.exe .
+
+# som da tela no Windows (precisa do zig)
+electron/native/build-cross.sh
 ```
 
-O ícone já está em `electron/icons/icon.png` (256×256) — pra melhor qualidade em telas de alta resolução, vale gerar um de 512×512 ou 1024×1024 no lugar antes de um build final.
+## Coisas a saber antes de mexer
 
-### Próximo passo: áudio de sistema no compartilhamento de tela (Linux)
+- **JavaScript puro, sem TypeScript, framework ou bundler**, de propósito.
+- **`server/access.js` decide tudo sobre permissão.** Rota nova ou evento novo de tempo real deve perguntar pra ele, nunca refazer a regra na mão.
+- **`.env`, banco e uploads nunca vão pro git** (ver `.gitignore`). Chave nova no `config.js` deve entrar na tabela de variáveis acima.
+- Os comentários do código estão em português e explicam o porquê das decisões que não são óbvias. Vale ler antes de refatorar.
+- Os arquivos estáticos são servidos sem cache (pra ninguém ficar com `app.js` velho depois de uma mudança), menos `public/vendor/`, que fica em cache por 30 dias.
 
-O vídeo do compartilhamento de tela já funciona (ver seção acima). O que falta é áudio de sistema no Linux — duas limitações que o app desktop ainda precisa resolver:
+## Próximos passos
 
-1. **Captura de áudio de sistema é inconsistente entre SOs.** O parâmetro `audio: 'loopback'` do `setDisplayMediaRequestHandler` (já usado em `main.js` pra Windows/macOS) é suporte *best-effort* do próprio Electron nessas plataformas; no Linux, atualmente `main.js` nem tenta (manda `audio: undefined` de propósito) porque não há suporte confiável via PipeWire/PulseAudio embutido no Chromium do Electron.
-2. **Nenhuma API pronta deixa excluir seletivamente o áudio do próprio app** de uma captura de sistema inteiro. Isso importa porque, se a captura de áudio de sistema pegar também o áudio que o próprio didiscord está tocando (a voz do outro participante da call), quem está assistindo a tela ouve a própria voz duplicada/ecoada — já que ela já chega por ela mesma pelo áudio direto da call.
+Combinados pra fazer agora:
+- Notificações do sistema, menções com `@nome` e não lidas que continuam marcadas depois de recarregar.
+- App desktop que se atualiza sozinho, e uma página pra instalar o app.
+- Reações com emoji e seletor de emoji.
+- "fulano está digitando…".
+- Chat em Markdown (títulos com `#`, negrito, itálico, código, spoiler, citação), prévia de links, busca de mensagens e mensagens fixadas.
 
-**Regra de ouro:** por padrão, o compartilhamento de tela nunca deve carregar o áudio que o próprio didiscord está reproduzindo (a chamada em si), pra não duplicar a voz de quem está assistindo. A exceção é quando a pessoa compartilha deliberadamente a janela/aba do próprio didiscord (ex: pra mostrar o app funcionando) — nesse caso faz sentido incluir o áudio real.
-
-**Arquitetura planejada pro Linux:**
-
-- Sem exclusão direta por processo (ao contrário do WASAPI Process Loopback do Windows), mas dá pra resolver por **roteamento no PipeWire**: criar um sink nulo dedicado (`pw-loopback`) e mover especificamente o stream de saída do didiscord (áudio da call) pra esse sink separado, deixando o monitor do sink padrão do sistema (capturado como "áudio da tela/jogos") livre do áudio do próprio app.
-- Diferente do scaffold antigo em Tauri (que precisaria disso em Rust via `webkit2gtk`/FFI), em Electron isso fica bem mais direto: `main.js` roda em Node.js puro, então o roteamento pode ser feito chamando `pw-loopback`/`pactl` via `child_process.spawn` direto no processo principal — sem precisar de nenhuma binding nativa.
-- Isso vira um **handler IPC** exposto via `contextBridge` num `preload.js` da janela principal (hoje ainda não existe; a janela principal roda sem preload porque não precisa de nenhuma ponte ainda). O front-end (`public/js/app.js`, que roda no servidor remoto) chamaria esse handler pra saber qual `deviceId` de áudio usar no `getUserMedia`, reaproveitando os mesmos transceivers WebRTC que já existem (ver seção "Tempo real" acima) — sem precisar reimplementar WebRTC em Node.
-- Como o front-end que vai chamar esse IPC roda no domínio remoto (não a casca local), e o `preload.js` da janela principal ainda não expõe nada via `contextBridge`, essa ponte precisa ser criada quando essa feature for implementada.
-
-Se você (humano ou IA) estiver continuando esse trabalho, comece perguntando qual pedaço focar: o protótipo do roteamento PipeWire em si (script/comando standalone antes de virar handler IPC), ou já direto o handler + preload + a mudança em `app.js` pra consumir o device filtrado.
-
-## Ideias de próximos passos (se for expandir)
-
-- Suportar mais de 2 usuários (mexer em `MAX_USERS`, e provavelmente introduzir permissões por cargo).
-- Bots de verdade: o array `BOTS` em `server/routes/bots.js` e a coluna `bot_name` em `messages` já preveem esse caso, falta implementar o envio de mensagens por um bot.
-- Categorias de canais, se a lista crescer além de uns poucos.
-- Notificações (push/desktop) — hoje tudo depende da aba estar aberta e conectada ao WebSocket.
-- App desktop pra Windows (áudio de sistema via `audio: 'loopback'` do Electron, já tentado automaticamente em `main.js` — falta testar de verdade numa máquina Windows).
+Pra depois:
+- Status "jogando X" automático.
+- Soundboard na call.
+- Um servidor de mídia (SFU) se o grupo passar de umas 6 pessoas por call: hoje cada um envia o próprio vídeo separado pra cada outro, e a internet de quem envia não aguenta muito mais que isso.
