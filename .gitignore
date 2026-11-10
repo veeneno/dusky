@@ -9,6 +9,7 @@ public/uploads/avatars/*
 public/uploads/banners/*
 public/uploads/attachments/*
 public/uploads/server/*
+public/uploads/themes/*
 !public/uploads/*/.gitkeep
 
 # gerados ao rodar

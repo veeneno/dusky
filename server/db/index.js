@@ -45,6 +45,8 @@ ensureColumn('users', 'banned_at', 'TEXT');          // conta suspensa (null = n
 ensureColumn('users', 'ban_reason', 'TEXT');
 // sobe quando a senha é redefinida/a conta é suspensa: sessões antigas (cookie com versão menor) caem
 ensureColumn('users', 'session_version', 'INTEGER NOT NULL DEFAULT 0');
+// aparência (tema) de cada pessoa — ver routes/profile.js e public/js/themes.js
+ensureColumn('users', 'theme_json', 'TEXT');
 
 // admin do site: marcado UMA vez, pra conta com o nome em SITE_ADMINS (.env, padrão "veneno"). Fica
 // gravado no banco — trocar de nick não tira o admin, e criar outra conta com o mesmo nome depois

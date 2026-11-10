@@ -6,7 +6,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const realtime = require('../realtime');
 const access = require('../access');
-const { avatarUpload, bannerUpload } = require('../upload');
+const { avatarUpload, bannerUpload, themeBackgroundUpload } = require('../upload');
 
 const router = express.Router();
 const SALT_ROUNDS = 12;
@@ -178,6 +178,40 @@ router.delete('/banner', requireAuth, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   broadcastProfileUpdate(user);
   res.json({ user: publicUser(user) });
+});
+
+// ------------------------------------------------------------------
+// tema (aparência) de cada pessoa — o JSON é montado e validado no site (js/themes.js); aqui só
+// guarda, com limite de tamanho. Vale em todos os aparelhos da pessoa.
+// ------------------------------------------------------------------
+
+const THEME_MAX_BYTES = 400 * 1024;
+
+// GET /api/profile/theme -> { theme, saved }
+router.get('/theme', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT theme_json FROM users WHERE id = ?').get(req.user.id);
+  let data = {};
+  try { data = row && row.theme_json ? JSON.parse(row.theme_json) : {}; } catch (_) { data = {}; }
+  res.json({ theme: data.theme || null, saved: Array.isArray(data.saved) ? data.saved : [] });
+});
+
+// PUT /api/profile/theme { theme, saved }
+router.put('/theme', requireAuth, (req, res) => {
+  const { theme, saved } = req.body || {};
+  if (theme != null && typeof theme !== 'object') return res.status(400).json({ error: 'tema inválido' });
+  const json = JSON.stringify({ theme: theme || null, saved: Array.isArray(saved) ? saved.slice(0, 20) : [] });
+  if (Buffer.byteLength(json) > THEME_MAX_BYTES) return res.status(413).json({ error: 'tema grande demais (o CSS próprio tem limite)' });
+  db.prepare('UPDATE users SET theme_json = ? WHERE id = ?').run(json, req.user.id);
+  res.json({ ok: true });
+});
+
+// POST /api/profile/theme/background — imagem de fundo do tema (png/jpg/webp/gif até 15MB)
+router.post('/theme/background', requireAuth, (req, res) => {
+  themeBackgroundUpload.single('image')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'imagem grande demais (máximo 15MB)' : 'não deu pra enviar essa imagem' });
+    if (!req.file) return res.status(400).json({ error: 'imagem inválida (use png, jpg, webp ou gif)' });
+    res.json({ url: `/uploads/themes/${req.file.filename}` });
+  });
 });
 
 module.exports = router;

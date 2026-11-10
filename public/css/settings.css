@@ -1,162 +1,284 @@
 /* ===================================================================
-   modal de configurações de voz e vídeo
+   configurações (tela cheia, com navegação na lateral) e editor de temas
    =================================================================== */
 
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--bg-solid-chat);
+  animation: settings-in 0.2s var(--ease-out) both;
+}
+html[data-bg-image] .settings-backdrop { background: #000; }
+/* com imagem de fundo, as configurações cobrem o app com o mesmo fundo do tema (senão o chat aparece por trás) */
+html[data-bg-image] .settings-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--bg-image-blur) * -2);
+  z-index: -1;
+  background: var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  filter: blur(var(--bg-image-blur)) brightness(calc(1 - var(--bg-image-dim)));
+  pointer-events: none;
+}
+html[data-bg-image] .settings-backdrop { overflow: hidden; }
+@keyframes settings-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: scale(1); } }
+
 .settings-modal {
-  max-width: 560px;
-  max-height: 88vh;
+  position: relative;
+  height: 100%;
+  display: flex;
+  background: transparent;
+}
+
+/* ---------- navegação ---------- */
+.settings-nav {
+  flex: 1 0 218px;
+  display: flex;
+  justify-content: flex-end;
+  background: var(--bg-sidebar);
   overflow-y: auto;
 }
-
-/* ---------- abas do modal de configurações ---------- */
-.settings-tabs {
-  display: flex;
-  gap: 4px;
-  margin: 4px 0 18px;
-  padding: 3px;
-  background: var(--ink);
-  border-radius: var(--radius-md);
+html[data-bg-image] .settings-nav { -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
+.settings-nav-inner { width: 218px; padding: 60px 6px 60px 20px; display: flex; flex-direction: column; }
+.settings-nav-group {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
 }
-
+.settings-nav-sep { height: 1px; background: var(--border); margin: 8px 10px; }
 .settings-tab {
-  flex: 1;
+  display: block;
+  width: 100%;
+  margin: 1px 0;
+  padding: 6px 10px;
+  min-height: 32px;
+  text-align: left;
   border: none;
+  border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--text-lo);
-  font-weight: 600;
-  font-size: 13px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 500;
+  transition: background 0.1s var(--ease), color 0.1s var(--ease);
 }
-.settings-tab:hover { color: var(--text-hi); }
-.settings-tab.active {
-  background: var(--elevated);
-  color: var(--text-hi);
-}
+.settings-tab:hover { background: var(--bg-hover); color: var(--text-normal); }
+.settings-tab.active { background: var(--bg-selected); color: var(--text-heading); }
+.settings-tab.is-danger { color: var(--danger); }
+.settings-tab.is-danger:hover { background: var(--danger-soft); color: var(--danger); }
 
+/* ---------- conteúdo ---------- */
+.settings-content {
+  flex: 1 1 800px;
+  overflow-y: auto;
+  background: var(--bg-chat);
+}
+html[data-glass] .settings-content { -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)); }
+.settings-content-inner { max-width: 740px; padding: 60px 40px 80px; }
+.settings-title { font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: var(--text-heading); margin: 0 0 20px; text-transform: lowercase; }
+.settings-tab-panel > .settings-title::first-letter { text-transform: uppercase; }
+.settings-lead { color: var(--text-muted); font-size: 0.875rem; line-height: 1.5; margin: -8px 0 24px; }
+.settings-lead a { color: var(--text-link); }
+.settings-tab-panel { animation: fade-in 0.15s ease both; }
 .settings-tab-panel[hidden] { display: none; }
 
-.field select {
-  width: 100%;
-  background: var(--elevated);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-  color: var(--text-hi);
-  font-size: 13.5px;
+.settings-section { padding: 0 0 28px; margin: 0 0 28px; border-bottom: 1px solid var(--border); }
+.settings-section:last-child { border-bottom: none; }
+.settings-section-title {
+  font-family: var(--font);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  margin: 0 0 8px;
 }
-.field select:focus {
-  border-color: var(--amethyst);
-  outline: none;
-}
+.settings-section-help { font-size: 0.875rem; color: var(--text-muted); margin: 0 0 16px; line-height: 1.5; }
 
-.settings-row {
-  display: flex;
-  gap: 8px;
-}
-.settings-row select { flex: 1; }
-
-.settings-test-btn {
-  padding: 0 16px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* medidor de volume do microfone — barrinha que reage em tempo real */
-.mic-meter {
-  margin-top: 10px;
-  height: 6px;
-  border-radius: 4px;
-  background: var(--elevated);
-  overflow: hidden;
-  position: relative;
-}
-.mic-meter-fill {
-  height: 100%;
-  width: 0%;
-  background: var(--online);
-  border-radius: 4px;
-  transition: width 0.06s linear;
-}
-.mic-meter-threshold {
+.settings-close {
   position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  background: var(--ember);
-  left: 0%;
-  display: none;
+  top: 60px;
+  right: max(24px, calc((100% - 1218px) / 2 - 40px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  z-index: 2;
 }
-.mic-meter-threshold.show { display: block; }
-
-.field-hint {
-  font-weight: 600;
-  color: var(--amethyst-hi);
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.field-help {
-  display: block;
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--text-faint);
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 400;
-}
-
-.field input[type="range"] {
-  width: 100%;
-  accent-color: var(--amethyst);
-}
-
-.field-checkbox .checkbox-label,
-.settings-row .checkbox-label {
+.settings-close-x {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--text-hi);
-  font-size: 13.5px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  cursor: pointer;
-  white-space: nowrap;
+  justify-content: center;
+  font-size: 1.375rem;
+  line-height: 1;
+  transition: background 0.12s var(--ease);
 }
-.field-checkbox input[type="checkbox"],
-.settings-row input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--amethyst);
-}
+.settings-close:hover { color: var(--text-heading); }
+.settings-close:hover .settings-close-x { background: var(--bg-hover); }
+.settings-close-key { font-size: 0.8125rem; font-weight: 600; text-transform: uppercase; }
 
-/* preview de câmera */
+.settings-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.settings-row select { flex: 1; min-width: 160px; }
+.field select { width: 100%; }
+.settings-test-btn { flex-shrink: 0; }
+
+/* linha "liga/desliga" no estilo do Discord: texto à esquerda, interruptor à direita */
+.settings-toggle, .field-checkbox .checkbox-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+.settings-toggle-text { display: flex; flex-direction: column; gap: 4px; }
+.settings-toggle-text strong { color: var(--text-heading); font-size: 1rem; font-weight: 500; }
+.settings-toggle-text small { color: var(--text-muted); font-size: 0.875rem; }
+.field-checkbox .checkbox-label { color: var(--text-heading); font-size: 1rem; font-weight: 500 !important; flex-direction: row-reverse; }
+.settings-row .checkbox-label { display: flex; align-items: center; gap: 10px; color: var(--text-normal); font-weight: 500; text-transform: none; cursor: pointer; }
+
+.settings-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border-radius: var(--radius-md);
+  background: var(--bg-solid-sidebar);
+}
+html[data-translucent] .settings-card { background: var(--bg-input); }
+.settings-card-icon { width: 48px; height: 48px; border-radius: 14px; background: var(--accent); color: var(--accent-contrast); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.settings-card-text { display: flex; flex-direction: column; gap: 2px; }
+.settings-card-text strong { color: var(--text-heading); font-size: 1rem; }
+.settings-card-text span { color: var(--text-muted); font-size: 0.875rem; }
+
+/* medidor do microfone */
+.mic-meter { margin-top: 8px; height: 8px; border-radius: 4px; background: var(--bg-solid-app); overflow: hidden; position: relative; }
+.mic-meter-fill { height: 100%; width: 0%; background: var(--success); border-radius: 4px; transition: width 0.06s linear; }
+.mic-meter-threshold { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--mention); left: 0%; display: none; }
+.mic-meter-threshold.show { display: block; }
+
 .camera-preview-wrap {
   margin-top: 10px;
   position: relative;
   aspect-ratio: 16 / 9;
+  max-width: 480px;
   border-radius: var(--radius-md);
-  background: var(--ink);
-  border: 1px solid var(--line);
+  background: #000;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.camera-preview-wrap video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: scaleX(-1); /* espelhado, como toda câmera de call */
+.camera-preview-wrap video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.camera-preview-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-faint); font-size: 0.8125rem; }
+.noise-status { color: var(--success); }
+
+/* ---------- editor de temas ---------- */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.theme-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  color: var(--text-normal);
 }
-.camera-preview-empty {
+.theme-card-mini {
+  height: 86px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 14% 30% 1fr;
+  box-shadow: 0 0 0 2px var(--border);
+  transition: box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
+}
+.theme-card:hover .theme-card-mini { transform: translateY(-2px); box-shadow: 0 0 0 2px var(--border-strong), var(--shadow-md); }
+.theme-card.is-active .theme-card-mini { box-shadow: 0 0 0 3px var(--accent); }
+.tcm-rail, .tcm-side { display: block; }
+.tcm-chat { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 10px; }
+.tcm-line { display: block; height: 6px; border-radius: 3px; opacity: 0.85; }
+.tcm-accent { position: absolute; right: 8px; bottom: 8px; width: 26px; height: 12px; border-radius: 4px; }
+.theme-card-name { font-size: 0.875rem; font-weight: 600; color: var(--text-heading); padding-left: 2px; }
+.theme-card.is-active .theme-card-name::after { content: ' ✓'; color: var(--accent); }
+.theme-card-del {
   position: absolute;
-  inset: 0;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.theme-card:hover .theme-card-del { display: flex; }
+.theme-empty { color: var(--text-muted); font-size: 0.875rem; margin: 0; grid-column: 1 / -1; }
+.theme-actions { margin-top: 14px; }
+.theme-name-input { flex: 1; min-width: 180px; }
+
+.theme-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px 16px; }
+.theme-color {
+  display: grid;
+  grid-template-columns: 40px 1fr 92px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-solid-sidebar);
+  cursor: pointer;
+}
+html[data-translucent] .theme-color { background: var(--bg-input); }
+.theme-color-swatch { width: 40px; height: 40px; border-radius: var(--radius-sm); overflow: hidden; box-shadow: 0 0 0 1px var(--border-strong); }
+.theme-color-input { width: 64px; height: 64px; margin: -12px; cursor: pointer; }
+.theme-color-text { display: flex; flex-direction: column; min-width: 0; }
+.theme-color-text strong { color: var(--text-heading); font-size: 0.875rem; font-weight: 600; }
+.theme-color-text small { color: var(--text-muted); font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.theme-color-hex { width: 92px; padding: 6px 8px !important; font-family: var(--font-mono); font-size: 0.8125rem !important; text-transform: lowercase; }
+
+.theme-bg-preview {
+  height: 140px;
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  background-size: cover;
+  background-position: center;
+  box-shadow: inset 0 0 0 1px var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-faint);
-  font-size: 12.5px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+.theme-bg-url { width: 100%; margin: 12px 0; }
+.theme-gradients { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 20px; }
+.theme-gradient { width: 64px; height: 40px; border-radius: var(--radius-sm); border: none; box-shadow: 0 0 0 1px var(--border-strong); transition: transform 0.12s var(--ease); }
+.theme-gradient:hover { transform: scale(1.06); }
+.theme-css { width: 100%; font-family: var(--font-mono); font-size: 0.8125rem; min-height: 160px; margin-bottom: 10px; }
+
+@media (max-width: 860px) {
+  .settings-nav { flex: 0 0 180px; }
+  .settings-nav-inner { width: 180px; padding: 20px 6px 40px 10px; }
+  .settings-content-inner { padding: 24px 68px 60px 20px; }
+  .settings-close { top: 16px; right: 16px; }
 }

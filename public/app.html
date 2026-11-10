@@ -3,19 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1e1f22">
+  <script src="/js/themes.js?v=20"></script>
+  <script>DidiTheme.boot();</script>
   <title>concord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/theme.css?v=19">
-  <link rel="stylesheet" href="/css/app.css?v=19">
-  <link rel="stylesheet" href="/css/chat.css?v=19">
-  <link rel="stylesheet" href="/css/members.css?v=19">
-  <link rel="stylesheet" href="/css/profile.css?v=19">
-  <link rel="stylesheet" href="/css/voice.css?v=19">
-  <link rel="stylesheet" href="/css/settings.css?v=19">
-  <link rel="stylesheet" href="/css/servers.css?v=19">
-  <link rel="stylesheet" href="/css/call-roles.css?v=19">
-  <link rel="stylesheet" href="/css/chat-extras.css?v=19">
+  <link rel="stylesheet" href="/css/theme.css?v=20">
+  <link rel="stylesheet" href="/css/app.css?v=20">
+  <link rel="stylesheet" href="/css/chat.css?v=20">
+  <link rel="stylesheet" href="/css/members.css?v=20">
+  <link rel="stylesheet" href="/css/profile.css?v=20">
+  <link rel="stylesheet" href="/css/voice.css?v=20">
+  <link rel="stylesheet" href="/css/settings.css?v=20">
+  <link rel="stylesheet" href="/css/servers.css?v=20">
+  <link rel="stylesheet" href="/css/call-roles.css?v=20">
+  <link rel="stylesheet" href="/css/chat-extras.css?v=20">
+  <link rel="stylesheet" href="/css/design.css?v=20">
+  <link rel="stylesheet" href="/css/media.css?v=20">
 </head>
 <body>
   <div class="app-shell">
@@ -117,9 +122,58 @@
         </header>
 
         <div class="chat-body">
-          <div class="chat-messages-wrap">
-            <div class="chat-messages" id="chatMessages"></div>
-            <button type="button" class="jump-present" id="jumpPresentBtn" hidden>vendo mensagens antigas — <strong>voltar pro presente</strong></button>
+          <!-- coluna do meio: mensagens + caixa de mensagem (a lista de membros fica do lado, altura toda) -->
+          <div class="chat-column">
+            <div class="chat-messages-wrap">
+              <div class="chat-messages" id="chatMessages"></div>
+              <button type="button" class="jump-present" id="jumpPresentBtn" hidden>vendo mensagens antigas — <strong>voltar pro presente</strong></button>
+            </div>
+
+          <div class="attachment-preview" id="attachmentPreview" hidden>
+            <div class="attachment-preview-thumb" id="attachmentPreviewThumb"></div>
+            <div class="attachment-preview-info">
+              <span class="attachment-preview-name" id="attachmentPreviewName"></span>
+              <div class="attachment-preview-progress-track" id="attachmentPreviewProgressTrack" hidden>
+                <div class="attachment-preview-progress-fill" id="attachmentPreviewProgressFill"></div>
+              </div>
+              <span class="attachment-preview-progress-text" id="attachmentPreviewProgressText" hidden></span>
+            </div>
+            <button type="button" class="attachment-preview-remove" id="attachmentPreviewRemove" title="remover anexo">×</button>
+          </div>
+
+          <div class="reply-preview" id="replyPreview" hidden>
+            <span class="reply-preview-text">respondendo a <strong id="replyPreviewName"></strong>: <span id="replyPreviewSnippet"></span></span>
+            <button type="button" class="reply-preview-remove" id="replyPreviewRemove" title="cancelar resposta">×</button>
+          </div>
+
+          <div class="composer-error" id="composerError" hidden></div>
+
+          <div class="gif-picker" id="gifPicker" hidden>
+            <div class="gif-picker-header">
+              <div class="gif-picker-tabs" id="gifPickerTabs">
+                <button type="button" class="gif-picker-tab active" data-kind="gifs">gifs</button>
+                <button type="button" class="gif-picker-tab" data-kind="stickers">figurinhas</button>
+              </div>
+              <input type="text" id="gifSearchInput" placeholder="buscar gif no giphy..." autocomplete="off">
+            </div>
+            <div class="gif-picker-grid" id="gifPickerGrid"></div>
+          </div>
+
+          <form class="chat-composer" id="chatComposer">
+            <!-- menu de comandos "/" e sugestões do /play (ver updateCommandPopup em app.js) -->
+            <div class="command-popup" id="commandPopup" role="listbox" aria-label="comandos" hidden></div>
+            <button type="button" class="icon-btn composer-attach-btn" id="attachBtn" title="anexar arquivo" aria-label="anexar arquivo">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <input type="file" id="attachInput" hidden>
+            <button type="button" class="icon-btn composer-gif-btn" id="gifBtn" title="enviar gif" aria-label="enviar gif">GIF</button>
+            <textarea id="chatInput" rows="1" placeholder="mandar mensagem..." autocomplete="off" maxlength="4000" spellcheck="true"></textarea>
+            <button type="button" class="icon-btn composer-emoji-btn" id="emojiBtn" title="emoji" aria-label="escolher emoji">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+            </button>
+            <button type="submit" class="btn btn-primary" id="chatSendBtn">enviar</button>
+          </form>
+          <div class="typing-indicator" id="typingIndicator" aria-live="polite"></div>
           </div>
 
           <!-- mensagens fixadas (abre pelo botão do alfinete) -->
@@ -152,51 +206,6 @@
           </aside>
         </div>
 
-        <div class="attachment-preview" id="attachmentPreview" hidden>
-          <div class="attachment-preview-thumb" id="attachmentPreviewThumb"></div>
-          <div class="attachment-preview-info">
-            <span class="attachment-preview-name" id="attachmentPreviewName"></span>
-            <div class="attachment-preview-progress-track" id="attachmentPreviewProgressTrack" hidden>
-              <div class="attachment-preview-progress-fill" id="attachmentPreviewProgressFill"></div>
-            </div>
-            <span class="attachment-preview-progress-text" id="attachmentPreviewProgressText" hidden></span>
-          </div>
-          <button type="button" class="attachment-preview-remove" id="attachmentPreviewRemove" title="remover anexo">×</button>
-        </div>
-
-        <div class="reply-preview" id="replyPreview" hidden>
-          <span class="reply-preview-text">respondendo a <strong id="replyPreviewName"></strong>: <span id="replyPreviewSnippet"></span></span>
-          <button type="button" class="reply-preview-remove" id="replyPreviewRemove" title="cancelar resposta">×</button>
-        </div>
-
-        <div class="composer-error" id="composerError" hidden></div>
-
-        <div class="gif-picker" id="gifPicker" hidden>
-          <div class="gif-picker-header">
-            <div class="gif-picker-tabs" id="gifPickerTabs">
-              <button type="button" class="gif-picker-tab active" data-kind="gifs">gifs</button>
-              <button type="button" class="gif-picker-tab" data-kind="stickers">figurinhas</button>
-            </div>
-            <input type="text" id="gifSearchInput" placeholder="buscar gif no giphy..." autocomplete="off">
-          </div>
-          <div class="gif-picker-grid" id="gifPickerGrid"></div>
-        </div>
-
-        <form class="chat-composer" id="chatComposer">
-          <!-- menu de comandos "/" e sugestões do /play (ver updateCommandPopup em app.js) -->
-          <div class="command-popup" id="commandPopup" role="listbox" aria-label="comandos" hidden></div>
-          <button type="button" class="icon-btn composer-attach-btn" id="attachBtn" title="anexar arquivo" aria-label="anexar arquivo">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          </button>
-          <input type="file" id="attachInput" hidden>
-          <button type="button" class="icon-btn composer-gif-btn" id="gifBtn" title="enviar gif" aria-label="enviar gif">GIF</button>
-          <textarea id="chatInput" rows="1" placeholder="mandar mensagem..." autocomplete="off" maxlength="4000" spellcheck="true"></textarea>
-          <button type="button" class="icon-btn composer-emoji-btn" id="emojiBtn" title="emoji" aria-label="escolher emoji">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-          </button>
-          <button type="submit" class="btn btn-primary" id="chatSendBtn">enviar</button>
-        </form>
-        <div class="typing-indicator" id="typingIndicator" aria-live="polite"></div>
       </section>
 
       <!-- view de chamada de voz — mostrada quando o canal selecionado é de voz -->
@@ -564,6 +573,7 @@
 
   <!-- visualizador de imagens e vídeos -->
   <div class="media-viewer" id="mediaViewer" role="dialog" aria-label="visualizar mídia" hidden>
+    <div class="media-viewer-backdrop" id="mediaViewerBackdrop"></div>
     <header class="media-viewer-top">
       <div class="media-viewer-author">
         <span class="media-viewer-avatar" id="mediaViewerAvatar"></span>
@@ -580,6 +590,12 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         </div>
+        <button type="button" id="mediaViewerRotate" title="girar (R)" aria-label="girar imagem">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+        </button>
+        <button type="button" id="mediaViewerCopy" title="copiar imagem" aria-label="copiar imagem">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
         <a id="mediaViewerOpen" target="_blank" rel="noopener" title="abrir original numa aba nova" aria-label="abrir original">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         </a>
@@ -599,6 +615,7 @@
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
     <footer class="media-viewer-caption" id="mediaViewerCaption"></footer>
+    <div class="media-viewer-strip" id="mediaViewerStrip"></div>
   </div>
 
   <!-- painel de admin do site (só aparece pro admin) -->
@@ -623,165 +640,280 @@
   <div class="toast-host" id="toastHost" aria-live="polite"></div>
 
   <!-- modal: configurações de voz e vídeo -->
-  <div class="modal-backdrop" id="settingsModalBackdrop" hidden>
-    <div class="modal card settings-modal">
-      <h3 class="display">voz e vídeo</h3>
-
-      <div class="settings-tabs" id="settingsTabs">
-        <button type="button" class="settings-tab active" data-settings-tab="microfone">microfone</button>
-        <button type="button" class="settings-tab" data-settings-tab="audio">áudio</button>
-        <button type="button" class="settings-tab" data-settings-tab="video">vídeo</button>
-      </div>
-
-      <div class="settings-tab-panel" data-settings-panel="microfone">
-        <div class="field">
-          <label for="micSelect">microfone</label>
-          <select id="micSelect"></select>
-          <div class="mic-meter"><div class="mic-meter-fill" id="micMeterFill"></div><div class="mic-meter-threshold" id="micMeterThreshold"></div></div>
+  <div class="settings-backdrop" id="settingsModalBackdrop" hidden>
+    <div class="settings-modal" role="dialog" aria-label="configurações">
+      <nav class="settings-nav" id="settingsTabs" aria-label="seções das configurações">
+        <div class="settings-nav-inner">
+          <div class="settings-nav-group">sua conta</div>
+          <button type="button" class="settings-tab" data-settings-action="profile">perfil</button>
+          <div class="settings-nav-sep"></div>
+          <div class="settings-nav-group">aparência</div>
+          <button type="button" class="settings-tab" data-settings-tab="aparencia">temas</button>
+          <button type="button" class="settings-tab" data-settings-tab="chat">chat</button>
+          <button type="button" class="settings-tab" data-settings-tab="acessibilidade">acessibilidade</button>
+          <div class="settings-nav-sep"></div>
+          <div class="settings-nav-group">voz e vídeo</div>
+          <button type="button" class="settings-tab" data-settings-tab="microfone">voz</button>
+          <button type="button" class="settings-tab" data-settings-tab="audio">som</button>
+          <button type="button" class="settings-tab" data-settings-tab="video">câmera</button>
+          <button type="button" class="settings-tab" data-settings-tab="tela">compartilhar tela</button>
+          <div class="settings-nav-sep"></div>
+          <div class="settings-nav-group">avisos</div>
+          <button type="button" class="settings-tab" data-settings-tab="notificacoes">notificações</button>
+          <div class="settings-nav-sep"></div>
+          <div class="settings-nav-group">didiscord</div>
+          <button type="button" class="settings-tab" data-settings-tab="app">app e versão</button>
+          <div class="settings-nav-sep"></div>
+          <button type="button" class="settings-tab is-danger" data-settings-action="logout">sair da conta</button>
         </div>
+      </nav>
 
-        <div class="field">
-          <label for="micGainRange">ganho do microfone <span id="micGainValue" class="field-hint">100%</span></label>
-          <input type="range" id="micGainRange" min="50" max="300" value="100">
-          <span class="field-help">reforça o volume do seu microfone antes de mandar pra call — aumenta se sua voz chega baixa do outro lado</span>
-        </div>
+      <div class="settings-content">
+        <div class="settings-content-inner">
+        <section class="settings-tab-panel" data-settings-panel="aparencia" hidden>
+          <h2 class="settings-title">temas</h2>
+          <p class="settings-lead">Deixe o didiscord com a sua cara. Só você vê o seu tema — cada amigo escolhe o dele.</p>
+          <div id="themeEditor"></div>
+        </section>
 
-        <div class="field">
-          <label for="micSensitivityRange">sensibilidade do microfone <span id="micSensitivityValue" class="field-hint">desligada</span></label>
-          <input type="range" id="micSensitivityRange" min="0" max="60" value="0">
-          <span class="field-help">acima de 0, o microfone só transmite quando o volume ultrapassa a linha marcada no medidor acima</span>
-        </div>
-
-        <div class="field field-checkbox">
-          <label class="checkbox-label">
-            <input type="checkbox" id="selfMonitorCheckbox">
-            ouvir a si mesmo
-          </label>
-          <span class="field-help">toca seu próprio microfone de volta no seu fone, baixinho — use fone de ouvido pra não causar eco/microfonia. Ótimo pra confirmar que o mic tá pegando sua voz de verdade, além da borda verde</span>
-        </div>
-
-        <div class="field-help" id="tauriMicWarning" hidden style="color: var(--ember);">
-          este app desktop (Linux) roda num motor com suporte incompleto a áudio processado via WebRTC — reforço de ganho e supressão de ruído (RNNoise) não têm efeito aqui, mesmo aparecendo nesta tela. Use o navegador (Chrome/Firefox) se precisar dessas duas.
-        </div>
-
-        <div class="field">
-          <label for="voiceProcessingSelect">processamento da voz</label>
-          <select id="voiceProcessingSelect">
-            <option value="speakers">caixa de som — cancela o eco (padrão)</option>
-            <option value="headphones">fone de ouvido — voz mais natural (recomendado com fone)</option>
-            <option value="studio">estúdio — sem processamento nenhum (mic bom + fone)</option>
-          </select>
-          <span class="field-help">o cancelamento de eco é o que mais "metaliza" a voz e corta quando duas pessoas falam juntas. Com fone de ouvido ele não é necessário. "estúdio" também desliga o ajuste automático de volume — regule pelo ganho acima. Dá pra trocar com a call aberta.</span>
-        </div>
-
-        <div class="field">
-          <label for="noiseSuppressionSelect">supressão de ruído</label>
-          <select id="noiseSuppressionSelect">
-            <option value="deepfilter">avançada — parecida com a Krisp do Discord (recomendado)</option>
-            <option value="rnnoise">leve — pra computador mais fraco</option>
-            <option value="off">nenhuma</option>
-          </select>
-          <span class="field-help">a avançada usa uma rede neural (DeepFilterNet3) rodando no seu computador: tira teclado, ventilador, barulho de rua e eco do cômodo, e deixa só a sua voz. Na primeira vez baixa uns 24 MB. Dá pra trocar com a call aberta.</span>
-          <span class="field-help noise-status" id="noiseSuppressionStatus"></span>
-        </div>
-      </div>
-
-      <div class="settings-tab-panel" data-settings-panel="audio" hidden>
-        <div class="field" id="speakerField">
-          <label for="speakerSelect">saída de áudio (fone/headset)</label>
-          <div class="settings-row">
-            <select id="speakerSelect"></select>
-            <button type="button" class="btn btn-ghost settings-test-btn" id="speakerTestBtn">testar</button>
-          </div>
-        </div>
-        <div class="field-help" id="speakerUnsupportedHint" hidden>
-          este app não consegue trocar a saída de áudio por aqui (limitação do motor usado no app desktop). Troque o dispositivo de saída padrão direto nas configurações de som do sistema operacional.
-        </div>
-
-        <div class="field">
-          <label for="notificationLevelSelect">notificações do sistema</label>
-          <div class="settings-row">
-            <select id="notificationLevelSelect">
-              <option value="mentions">menções e mensagens diretas (recomendado)</option>
-              <option value="all">todas as mensagens</option>
-              <option value="none">nenhuma</option>
-            </select>
-            <button type="button" class="btn btn-ghost" id="notificationPermissionBtn" hidden>permitir</button>
-          </div>
-          <span class="field-help" id="notificationHelp">aparecem no canto da tela quando o didiscord não está na sua frente. Quem escreve <strong>@seu nome</strong> ou <strong>@everyone</strong> conta como menção.</span>
-        </div>
-
-        <div class="field field-checkbox">
-          <label class="checkbox-label">
-            <input type="checkbox" id="notificationSoundsCheckbox" checked>
-            sons de notificação
-          </label>
-          <span class="field-help">toca um som curto quando alguém entra ou sai de uma chamada de voz, e quando você recebe uma mensagem</span>
-        </div>
-      </div>
-
-      <div class="settings-tab-panel" data-settings-panel="video" hidden>
-        <div class="field">
-          <label for="cameraSelect">câmera</label>
-          <select id="cameraSelect"></select>
-          <div class="camera-preview-wrap">
-            <video id="cameraPreview" autoplay playsinline muted></video>
-            <div class="camera-preview-empty" id="cameraPreviewEmpty">sem pré-visualização</div>
-          </div>
-        </div>
-
-        <div class="field">
-          <label for="screenResolutionSelect">qualidade do compartilhamento de tela</label>
-          <div class="settings-row">
-            <select id="screenResolutionSelect">
-              <option value="1280x720">720p</option>
-              <option value="1920x1080">1080p</option>
-              <option value="2560x1440">1440p (2K)</option>
-              <option value="3840x2160">2160p (4K)</option>
-            </select>
-            <select id="screenFpsSelect">
-              <option value="15">15 fps</option>
-              <option value="30">30 fps</option>
-              <option value="60">60 fps</option>
-              <option value="120">120 fps</option>
-            </select>
-          </div>
-          <div class="settings-row">
-            <select id="screenPrioritySelect" title="o que sacrificar quando faltar processador ou internet">
-              <option value="balanced">prioridade: equilibrado (recomendado)</option>
-              <option value="smooth">prioridade: fluidez — jogos e vídeos</option>
-              <option value="sharp">prioridade: nitidez — texto e código</option>
-            </select>
-          </div>
-          <div class="settings-row">
-            <select id="screenBitrateSelect">
-              <option value="0">bitrate automático (até 16 Mbps)</option>
-              <option value="1000">1 Mbps</option>
-              <option value="2500">2.5 Mbps</option>
-              <option value="4000">4 Mbps</option>
-              <option value="8000">8 Mbps</option>
-              <option value="12000">12 Mbps</option>
-              <option value="16000">16 Mbps</option>
-            </select>
-            <label class="checkbox-label">
-              <input type="checkbox" id="screenAudioCheckbox" checked>
-              compartilhar com som
+        <section class="settings-tab-panel" data-settings-panel="chat" hidden>
+          <h2 class="settings-title">chat</h2>
+          
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>mostrar prévia de links</strong><small>título, imagem e vídeo do YouTube embaixo da mensagem</small></span>
+              <input type="checkbox" id="prefLinkPreviews" checked>
             </label>
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>emojis grandes</strong><small>mensagem só com emojis aparece maior</small></span>
+              <input type="checkbox" id="prefJumboEmoji" checked>
+            </label>
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>transformar :atalhos: em emoji</strong><small>escrever :joinha: vira 👍 ao enviar</small></span>
+              <input type="checkbox" id="prefShortcodes" checked>
+            </label>
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>mostrar que estou digitando</strong><small>os outros veem "fulano está digitando…"</small></span>
+              <input type="checkbox" id="prefTyping" checked>
+            </label>
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>Enter envia a mensagem</strong><small>desligado: Enter quebra linha e Ctrl+Enter envia</small></span>
+              <input type="checkbox" id="prefEnterSends" checked>
+            </label>
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>relógio de 24 horas</strong><small>desligado: 3:15 PM em vez de 15:15</small></span>
+              <input type="checkbox" id="prefClock24" checked>
+            </label>
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>tocar vídeos do chat sem som ao passar o mouse</strong><small>prévia rápida dos vídeos enviados</small></span>
+              <input type="checkbox" id="prefAutoplayVideo" checked>
+            </label>
+        </section>
+
+        <section class="settings-tab-panel" data-settings-panel="acessibilidade" hidden>
+          <h2 class="settings-title">acessibilidade</h2>
+          
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>reduzir animações</strong><small>desliga as transições e efeitos de movimento</small></span>
+              <input type="checkbox" id="prefReduceMotion">
+            </label>
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>sublinhar links</strong><small>deixa os links mais fáceis de ver</small></span>
+              <input type="checkbox" id="prefUnderlineLinks">
+            </label>
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>sempre mostrar o horário</strong><small>mostra a hora em todas as mensagens, não só ao passar o mouse</small></span>
+              <input type="checkbox" id="prefAlwaysTimestamps">
+            </label>
+            <div class="field">
+              <label for="prefSaturation">saturação das cores <span class="field-hint" id="prefSaturationValue">100%</span></label>
+              <input type="range" id="prefSaturation" min="0" max="100" step="5" value="100">
+              <span class="field-help">diminui a intensidade das cores do app inteiro</span>
+            </div>
+            <p class="settings-lead">Tamanho do texto, fonte e cantos ficam em <a href="#" data-settings-jump="aparencia">temas</a>.</p>
+        </section>
+
+        <section class="settings-tab-panel" data-settings-panel="microfone" hidden>
+          <h2 class="settings-title">voz</h2>
+          
+            <div class="field">
+              <label for="micSelect">microfone</label>
+              <select id="micSelect"></select>
+              <div class="mic-meter"><div class="mic-meter-fill" id="micMeterFill"></div><div class="mic-meter-threshold" id="micMeterThreshold"></div></div>
+            </div>
+
+            <div class="field">
+              <label for="micGainRange">ganho do microfone <span id="micGainValue" class="field-hint">100%</span></label>
+              <input type="range" id="micGainRange" min="50" max="300" value="100">
+              <span class="field-help">reforça o volume do seu microfone antes de mandar pra call — aumenta se sua voz chega baixa do outro lado</span>
+            </div>
+
+            <div class="field">
+              <label for="micSensitivityRange">sensibilidade do microfone <span id="micSensitivityValue" class="field-hint">desligada</span></label>
+              <input type="range" id="micSensitivityRange" min="0" max="60" value="0">
+              <span class="field-help">acima de 0, o microfone só transmite quando o volume ultrapassa a linha marcada no medidor acima</span>
+            </div>
+
+            <div class="field field-checkbox">
+              <label class="checkbox-label">
+                <input type="checkbox" id="selfMonitorCheckbox">
+                ouvir a si mesmo
+              </label>
+              <span class="field-help">toca seu próprio microfone de volta no seu fone, baixinho — use fone de ouvido pra não causar eco/microfonia. Ótimo pra confirmar que o mic tá pegando sua voz de verdade, além da borda verde</span>
+            </div>
+
+            <div class="field-help" id="tauriMicWarning" hidden style="color: var(--ember);">
+              este app desktop (Linux) roda num motor com suporte incompleto a áudio processado via WebRTC — reforço de ganho e supressão de ruído (RNNoise) não têm efeito aqui, mesmo aparecendo nesta tela. Use o navegador (Chrome/Firefox) se precisar dessas duas.
+            </div>
+
+            <div class="field">
+              <label for="voiceProcessingSelect">processamento da voz</label>
+              <select id="voiceProcessingSelect">
+                <option value="speakers">caixa de som — cancela o eco (padrão)</option>
+                <option value="headphones">fone de ouvido — voz mais natural (recomendado com fone)</option>
+                <option value="studio">estúdio — sem processamento nenhum (mic bom + fone)</option>
+              </select>
+              <span class="field-help">o cancelamento de eco é o que mais "metaliza" a voz e corta quando duas pessoas falam juntas. Com fone de ouvido ele não é necessário. "estúdio" também desliga o ajuste automático de volume — regule pelo ganho acima. Dá pra trocar com a call aberta.</span>
+            </div>
+
+            <div class="field">
+              <label for="noiseSuppressionSelect">supressão de ruído</label>
+              <select id="noiseSuppressionSelect">
+                <option value="deepfilter">avançada — parecida com a Krisp do Discord (recomendado)</option>
+                <option value="rnnoise">leve — pra computador mais fraco</option>
+                <option value="off">nenhuma</option>
+              </select>
+              <span class="field-help">a avançada usa uma rede neural (DeepFilterNet3) rodando no seu computador: tira teclado, ventilador, barulho de rua e eco do cômodo, e deixa só a sua voz. Na primeira vez baixa uns 24 MB. Dá pra trocar com a call aberta.</span>
+              <span class="field-help noise-status" id="noiseSuppressionStatus"></span>
+            </div>
+
+        </section>
+
+        <section class="settings-tab-panel" data-settings-panel="audio" hidden>
+          <h2 class="settings-title">som</h2>
+          
+            <div class="field" id="speakerField">
+              <label for="speakerSelect">saída de áudio (fone/headset)</label>
+              <div class="settings-row">
+                <select id="speakerSelect"></select>
+                <button type="button" class="btn btn-ghost settings-test-btn" id="speakerTestBtn">testar</button>
+              </div>
+            </div>
+            <div class="field-help" id="speakerUnsupportedHint" hidden>
+              este app não consegue trocar a saída de áudio por aqui (limitação do motor usado no app desktop). Troque o dispositivo de saída padrão direto nas configurações de som do sistema operacional.
+            </div>
+
+
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>sons de notificação</strong><small>som curto quando alguém entra ou sai da call e quando chega mensagem</small></span>
+              <input type="checkbox" id="notificationSoundsCheckbox" checked>
+            </label>
+        </section>
+
+        <section class="settings-tab-panel" data-settings-panel="video" hidden>
+          <h2 class="settings-title">câmera</h2>
+          
+            <div class="field">
+              <label for="cameraSelect">câmera</label>
+              <select id="cameraSelect"></select>
+              <div class="camera-preview-wrap">
+                <video id="cameraPreview" autoplay playsinline muted></video>
+                <div class="camera-preview-empty" id="cameraPreviewEmpty">sem pré-visualização</div>
+              </div>
+            </div>
+
+
+        </section>
+
+        <section class="settings-tab-panel" data-settings-panel="tela" hidden>
+          <h2 class="settings-title">compartilhar tela</h2>
+          
+            <div class="field">
+              <label for="screenResolutionSelect">qualidade do compartilhamento de tela</label>
+              <div class="settings-row">
+                <select id="screenResolutionSelect">
+                  <option value="1280x720">720p</option>
+                  <option value="1920x1080">1080p</option>
+                  <option value="2560x1440">1440p (2K)</option>
+                  <option value="3840x2160">2160p (4K)</option>
+                </select>
+                <select id="screenFpsSelect">
+                  <option value="15">15 fps</option>
+                  <option value="30">30 fps</option>
+                  <option value="60">60 fps</option>
+                  <option value="120">120 fps</option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <select id="screenPrioritySelect" title="o que sacrificar quando faltar processador ou internet">
+                  <option value="balanced">prioridade: equilibrado (recomendado)</option>
+                  <option value="smooth">prioridade: fluidez — jogos e vídeos</option>
+                  <option value="sharp">prioridade: nitidez — texto e código</option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <select id="screenBitrateSelect">
+                  <option value="0">bitrate automático (até 16 Mbps)</option>
+                  <option value="1000">1 Mbps</option>
+                  <option value="2500">2.5 Mbps</option>
+                  <option value="4000">4 Mbps</option>
+                  <option value="8000">8 Mbps</option>
+                  <option value="12000">12 Mbps</option>
+                  <option value="16000">16 Mbps</option>
+                </select>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="screenAudioCheckbox" checked>
+                  compartilhar com som
+                </label>
+              </div>
+              <span class="field-help">resolução e fps valem a partir da próxima vez que compartilhar; prioridade e bitrate valem na hora. A prioridade decide o que cai quando falta processador ou internet: "equilibrado" segura o fps baixando um pouco a resolução (bom pra jogo e vídeo), "nitidez" mantém o texto legível e deixa o fps cair. Cada pessoa assistindo é mais um vídeo saindo do seu PC — se o fps cair com muita gente, quem não está olhando pode clicar em "parar de assistir".</span>
+            </div>
+
+        </section>
+
+        <section class="settings-tab-panel" data-settings-panel="notificacoes" hidden>
+          <h2 class="settings-title">notificações</h2>
+          
+            <div class="field">
+              <label for="notificationLevelSelect">notificações do sistema</label>
+              <div class="settings-row">
+                <select id="notificationLevelSelect">
+                  <option value="mentions">menções e mensagens diretas (recomendado)</option>
+                  <option value="all">todas as mensagens</option>
+                  <option value="none">nenhuma</option>
+                </select>
+                <button type="button" class="btn btn-ghost" id="notificationPermissionBtn" hidden>permitir</button>
+              </div>
+              <span class="field-help" id="notificationHelp">aparecem no canto da tela quando o didiscord não está na sua frente. Quem escreve <strong>@seu nome</strong> ou <strong>@everyone</strong> conta como menção.</span>
+            </div>
+
+
+        </section>
+
+        <section class="settings-tab-panel" data-settings-panel="app" hidden>
+          <h2 class="settings-title">app e versão</h2>
+          
+          <div class="settings-card" id="settingsAppCard"></div>
+          <p class="settings-lead">O app pro computador compartilha a tela pela placa de vídeo, pega o som de um app só, avisa quando te chamam e se atualiza sozinho.</p>
+          <div class="settings-row">
+            <a class="btn btn-primary" href="/baixar" target="_blank" rel="noopener" id="settingsDownloadBtn">página de download</a>
+            <button type="button" class="btn btn-ghost" id="settingsCheckUpdatesBtn" hidden>procurar atualização</button>
           </div>
-          <span class="field-help">resolução e fps valem a partir da próxima vez que compartilhar; prioridade e bitrate valem na hora. A prioridade decide o que cai quando falta processador ou internet: "equilibrado" segura o fps baixando um pouco a resolução (bom pra jogo e vídeo), "nitidez" mantém o texto legível e deixa o fps cair. Cada pessoa assistindo é mais um vídeo saindo do seu PC — se o fps cair com muita gente, quem não está olhando pode clicar em "parar de assistir".</span>
+        </section>
+
+          <div class="field-error" id="settingsError"></div>
         </div>
       </div>
 
-      <div class="field-error" id="settingsError"></div>
-      <div class="modal-actions">
-        <button class="btn btn-primary" id="settingsCloseBtn" type="button">concluído</button>
-      </div>
+      <button type="button" class="settings-close" id="settingsCloseBtn" aria-label="fechar configurações">
+        <span class="settings-close-x">×</span>
+        <span class="settings-close-key">esc</span>
+      </button>
     </div>
   </div>
 
-  <script src="/js/realtime.js?v=19"></script>
-  <script src="/js/markdown.js?v=19"></script>
-  <script src="/js/emoji.js?v=19"></script>
-  <script src="/js/app.js?v=19"></script>
+  <script src="/js/realtime.js?v=20"></script>
+  <script src="/js/markdown.js?v=20"></script>
+  <script src="/js/emoji.js?v=20"></script>
+  <script src="/js/app.js?v=20"></script>
 </body>
 </html>

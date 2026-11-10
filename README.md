@@ -32,7 +32,15 @@ O site fica em **https://didiscord.veneno.space**, por um túnel do Cloudflare. 
 - **Notificações do sistema** (menções e DMs, todas, ou nenhuma — nas configurações de áudio).
 - GIFs e stickers do GIPHY.
 
+**Visual e temas**
+- Visual no estilo do Discord atual (o padrão é o "Discord escuro").
+- **Temas 100% personalizáveis**, cada pessoa com o seu (fica salvo na conta e vale em qualquer PC): todas as cores, **vidro/translúcido** (opacidade, desfoque e saturação dos painéis), imagem de fundo (enviada ou por link) ou degradê, fonte, tamanho do texto, cantos, formato das fotos de perfil, mensagens compactas e até **CSS próprio**.
+- 8 temas prontos pra começar (Discord escuro, Meia-noite, Claro, Vidro, Ametista, Neon, Café, Floresta), "meus temas" salvos, e **código do tema** pra mandar pros amigos copiarem.
+- Configurações em tela cheia com abas: perfil, temas, chat, acessibilidade, voz, som, câmera, compartilhar tela, notificações e app/versão.
+- **Imagens e vídeos**: visualizador com zoom, girar, copiar imagem, miniaturas de tudo que foi enviado no canal e fundo desfocado com a própria imagem; player de vídeo próprio (velocidade, repetir, volume lembrado, tela cheia, prévia sem som ao passar o mouse).
+
 **Calls (voz, câmera e tela)**
+- **Quem está falando** fica com o círculo verde em todo lugar: no card da call, na lista de quem está no canal de voz (na barra lateral, mesmo pra quem não entrou) e na sua barra de perfil.
 - WebRTC direto entre as pessoas (malha: cada um tem uma conexão com cada outro).
 - Mutar, ensurdecer e volume de cada pessoa de 0 a 200% (botão direito na pessoa).
 - Áudio em qualidade alta: voz em Opus 96 kbps com correção de perda, som da tela em 192 kbps estéreo.
@@ -138,7 +146,7 @@ didiscord/
 │       ├── downloads.js    # página /baixar, /downloads/* e versão atual do app desktop
 │       ├── invites.js      # prévia e aceite de convite
 │       ├── users.js        # perfil de outra pessoa, contatos
-│       ├── profile.js      # editar o próprio perfil, senha, avatar, banner
+│       ├── profile.js      # editar o próprio perfil, senha, avatar, banner, tema (e imagem de fundo dele)
 │       ├── admin.js        # painel de admin do site
 │       ├── musicbot.js     # stream de áudio e estado do bot
 │       ├── rtc.js          # servidores STUN/TURN pro WebRTC
@@ -148,7 +156,9 @@ didiscord/
 │       └── server.js, members.js  # restos do modelo antigo de um servidor só (não estão ligados)
 ├── public/
 │   ├── login.html, app.html
-│   ├── css/                # um arquivo por área
+│   ├── css/                # theme.css (variáveis e componentes base), um arquivo por área,
+│   │                       #   design.css (o visual atual, por cima de tudo) e media.css (imagens/vídeos)
+│   ├── js/themes.js        # motor de temas: aplica as variáveis, temas prontos, editor da aba "temas"
 │   ├── js/app.js           # o site inteiro: chat, servidores, perfil, calls, tela, configurações
 │   ├── js/realtime.js      # cliente WebSocket (reconexão, eventos)
 │   ├── js/markdown.js      # Markdown do chat (monta os elementos direto, sem innerHTML)
@@ -164,7 +174,7 @@ didiscord/
 
 ## Modelo de dados
 
-- **`users`**: contas. Perfil, `is_site_admin`, suspensão (`banned_at`) e `session_version` (sobe quando a senha é redefinida, pra derrubar sessões antigas).
+- **`users`**: contas. Perfil, `theme_json` (o tema e os "meus temas" da pessoa), `is_site_admin`, suspensão (`banned_at`) e `session_version` (sobe quando a senha é redefinida, pra derrubar sessões antigas).
 - **`servers`**, **`server_members`**, **`invites`**: servidores, quem está em cada um, e convites (usos, validade).
 - **`channels`**: canais de texto/voz de um servidor. `server_id` nulo = DM, com os 2 participantes em **`dm_members`**.
 - **`messages`**: mensagens, com anexo, resposta (`reply_to_id`), edição, e `embed_json` pras respostas do bot de música.
@@ -255,6 +265,7 @@ electron/native/build-cross.sh
 - **`server/access.js` decide tudo sobre permissão.** Rota nova ou evento novo de tempo real deve perguntar pra ele, nunca refazer a regra na mão.
 - **`.env`, banco e uploads nunca vão pro git** (ver `.gitignore`). Chave nova no `config.js` deve entrar na tabela de variáveis acima.
 - Os comentários do código estão em português e explicam o porquê das decisões que não são óbvias. Vale ler antes de refatorar.
+- **Cores, fontes e cantos sempre por variável** (`var(--accent)`, `var(--bg-chat)`, `var(--text-normal)`…, lista no topo de `css/theme.css`), nunca cor fixa, senão o tema de cada um não pega. Os painéis usam as variáveis transparentes (`--bg-sidebar`, `--bg-chat`) e o que precisa ser sempre opaco (menus, campos) usa as `--bg-solid-*`.
 - Os arquivos estáticos são servidos sem cache (pra ninguém ficar com `app.js` velho depois de uma mudança), menos `public/vendor/`, que fica em cache por 30 dias.
 
 ## Próximos passos

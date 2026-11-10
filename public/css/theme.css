@@ -1,103 +1,150 @@
 /* ===================================================================
-   didiscord — design tokens
+   didiscord — base visual
+   Todas as cores, fontes e cantos saem destas variáveis. O tema de cada pessoa (js/themes.js)
+   sobrescreve elas no <html>; os valores aqui são o tema padrão ("Discord escuro"), usados até o
+   tema carregar.
    =================================================================== */
 :root {
-  /* superfícies */
-  --ink:      #050406;
-  --panel:    #0A0810;
-  --elevated: #131019;
-  --overlay:  #1C1826;
-  --line:     #2B2438;
+  --accent: #5865f2;
+  --accent-hover: #4c57d1;
+  --accent-active: #434cb8;
+  --accent-soft: rgba(88, 101, 242, 0.16);
+  --accent-softer: rgba(88, 101, 242, 0.08);
+  --accent-contrast: #ffffff;
 
-  /* texto */
-  --text-hi: #F1E9FB;
-  --text-lo: #9A8FB0;
-  --text-faint: #5C5470;
+  --bg-app: #1e1f22;
+  --bg-rail: #1e1f22;
+  --bg-sidebar: #2b2d31;
+  --bg-chat: #313338;
+  --bg-input: #383a40;
+  --bg-floating: #111214;
+  --bg-modal: #313338;
+  --bg-solid-app: #1e1f22;
+  --bg-solid-sidebar: #2b2d31;
+  --bg-solid-chat: #313338;
+  --bg-solid-input: #383a40;
+  --bg-hover: rgba(148, 155, 164, 0.1);
+  --bg-active: rgba(148, 155, 164, 0.18);
+  --bg-selected: rgba(148, 155, 164, 0.24);
+  --border: rgba(148, 155, 164, 0.14);
+  --border-strong: rgba(148, 155, 164, 0.28);
+  --shadow-color: rgba(0, 0, 0, 0.45);
 
-  /* acento */
-  --amethyst:      #A855F7;
-  --amethyst-hi:   #C58BFF;
-  --amethyst-ink:  #120A1C;
-  --ember:         #FF8F66;
-  --online:        #7CD9A0;
+  --text-heading: #f2f3f5;
+  --text-normal: #dbdee1;
+  --text-muted: #949ba4;
+  --text-faint: #6d6f78;
+  --text-link: #00a8fc;
 
-  /* tipografia */
-  --font-display: 'Fraunces', Georgia, serif;
-  --font-body: 'Inter', system-ui, sans-serif;
+  --success: #23a55a;
+  --success-soft: rgba(35, 165, 90, 0.16);
+  --danger: #f23f43;
+  --danger-soft: rgba(242, 63, 67, 0.14);
+  --mention: #f0b232;
+  --mention-bg: rgba(240, 178, 50, 0.1);
+  --mention-bg-hover: rgba(240, 178, 50, 0.14);
 
-  /* forma */
+  --glass-blur: 0px;
+  --glass-saturate: 100%;
+  --bg-image: none;
+  --bg-image-blur: 0px;
+  --bg-image-dim: 0.4;
+
+  --font: 'Inter', system-ui, 'Segoe UI', sans-serif;
+  --font-heading: 'Inter', system-ui, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  --font-size: 16px;
+  --radius: 8px;
+  --radius-xs: 4px;
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-avatar: 50%;
 
-  /* movimento */
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow-sm: 0 1px 2px var(--shadow-color);
+  --shadow-md: 0 4px 14px var(--shadow-color);
+  --shadow-lg: 0 12px 40px var(--shadow-color);
+
+  /* nomes antigos (o CSS mais velho ainda usa) apontando pros novos */
+  --ink: var(--bg-solid-app);
+  --panel: var(--bg-sidebar);
+  --elevated: var(--bg-input);
+  --overlay: var(--bg-floating);
+  --line: var(--border);
+  --text-hi: var(--text-heading);
+  --text-lo: var(--text-muted);
+  --amethyst: var(--accent);
+  --amethyst-hi: var(--accent);
+  --amethyst-ink: var(--accent-contrast);
+  --ember: var(--danger);
+  --online: var(--success);
+  --font-body: var(--font);
+  --font-display: var(--font-heading);
 }
 
 * { box-sizing: border-box; }
 
-html, body {
-  height: 100%;
-  margin: 0;
-}
+html, body { height: 100%; margin: 0; }
+html { font-size: var(--font-size); }
 
 body {
-  background: var(--ink);
-  color: var(--text-hi);
-  font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.5;
+  background: var(--bg-solid-app);
+  color: var(--text-normal);
+  font-family: var(--font);
+  font-size: 0.9375rem;
+  line-height: 1.375;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+/* imagem/degradê de fundo do tema: fica atrás de tudo, aparece quando os painéis são transparentes */
+html[data-bg-image] body::before {
+  content: '';
+  position: fixed;
+  inset: calc(var(--bg-image-blur) * -2);
+  z-index: -1;
+  background: var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  filter: blur(var(--bg-image-blur)) brightness(calc(1 - var(--bg-image-dim)));
+  pointer-events: none;
+}
+html[data-bg-image] body { background: #000; }
+
 h1, h2, h3, .display {
-  font-family: var(--font-display);
-  font-weight: 600;
+  font-family: var(--font-heading);
+  font-weight: 700;
   letter-spacing: -0.01em;
+  color: var(--text-heading);
   margin: 0;
 }
 
-a { color: inherit; }
+a { color: var(--text-link); }
 
-button {
-  font-family: var(--font-body);
-  cursor: pointer;
-}
+button { font-family: var(--font); cursor: pointer; }
+input, textarea, select, button { font-size: inherit; color: inherit; font-family: inherit; }
 
-input, textarea, select, button {
-  font-size: inherit;
-  color: inherit;
-}
+::selection { background: var(--accent-soft); color: var(--text-heading); }
 
-::selection {
-  background: var(--amethyst);
-  color: var(--amethyst-ink);
-}
-
-/* scrollbar discreta */
+/* rolagem fina, que some quando não está em uso */
+* { scrollbar-width: thin; scrollbar-color: var(--bg-active) transparent; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--overlay);
-  border-radius: 8px;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--line); }
+::-webkit-scrollbar-thumb { background: var(--bg-active); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--bg-selected); background-clip: padding-box; }
 
-/* foco visível — acessibilidade, não decoração */
-:focus-visible {
-  outline: 2px solid var(--amethyst-hi);
-  outline-offset: 2px;
-}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* garante que o atributo hidden sempre esconda, mesmo em elementos com display
-   forçado por outra classe (ex: .btn define display: inline-flex) */
 [hidden] { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+html[data-reduce-motion] *, html[data-reduce-motion] *::before, html[data-reduce-motion] *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
 }
 
 /* ===================================================================
@@ -109,92 +156,155 @@ input, textarea, select, button {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
-  border-radius: var(--radius-md);
+  min-height: 38px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   font-weight: 600;
-  font-size: 14px;
-  transition: transform 0.15s var(--ease), background 0.15s var(--ease), border-color 0.15s var(--ease);
+  font-size: 0.875rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
 }
-.btn:active { transform: scale(0.97); }
+a.btn { text-decoration: none; }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary { background: var(--accent); color: var(--accent-contrast); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:active { background: var(--accent-active); }
+.btn-primary:disabled { background: var(--bg-active); color: var(--text-faint); cursor: not-allowed; }
+.btn-ghost { background: var(--bg-hover); border-color: transparent; color: var(--text-normal); }
+.btn-ghost:hover { background: var(--bg-active); color: var(--text-heading); }
+.btn-quiet { background: transparent; color: var(--text-muted); }
+.btn-quiet:hover { color: var(--text-heading); text-decoration: underline; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { filter: brightness(0.92); }
+.btn-danger-ghost { background: transparent; border-color: var(--danger); color: var(--danger); }
+.btn-danger-ghost:hover { background: var(--danger); color: #fff; }
+.btn-sm { min-height: 30px; padding: 5px 12px; font-size: 0.8125rem; }
 
-.btn-primary {
-  background: var(--amethyst);
-  color: var(--amethyst-ink);
-}
-.btn-primary:hover { background: var(--amethyst-hi); }
-.btn-primary:disabled {
-  background: var(--overlay);
-  color: var(--text-faint);
-  cursor: not-allowed;
-}
-
-.btn-ghost {
-  background: transparent;
-  border-color: var(--line);
-  color: var(--text-lo);
-}
-.btn-ghost:hover {
-  border-color: var(--amethyst);
-  color: var(--text-hi);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-
+.field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
 .field label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-lo);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
 }
+.field label .field-hint { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--text-normal); }
+.field-help { font-size: 0.8125rem; color: var(--text-muted); line-height: 1.45; }
+.field-hint { color: var(--text-faint); font-weight: 500; }
 
-.field input,
-.field textarea {
-  background: var(--elevated);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 11px 14px;
-  color: var(--text-hi);
-  transition: border-color 0.15s var(--ease);
-}
-.field input:focus,
-.field textarea:focus {
-  border-color: var(--amethyst);
+input[type="text"], input[type="password"], input[type="url"], input[type="search"], input[type="number"],
+textarea, select {
+  background: var(--bg-solid-app);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  color: var(--text-normal);
   outline: none;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
-.field input::placeholder,
-.field textarea::placeholder { color: var(--text-faint); }
-.field textarea {
-  font-family: var(--font-body);
-  resize: vertical;
-  min-height: 60px;
-  line-height: 1.4;
+html[data-theme-mode="light"] input[type="text"], html[data-theme-mode="light"] input[type="password"],
+html[data-theme-mode="light"] input[type="url"], html[data-theme-mode="light"] input[type="search"],
+html[data-theme-mode="light"] textarea, html[data-theme-mode="light"] select { background: var(--bg-solid-input); }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-softer); }
+input::placeholder, textarea::placeholder { color: var(--text-faint); }
+textarea { resize: vertical; line-height: 1.4; }
+select {
+  appearance: none;
+  padding-right: 34px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%), linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
 }
+select option { background: var(--bg-solid-sidebar); color: var(--text-normal); }
 
-.field-error {
-  font-size: 13px;
-  color: var(--ember);
-  min-height: 1em;
+input[type="range"] {
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-active);
+  outline: none;
+  cursor: pointer;
+  padding: 0;
+  border: none;
 }
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid var(--accent);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.12s var(--ease);
+}
+input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.12); }
+input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 4px solid var(--accent); }
+
+/* checkbox vira um interruptor (liga/desliga) */
+input[type="checkbox"] {
+  appearance: none;
+  width: 40px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--bg-selected);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.18s var(--ease);
+  margin: 0;
+}
+input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.18s var(--ease-out);
+}
+input[type="checkbox"]:checked { background: var(--success); }
+input[type="checkbox"]:checked::after { transform: translateX(16px); }
+input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+input[type="color"] { padding: 0; border: none; background: none; cursor: pointer; }
+
+.field-error { font-size: 0.8125rem; color: var(--danger); min-height: 1em; }
 
 .card {
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: var(--bg-modal);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
 
-/* marca: duas bolinhas conectadas — vocês dois */
-.mark-duo {
-  display: block;
-  flex-shrink: 0;
-}
-.mark-duo circle { fill: var(--amethyst-hi); }
-.mark-duo path {
-  stroke: var(--line);
-  stroke-width: 1.5;
-  fill: none;
+/* marca: duas bolinhas conectadas */
+.mark-duo { display: block; flex-shrink: 0; }
+.mark-duo circle { fill: currentColor; }
+.mark-duo path { stroke: currentColor; stroke-width: 2; fill: none; opacity: 0.55; }
+
+/* vidro: painéis com o que está atrás desfocado (só quando o tema pede) */
+html[data-glass] .glass,
+html[data-glass] .server-rail,
+html[data-glass] .sidebar,
+html[data-glass] .main-area,
+html[data-glass] .member-panel,
+html[data-glass] .side-panel,
+html[data-glass] .dm-profile-panel,
+html[data-glass] .modal,
+html[data-glass] .settings-modal,
+html[data-glass] .command-popup,
+html[data-glass] .emoji-picker,
+html[data-glass] .server-menu,
+html[data-glass] .participant-context-menu,
+html[data-glass] .profile-card:not(.is-panel),
+html[data-glass] .toast {
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }

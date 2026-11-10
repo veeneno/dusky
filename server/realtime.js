@@ -123,6 +123,8 @@ function handleClientMessage(ws, msg) {
       return handleRtcSignal(ws, msg);
     case 'typing':
       return handleTyping(ws, msg);
+    case 'voice_speaking':
+      return handleVoiceSpeaking(ws, msg);
     default:
       return; // tipo desconhecido, ignora
   }
@@ -180,6 +182,17 @@ function handleVoiceUpdate(ws, msg) {
   state.screenOn = !!msg.screenOn;
   persistVoiceState(ws.userId, state);
   broadcastToChannel(state.channelId, { type: 'voice_state_update', channelId: state.channelId, userId: ws.userId, muted: state.muted, deafened: state.deafened, cameraOn: state.cameraOn, screenOn: state.screenOn });
+}
+
+// quem está falando agora (anel verde): o site de quem fala avisa quando começa e para; aqui só
+// repassa pra quem enxerga o canal — inclusive quem não está na call, pra prévia da barra lateral
+function handleVoiceSpeaking(ws, msg) {
+  const state = voiceStates.get(ws.userId);
+  if (!state || state.ws !== ws) return;
+  const speaking = !!msg.speaking;
+  if (state.speaking === speaking) return;
+  state.speaking = speaking;
+  broadcastToChannel(state.channelId, { type: 'voice_speaking', channelId: state.channelId, userId: ws.userId, speaking }, ws);
 }
 
 // "fulano está digitando…": o site manda a cada ~3s enquanto a pessoa digita; aqui só confere se ela

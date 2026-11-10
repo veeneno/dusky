@@ -40,7 +40,7 @@ app.set('trust proxy', 'loopback');
 // gerado uma vez e fixado aqui; se você mudar isso, todo mundo é deslogado
 const SESSION_SECRET = process.env.SESSION_SECRET || 'troque-essa-chave-antes-de-expor-o-site-na-internet';
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' })); // tema com CSS próprio passa dos 100kb padrão
 app.use(express.urlencoded({ extended: true }));
 
 app.use(cookieSession({

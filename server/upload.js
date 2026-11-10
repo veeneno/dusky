@@ -63,10 +63,17 @@ const serverIconUpload = multer({
   fileFilter: (req, file, cb) => cb(null, IMAGE_TYPES.includes(file.mimetype)),
 });
 
+// imagem de fundo do tema de cada pessoa (ver routes/profile.js, /theme/background)
+const themeBackgroundUpload = multer({
+  storage: makeStorage('themes'),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, IMAGE_TYPES.includes(file.mimetype)),
+});
+
 function attachmentTypeOf(mimetype) {
   if (IMAGE_TYPES.includes(mimetype)) return 'image';
   if (VIDEO_TYPES.includes(mimetype)) return 'video';
   return 'file'; // qualquer outro tipo — chip de download genérico no chat
 }
 
-module.exports = { avatarUpload, bannerUpload, attachmentUpload, serverIconUpload, attachmentTypeOf, UPLOADS_ROOT };
+module.exports = { avatarUpload, bannerUpload, attachmentUpload, serverIconUpload, themeBackgroundUpload, attachmentTypeOf, UPLOADS_ROOT };

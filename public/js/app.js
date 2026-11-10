@@ -306,6 +306,35 @@
     try { localStorage.setItem(VOICE_PROCESSING_KEY, VOICE_PROCESSING_MODES.includes(v) ? v : 'speakers'); } catch (_) { /* ok */ }
   }
 
+  // ---------- preferências do chat e de acessibilidade (aba "chat"/"acessibilidade") ----------
+  const PREF_DEFAULTS = {
+    prefLinkPreviews: true, prefJumboEmoji: true, prefShortcodes: true, prefTyping: true, prefEnterSends: true,
+    prefClock24: true, prefAutoplayVideo: true, prefReduceMotion: false, prefUnderlineLinks: false,
+    prefAlwaysTimestamps: false, prefSaturation: 100,
+  };
+  function getPref(key) {
+    try {
+      const v = localStorage.getItem(`didiscord:${key}`);
+      if (v === null) return PREF_DEFAULTS[key];
+      return typeof PREF_DEFAULTS[key] === 'number' ? Number(v) : v === '1';
+    } catch (_) { return PREF_DEFAULTS[key]; }
+  }
+  function setPref(key, value) {
+    try { localStorage.setItem(`didiscord:${key}`, typeof value === 'number' ? String(value) : (value ? '1' : '0')); } catch (_) { /* ok */ }
+    applyPrefs();
+  }
+  // as que mudam o visual viram atributos no <html> (o CSS faz o resto)
+  function applyPrefs() {
+    const root = document.documentElement;
+    root.toggleAttribute('data-reduce-motion', getPref('prefReduceMotion'));
+    root.toggleAttribute('data-underline-links', getPref('prefUnderlineLinks'));
+    root.toggleAttribute('data-always-time', getPref('prefAlwaysTimestamps'));
+    const sat = getPref('prefSaturation');
+    root.toggleAttribute('data-saturation', sat < 100);
+    root.style.setProperty('--app-saturation', String(sat / 100));
+  }
+  applyPrefs();
+
   function getSavedNoiseSuppression() {
     try {
       const v = localStorage.getItem(NOISE_SUPPRESSION_KEY);
@@ -662,7 +691,9 @@
   function formatTime(iso) {
     // sqlite guarda em UTC "YYYY-MM-DD HH:MM:SS"
     const d = new Date(iso.replace(' ', 'T') + 'Z');
-    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return getPref('prefClock24')
+      ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   }
 
   function timeValue(iso) {
@@ -825,7 +856,8 @@
         const isSelfUser = !!(currentUser && currentUser.id === userId);
 
         const row = document.createElement('div');
-        row.className = 'channel-voice-preview-row';
+        row.className = 'channel-voice-preview-row' + (speakingUsers.has(userId) ? ' is-speaking' : '');
+        row.dataset.userId = userId;
         row.innerHTML = `
           <span class="channel-voice-preview-avatar">${memberAvatarInner(user)}</span>
           <span class="channel-voice-preview-name">${escapeHtml(user.username)}${isSelfUser ? ' (você)' : ''}</span>
@@ -1129,6 +1161,7 @@
     return m.user_id ? `u${m.user_id}` : `b${m.bot_name || 'bot'}`;
   }
 
+  let stuckToBottom = true;
   function isScrolledNearBottom() {
     return chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 120;
   }
@@ -1238,6 +1271,14 @@
 
   chatMessages.addEventListener('scroll', maybeLoadOlderMessages, { passive: true });
 
+  // "grudado no fim": se a pessoa está no fim da conversa, qualquer imagem/vídeo/prévia que termine de
+  // carregar depois (e empurre tudo pra cima) mantém a rolagem lá embaixo. load não borbulha, por isso
+  // a escuta é na fase de captura.
+  chatMessages.addEventListener('scroll', () => { stuckToBottom = isScrolledNearBottom(); }, { passive: true });
+  const keepStuck = () => { if (stuckToBottom) scrollToBottom(); };
+  chatMessages.addEventListener('load', keepStuck, true);
+  chatMessages.addEventListener('loadedmetadata', keepStuck, true);
+
   // adiciona só a mensagem nova ao DOM (sem reconstruir a lista inteira) — evita replay da
   // animação de entrada em todo o histórico e evita perder a posição do scroll a cada mensagem
   function appendMessageToDom(m) {
@@ -1346,19 +1387,7 @@
       const wrap = document.createElement('div');
       if (m.attachment_type === 'video') {
         wrap.className = 'msg-attachment msg-attachment-video';
-        wrap.innerHTML = `<video src="${escapeAttr(m.attachment_url)}" controls preload="metadata" playsinline></video>`;
-        const expand = document.createElement('button');
-        expand.type = 'button';
-        expand.className = 'msg-media-expand';
-        expand.title = 'abrir no visualizador';
-        expand.setAttribute('aria-label', 'abrir vídeo no visualizador');
-        expand.innerHTML = EXPAND_ICON;
-        expand.addEventListener('click', () => {
-          const v = wrap.querySelector('video');
-          if (v) v.pause();
-          openMediaViewer(m);
-        });
-        wrap.appendChild(expand);
+        wrap.appendChild(createVideoPlayer(m.attachment_url, { hoverPreview: true, onExpand: (t) => openMediaViewer(m, { startAt: t }) }));
       } else if (m.attachment_type === 'file') {
         // arquivo genérico (não imagem/vídeo) — chip de download com nome e tamanho, sem preview
         wrap.className = 'msg-attachment msg-attachment-file';
@@ -1376,8 +1405,11 @@
         `;
         wrap.querySelector('.msg-file-chip-name').textContent = fname;
       } else {
-        wrap.className = 'msg-attachment msg-attachment-image';
+        wrap.className = 'msg-attachment msg-attachment-image is-loading' + (m.attachment_type === 'gif' || /\.gif($|\?)/i.test(m.attachment_url) ? ' is-gif' : '');
         wrap.innerHTML = `<button type="button" class="msg-media-btn" aria-label="abrir imagem"><img src="${escapeAttr(m.attachment_url)}" alt="anexo" loading="lazy"></button>`;
+        const img = wrap.querySelector('img');
+        const loaded = () => wrap.classList.remove('is-loading');
+        if (img.complete) loaded(); else { img.addEventListener('load', loaded, { once: true }); img.addEventListener('error', () => { wrap.classList.remove('is-loading'); wrap.classList.add('is-broken'); }, { once: true }); }
         wrap.querySelector('.msg-media-btn').addEventListener('click', () => openMediaViewer(m));
       }
       el.querySelector('.msg-body').appendChild(wrap);
@@ -1556,6 +1588,7 @@
 
   function scrollToBottom() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    stuckToBottom = true;
   }
 
   // ===================================================================
@@ -1595,7 +1628,7 @@
   // escreve o texto da mensagem (Markdown) no elemento — nada de innerHTML, ver js/markdown.js
   function renderMessageText(target, text, edited, m) {
     target.textContent = '';
-    target.classList.toggle('is-jumbo', DidiMarkdown.isEmojiOnly(text));
+    target.classList.toggle('is-jumbo', getPref('prefJumboEmoji') && DidiMarkdown.isEmojiOnly(text));
     target.appendChild(DidiMarkdown.render(text, mentionContext(m)));
     if (edited) {
       const tag = document.createElement('span');
@@ -1768,7 +1801,7 @@
   }
 
   function attachLinkEmbeds(el, m) {
-    if (m.attachment_type === 'gif') return;
+    if (m.attachment_type === 'gif' || !getPref('prefLinkPreviews')) return;
     const urls = DidiMarkdown.links(m.content || '');
     if (!urls.length) return;
     const holder = document.createElement('div');
@@ -1844,6 +1877,7 @@
 
   // :joia: escrito à mão (sem escolher na lista) também vira emoji ao enviar
   function encodeShortcodes(text) {
+    if (!getPref('prefShortcodes')) return text;
     return text.replace(/(^|[^\w`]):([a-z0-9_+-]{2,40}):/gi, (all, pre, name) => {
       const e = DidiEmoji.fromShortcode(name);
       return e ? pre + e : all;
@@ -1925,7 +1959,7 @@
   const typingIndicator = document.getElementById('typingIndicator');
 
   function notifyTyping() {
-    if (!currentChannel || currentChannel.type !== 'text') return;
+    if (!currentChannel || currentChannel.type !== 'text' || !getPref('prefTyping')) return;
     const v = chatInput.value;
     if (!v.trim() || v.startsWith('/')) return;
     const now = Date.now();
@@ -2582,6 +2616,154 @@
     // a mensagem aparece via broadcast (message_created), igual anexo normal
   }
 
+
+  // ===================================================================
+  // player de vídeo próprio (chat e visualizador)
+  // ===================================================================
+  // Controles no estilo do app: play, barra de progresso (com o que já carregou), tempo, volume
+  // lembrado, velocidade, tela cheia e abrir no visualizador. No chat, passar o mouse toca uma
+  // prévia sem som (dá pra desligar em configurações → chat).
+
+  const VIDEO_VOLUME_KEY = 'didiscord:videoVolume';
+  const VIDEO_SPEEDS = [1, 1.25, 1.5, 2, 0.5, 0.75];
+  const VP_ICONS = {
+    play: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+    pause: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+    vol: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>',
+    mute: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>',
+    full: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+    expand: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>',
+    loop: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  };
+
+  function formatClock(sec) {
+    if (!Number.isFinite(sec)) return '0:00';
+    sec = Math.max(0, Math.floor(sec));
+    const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const s2 = String(sec % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${s2}` : `${m}:${s2}`;
+  }
+
+  function savedVideoVolume() {
+    try { const v = JSON.parse(localStorage.getItem(VIDEO_VOLUME_KEY) || 'null'); if (v && typeof v.volume === 'number') return v; } catch (_) { /* ok */ }
+    return { volume: 0.8, muted: false };
+  }
+
+  function createVideoPlayer(src, opts = {}) {
+    const wrap = document.createElement('div');
+    wrap.className = 'vplayer' + (opts.large ? ' is-large' : '');
+    wrap.tabIndex = 0;
+    wrap.innerHTML = `
+      <video preload="metadata" playsinline></video>
+      <button type="button" class="vplayer-big" aria-label="tocar">${VP_ICONS.play}</button>
+      <div class="vplayer-bar">
+        <button type="button" class="vplayer-btn vplayer-play" aria-label="tocar">${VP_ICONS.play}</button>
+        <span class="vplayer-time">0:00 / 0:00</span>
+        <div class="vplayer-track" role="slider" aria-label="posição do vídeo" tabindex="-1">
+          <div class="vplayer-buffered"></div><div class="vplayer-played"><span class="vplayer-knob"></span></div>
+        </div>
+        <button type="button" class="vplayer-btn vplayer-speed" title="velocidade">1x</button>
+        <span class="vplayer-volume">
+          <button type="button" class="vplayer-btn vplayer-mute" aria-label="mutar">${VP_ICONS.vol}</button>
+          <input type="range" class="vplayer-vol" min="0" max="1" step="0.05" aria-label="volume">
+        </span>
+        <button type="button" class="vplayer-btn vplayer-loop" title="repetir">${VP_ICONS.loop}</button>
+        ${opts.onExpand ? `<button type="button" class="vplayer-btn vplayer-expand" title="abrir no visualizador">${VP_ICONS.expand}</button>` : ''}
+        <button type="button" class="vplayer-btn vplayer-full" title="tela cheia (F)">${VP_ICONS.full}</button>
+      </div>`;
+    const v = wrap.querySelector('video');
+    v.src = src;
+    const q = (c) => wrap.querySelector(c);
+    const vol = q('.vplayer-vol');
+    const saved = savedVideoVolume();
+    v.volume = saved.volume; vol.value = String(saved.volume);
+    let userStarted = false;
+    let previewing = false;
+
+    const sync = () => {
+      const playing = !v.paused && !v.ended;
+      wrap.classList.toggle('is-playing', playing && !previewing);
+      wrap.classList.toggle('is-previewing', previewing);
+      q('.vplayer-play').innerHTML = playing && !previewing ? VP_ICONS.pause : VP_ICONS.play;
+      q('.vplayer-time').textContent = `${formatClock(v.currentTime)} / ${formatClock(v.duration)}`;
+      const pct = v.duration ? (v.currentTime / v.duration) * 100 : 0;
+      q('.vplayer-played').style.width = `${pct}%`;
+      if (v.buffered.length && v.duration) q('.vplayer-buffered').style.width = `${(v.buffered.end(v.buffered.length - 1) / v.duration) * 100}%`;
+      const muted = v.muted || v.volume === 0;
+      q('.vplayer-mute').innerHTML = muted ? VP_ICONS.mute : VP_ICONS.vol;
+      q('.vplayer-loop').classList.toggle('is-on', v.loop);
+    };
+    const start = () => {
+      if (previewing) { previewing = false; v.currentTime = 0; }
+      userStarted = true;
+      v.muted = savedVideoVolume().muted;
+      v.play().catch(() => {});
+    };
+    const toggle = () => { if (v.paused || v.ended || previewing) start(); else v.pause(); };
+    const persistVolume = () => { try { localStorage.setItem(VIDEO_VOLUME_KEY, JSON.stringify({ volume: v.volume, muted: v.muted })); } catch (_) { /* ok */ } };
+
+    ['play', 'pause', 'timeupdate', 'durationchange', 'progress', 'volumechange', 'ended', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, sync));
+    v.addEventListener('click', toggle);
+    v.addEventListener('dblclick', () => q('.vplayer-full').click());
+    q('.vplayer-big').addEventListener('click', start);
+    q('.vplayer-play').addEventListener('click', toggle);
+    q('.vplayer-mute').addEventListener('click', () => { v.muted = !v.muted; if (!v.muted && v.volume === 0) v.volume = 0.6; persistVolume(); });
+    vol.addEventListener('input', () => { v.volume = Number(vol.value); v.muted = v.volume === 0; persistVolume(); });
+    q('.vplayer-speed').addEventListener('click', (e) => {
+      const next = VIDEO_SPEEDS[(VIDEO_SPEEDS.indexOf(v.playbackRate) + 1) % VIDEO_SPEEDS.length] || 1;
+      v.playbackRate = next;
+      e.currentTarget.textContent = `${next}x`;
+    });
+    q('.vplayer-loop').addEventListener('click', () => { v.loop = !v.loop; sync(); });
+    q('.vplayer-full').addEventListener('click', () => {
+      if (document.fullscreenElement === wrap) document.exitFullscreen().catch(() => {});
+      else wrap.requestFullscreen().catch(() => {});
+    });
+    if (opts.onExpand) q('.vplayer-expand').addEventListener('click', () => { v.pause(); opts.onExpand(v.currentTime); });
+
+    // arrastar na barra de progresso
+    const track = q('.vplayer-track');
+    const seekTo = (e) => {
+      const r = track.getBoundingClientRect();
+      const t = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      if (v.duration) v.currentTime = t * v.duration;
+    };
+    track.addEventListener('pointerdown', (e) => {
+      if (previewing) { previewing = false; userStarted = true; v.muted = savedVideoVolume().muted; }
+      track.setPointerCapture(e.pointerId);
+      wrap.classList.add('is-seeking');
+      seekTo(e);
+    });
+    track.addEventListener('pointermove', (e) => { if (track.hasPointerCapture(e.pointerId)) seekTo(e); });
+    track.addEventListener('pointerup', () => wrap.classList.remove('is-seeking'));
+
+    wrap.addEventListener('keydown', (e) => {
+      if (e.target.closest('input')) return;
+      if (e.key === ' ' || e.key === 'k') { e.preventDefault(); toggle(); }
+      else if (e.key === 'f') q('.vplayer-full').click();
+      else if (e.key === 'm') q('.vplayer-mute').click();
+      else if (e.key === 'ArrowRight' && !opts.large) { e.preventDefault(); v.currentTime = Math.min(v.duration || 0, v.currentTime + 5); }
+      else if (e.key === 'ArrowLeft' && !opts.large) { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime - 5); }
+    });
+
+    // prévia sem som ao passar o mouse (só antes de a pessoa dar play de verdade)
+    if (opts.hoverPreview) {
+      wrap.addEventListener('mouseenter', () => {
+        if (userStarted || !getPref('prefAutoplayVideo')) return;
+        previewing = true; v.muted = true;
+        v.play().catch(() => { previewing = false; });
+      });
+      wrap.addEventListener('mouseleave', () => {
+        if (!previewing) return;
+        v.pause(); previewing = false; v.currentTime = 0; sync();
+      });
+    }
+    if (opts.startAt) v.addEventListener('loadedmetadata', () => { v.currentTime = opts.startAt; }, { once: true });
+    if (opts.autoplay) { userStarted = true; v.muted = savedVideoVolume().muted; v.autoplay = true; }
+    wrap.video = v;
+    sync();
+    return wrap;
+  }
+
   // ===================================================================
   // menu de comandos ("/") e autocompletar do /play
   // ===================================================================
@@ -2842,7 +3024,9 @@
 
   chatInput.addEventListener('keydown', (e) => {
     if (e.defaultPrevented || e.isComposing) return;
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Enter envia (ou, se a pessoa preferir, Enter quebra linha e Ctrl+Enter envia)
+    const sends = getPref('prefEnterSends') ? (!e.shiftKey && !e.ctrlKey) : (e.ctrlKey || e.metaKey);
+    if (e.key === 'Enter' && sends) {
       e.preventDefault();
       chatComposer.requestSubmit();
     } else if (e.key === 'ArrowUp' && !chatInput.value) {
@@ -4895,19 +5079,82 @@
     return last || 'arquivo';
   }
 
-  function openMediaViewer(m) {
+  let viewerStartAt = 0;
+  let viewerRotation = 0;
+  const mediaViewerStrip = document.getElementById('mediaViewerStrip');
+  const mediaViewerBackdrop = document.getElementById('mediaViewerBackdrop');
+  const mediaViewerRotate = document.getElementById('mediaViewerRotate');
+  const mediaViewerCopy = document.getElementById('mediaViewerCopy');
+
+  function openMediaViewer(m, opts = {}) {
     viewerItems = currentMessages.filter(isViewableMedia);
     viewerIndex = viewerItems.findIndex((x) => x.id === m.id);
     if (viewerIndex < 0) { viewerItems = [m]; viewerIndex = 0; }
+    viewerStartAt = opts.startAt || 0;
     mediaViewer.hidden = false;
     document.body.classList.add('is-viewing-media');
+    renderViewerStrip();
     showViewerItem();
   }
+
+  // miniaturas de todas as imagens/vídeos do canal, embaixo — clica pra pular
+  function renderViewerStrip() {
+    mediaViewerStrip.innerHTML = '';
+    mediaViewerStrip.hidden = viewerItems.length < 2;
+    if (viewerItems.length < 2) return;
+    viewerItems.forEach((item, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'media-viewer-thumb' + (item.attachment_type === 'video' ? ' is-video' : '');
+      b.setAttribute('aria-label', `mídia ${i + 1}`);
+      if (item.attachment_type === 'video') {
+        const v = document.createElement('video');
+        v.src = `${item.attachment_url}#t=0.5`; v.preload = 'metadata'; v.muted = true;
+        b.appendChild(v);
+      } else {
+        const img = document.createElement('img');
+        img.src = item.attachment_url; img.alt = ''; img.loading = 'lazy';
+        b.appendChild(img);
+      }
+      b.addEventListener('click', () => { viewerIndex = i; viewerStartAt = 0; showViewerItem(); });
+      mediaViewerStrip.appendChild(b);
+    });
+  }
+
+  function syncViewerStrip() {
+    mediaViewerStrip.querySelectorAll('.media-viewer-thumb').forEach((b, i) => {
+      b.classList.toggle('is-active', i === viewerIndex);
+      // centraliza a miniatura atual só rolando a faixa (scrollIntoView rolaria o visualizador inteiro)
+      if (i === viewerIndex) mediaViewerStrip.scrollTo({ left: b.offsetLeft - (mediaViewerStrip.clientWidth - b.offsetWidth) / 2, behavior: 'smooth' });
+    });
+  }
+
+  mediaViewerRotate.addEventListener('click', () => { viewerRotation = (viewerRotation + 90) % 360; applyViewerTransform(); });
+  mediaViewerCopy.addEventListener('click', async () => {
+    const m = viewerItems[viewerIndex];
+    if (!m) return;
+    try {
+      const blob = await fetch(m.attachment_url).then((r) => r.blob());
+      let png = blob;
+      if (blob.type !== 'image/png') {
+        const bmp = await createImageBitmap(blob);
+        const canvas = document.createElement('canvas');
+        canvas.width = bmp.width; canvas.height = bmp.height;
+        canvas.getContext('2d').drawImage(bmp, 0, 0);
+        png = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      toast('imagem copiada');
+    } catch (_) {
+      toast('não deu pra copiar essa imagem', 'error');
+    }
+  });
 
   function closeMediaViewer() {
     if (mediaViewer.hidden) return;
     const video = mediaViewerStage.querySelector('video');
     if (video) video.pause();
+    mediaViewerStrip.innerHTML = '';
     mediaViewerStage.innerHTML = '';
     viewerImg = null;
     mediaViewer.hidden = true;
@@ -4939,19 +5186,23 @@
     mediaViewerOpen.href = m.attachment_url;
     mediaViewerDownload.href = m.attachment_url;
     mediaViewerDownload.setAttribute('download', viewerFileName(m));
-    mediaViewerCaption.textContent = m.content || '';
+    mediaViewerCaption.textContent = '';
+    if (m.content) mediaViewerCaption.appendChild(DidiMarkdown.render(m.content, mentionContext(m)));
     mediaViewerCaption.hidden = !m.content;
+    viewerRotation = 0;
+    const isVideo = m.attachment_type === 'video';
+    mediaViewerRotate.hidden = isVideo;
+    mediaViewerCopy.hidden = isVideo || typeof ClipboardItem === 'undefined';
+    mediaViewerBackdrop.style.backgroundImage = isVideo ? 'none' : `url("${String(m.attachment_url).replace(/"/g, '%22')}")`;
+    syncViewerStrip();
 
-    if (m.attachment_type === 'video') {
+    if (isVideo) {
       mediaViewerZoom.hidden = true;
-      const video = document.createElement('video');
-      video.className = 'media-viewer-video';
-      video.src = m.attachment_url;
-      video.controls = true;
-      video.autoplay = true;
-      video.playsInline = true;
-      mediaViewerStage.appendChild(video);
-      video.play().catch(() => { /* sem autoplay: a pessoa aperta o play */ });
+      const player = createVideoPlayer(m.attachment_url, { large: true, autoplay: true, startAt: viewerStartAt });
+      player.classList.add('media-viewer-video');
+      mediaViewerStage.appendChild(player);
+      player.video.play().catch(() => { /* sem autoplay: a pessoa aperta o play */ });
+      viewerStartAt = 0;
     } else {
       mediaViewerZoom.hidden = false;
       const img = document.createElement('img');
@@ -4968,7 +5219,7 @@
   function applyViewerTransform() {
     mediaViewerZoomReset.textContent = `${Math.round(viewerZoom * 100)}%`;
     mediaViewerStage.classList.toggle('is-zoomed', viewerZoom > 1);
-    if (viewerImg) viewerImg.style.transform = `translate(${viewerPan.x}px, ${viewerPan.y}px) scale(${viewerZoom})`;
+    if (viewerImg) viewerImg.style.transform = `translate(${viewerPan.x}px, ${viewerPan.y}px) scale(${viewerZoom}) rotate(${viewerRotation}deg)`;
   }
 
   // não deixa a imagem ampliada "fugir" da tela: o arrasto para na borda
@@ -5060,6 +5311,7 @@
     else if (e.key === '+' || e.key === '=') setViewerZoom(viewerZoom * 1.5);
     else if (e.key === '-') setViewerZoom(viewerZoom / 1.5);
     else if (e.key === '0') setViewerZoom(1);
+    else if ((e.key === 'r' || e.key === 'R') && viewerImg) { viewerRotation = (viewerRotation + 90) % 360; applyViewerTransform(); }
   }, true);
 
   // ===================================================================
@@ -5285,7 +5537,9 @@
   // Esc fecha o que estiver aberto por cima (popout, menu, modais novos)
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (window.DidiEmoji && DidiEmoji.isOpen()) return;
     if (!viewProfileBackdrop.hidden) { closeViewProfile(); return; }
+    if (!settingsModalBackdrop.hidden) { closeSettingsModal(); return; }
     if (!serverMenu.hidden) { closeServerMenu(); return; }
     for (const bd of [adminBackdrop, channelEditBackdrop, newDmBackdrop, inviteBackdrop, serverSettingsBackdrop, addServerBackdrop, joinInviteBackdrop, profileModalBackdrop]) {
       if (!bd.hidden) { bd.hidden = true; return; }
@@ -5454,23 +5708,90 @@
     await populateDeviceSelects();
   }
 
-  // ---- abas do modal de configurações (microfone / áudio / vídeo) ----
+  // ---- abas das configurações ----
+  // o microfone/câmera só ligam nas abas que mostram o medidor ou a prévia (voz e câmera)
+  const SETTINGS_TAB_KEY = 'didiscord:settingsTab';
+  let settingsEditorMounted = false;
+  let currentSettingsTab = null;
+
   function switchSettingsTab(tabName) {
+    if (!settingsModalBackdrop.querySelector(`.settings-tab-panel[data-settings-panel="${tabName}"]`)) tabName = 'aparencia';
+    currentSettingsTab = tabName;
+    try { localStorage.setItem(SETTINGS_TAB_KEY, tabName); } catch (_) { /* ok */ }
     settingsTabs.querySelectorAll('.settings-tab').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.settingsTab === tabName);
     });
     settingsModalBackdrop.querySelectorAll('.settings-tab-panel').forEach((panel) => {
       panel.hidden = panel.dataset.settingsPanel !== tabName;
     });
+    settingsModalBackdrop.querySelector('.settings-content').scrollTop = 0;
+    if (tabName === 'aparencia' && !settingsEditorMounted) {
+      settingsEditorMounted = true;
+      DidiTheme.mountEditor(document.getElementById('themeEditor'), { toast });
+    }
+    if (tabName === 'app') renderSettingsAppCard();
+    if (!settingsModalBackdrop.hidden) {
+      if (tabName === 'microfone' || tabName === 'video') startSettingsPreview().catch(() => {});
+      else stopSettingsStream();
+    }
   }
 
   settingsTabs.addEventListener('click', (e) => {
     const btn = e.target.closest('.settings-tab');
-    if (btn) switchSettingsTab(btn.dataset.settingsTab);
+    if (!btn) return;
+    if (btn.dataset.settingsAction === 'profile') { closeSettingsModal(); openProfileModal(); return; }
+    if (btn.dataset.settingsAction === 'logout') { logoutBtn.click(); return; }
+    switchSettingsTab(btn.dataset.settingsTab);
+  });
+  settingsModalBackdrop.addEventListener('click', (e) => {
+    const jump = e.target.closest('[data-settings-jump]');
+    if (jump) { e.preventDefault(); switchSettingsTab(jump.dataset.settingsJump); }
   });
 
-  async function openSettingsModal() {
-    switchSettingsTab('microfone');
+  // interruptores e controles das abas "chat" e "acessibilidade"
+  for (const key of Object.keys(PREF_DEFAULTS)) {
+    const el = document.getElementById(key);
+    if (!el) continue;
+    if (el.type === 'checkbox') {
+      el.addEventListener('change', () => {
+        setPref(key, el.checked);
+        if (key === 'prefClock24' || key === 'prefJumboEmoji' || key === 'prefLinkPreviews') renderMessages();
+      });
+    } else {
+      const label = document.getElementById(`${key}Value`);
+      el.addEventListener('input', () => { setPref(key, Number(el.value)); if (label) label.textContent = `${el.value}%`; });
+    }
+  }
+  function syncPrefControls() {
+    for (const key of Object.keys(PREF_DEFAULTS)) {
+      const el = document.getElementById(key);
+      if (!el) continue;
+      if (el.type === 'checkbox') el.checked = getPref(key);
+      else { el.value = String(getPref(key)); const label = document.getElementById(`${key}Value`); if (label) label.textContent = `${el.value}%`; }
+    }
+  }
+
+  const SITE_VERSION = '0.6.0';
+  function renderSettingsAppCard() {
+    const card = document.getElementById('settingsAppCard');
+    const desk = window.didiscordDesktop;
+    card.innerHTML = '<span class="settings-card-icon"><svg width="26" height="13" viewBox="0 0 56 28"><path d="M 10 14 C 20 2, 36 26, 46 14" stroke="currentColor" stroke-width="2.5" fill="none" opacity="0.6"/><circle cx="10" cy="14" r="6" fill="currentColor"/><circle cx="46" cy="14" r="6" fill="currentColor"/></svg></span><span class="settings-card-text"><strong></strong><span></span></span>';
+    card.querySelector('strong').textContent = desk ? 'app desktop do didiscord' : 'didiscord no navegador';
+    card.querySelector('.settings-card-text span').textContent = desk
+      ? `site ${SITE_VERSION} · ${desk.platform === 'win32' ? 'Windows' : desk.platform === 'linux' ? 'Linux' : desk.platform}`
+      : `site ${SITE_VERSION} · instale o app pra compartilhar tela pela placa de vídeo e receber atualizações sozinho`;
+    const checkBtn = document.getElementById('settingsCheckUpdatesBtn');
+    checkBtn.hidden = !(desk && typeof desk.checkForUpdates === 'function');
+    document.getElementById('settingsDownloadBtn').textContent = desk ? 'página de download' : 'baixar o app';
+  }
+  document.getElementById('settingsCheckUpdatesBtn').addEventListener('click', () => {
+    if (window.didiscordDesktop && window.didiscordDesktop.checkForUpdates) window.didiscordDesktop.checkForUpdates();
+  });
+
+  async function openSettingsModal(tab) {
+    let wanted = tab;
+    if (!wanted) { try { wanted = localStorage.getItem(SETTINGS_TAB_KEY); } catch (_) { /* ok */ } }
+    syncPrefControls();
     settingsError.textContent = '';
     micGainRange.value = getSavedMicGain();
     updateMicGainLabel();
@@ -5488,10 +5809,10 @@
     screenPrioritySelect.value = getSavedScreenPriority();
     screenAudioCheckbox.checked = getSavedScreenAudioEnabled();
     settingsModalBackdrop.hidden = false;
+    switchSettingsTab(wanted || 'aparencia');
     try {
       await populateDeviceSelects();
     } catch (_) { /* enumerateDevices sem permissão ainda retorna labels vazios — tudo bem */ }
-    await startSettingsPreview();
   }
 
   function closeSettingsModal() {
@@ -6331,7 +6652,7 @@
       const isSpotlight = hasVideo && spotlightUserId === entry.id;
 
       const el = document.createElement('div');
-      el.className = 'call-participant' + (isBot ? ' is-bot' : '') + (isSpotlight ? ' is-spotlight' : '');
+      el.className = 'call-participant' + (isBot ? ' is-bot' : '') + (isSpotlight ? ' is-spotlight' : '') + (speakingUsers.has(entry.id) ? ' is-speaking' : '');
       el.dataset.userId = String(entry.id);
       if (!entry.isSelf) {
         el.addEventListener('contextmenu', (e) => {
@@ -6679,9 +7000,30 @@
     }
   }
 
+  // quem está falando agora: vale pra call aberta, pra prévia da barra lateral (inclusive de calls
+  // em que eu não estou — o servidor repassa o "voice_speaking") e pra minha barra de perfil
+  const speakingUsers = new Set();
   function setParticipantSpeaking(userId, speaking) {
+    const on = !!speaking;
+    if (on === speakingUsers.has(userId)) return;
+    if (on) speakingUsers.add(userId); else speakingUsers.delete(userId);
     const el = callParticipants.querySelector(`.call-participant[data-user-id="${userId}"]`);
-    if (el) el.classList.toggle('is-speaking', !!speaking);
+    if (el) el.classList.toggle('is-speaking', on);
+    channelGroups.querySelectorAll(`.channel-voice-preview-row[data-user-id="${userId}"]`).forEach((row) => row.classList.toggle('is-speaking', on));
+    if (currentUser && userId === currentUser.id) profileBar.classList.toggle('is-speaking', on);
+  }
+
+  // avisa os outros quando eu começo/paro de falar (com uma folguinha pra não piscar entre palavras)
+  let speakingSentState = false;
+  let lastLoudAt = 0;
+  function reportSelfSpeaking(loud) {
+    const now = performance.now();
+    if (loud) lastLoudAt = now;
+    const effective = loud || now - lastLoudAt < 280;
+    if (effective === speakingSentState) return effective;
+    speakingSentState = effective;
+    if (voiceChannel) Realtime.send('voice_speaking', { speaking: effective });
+    return effective;
   }
 
   function checkSpeaking(analyser) {
@@ -6729,7 +7071,7 @@
           micGateGainNode.gain.setTargetAtTime(0, getAudioCtx().currentTime, 0.01);
         }
       }
-      setParticipantSpeaking(currentUser.id, selfSpeaking);
+      setParticipantSpeaking(currentUser.id, reportSelfSpeaking(selfSpeaking && !isMuted));
       for (const peer of peers.values()) setParticipantSpeaking(peer.userId, checkSpeaking(peer.analyser));
       speakingRAF = setTimeout(loop, SPEAKING_TICK_MS);
     }
@@ -7803,6 +8145,8 @@
   }
 
   function leaveVoiceCall(opts = {}) {
+    if (currentUser) setParticipantSpeaking(currentUser.id, false);
+    speakingSentState = false;
     if (!voiceChannel) return;
     playLeaveSound();
     if (!opts.silent) Realtime.send('voice_leave');
@@ -8102,7 +8446,15 @@
       renderCallParticipants();
     });
 
+    Realtime.on('voice_speaking', ({ userId, speaking }) => {
+      if (currentUser && userId === currentUser.id) return;
+      // na call que estou, o meu próprio medidor já sabe; fora dela, quem conta é o servidor
+      if (peers.has(userId)) return;
+      setParticipantSpeaking(userId, speaking);
+    });
+
     Realtime.on('voice_user_left', ({ channelId, userId }) => {
+      setParticipantSpeaking(userId, false);
       const map = channelVoiceState.get(channelId);
       if (map) map.delete(userId);
       renderVoicePreviews();
@@ -8241,6 +8593,7 @@
     await loadVoiceOccupancy();
     await loadMusicbotState();
     wireRealtime();
+    DidiTheme.load();
     loadUnread();
     updateNotificationPermissionUi();
 
