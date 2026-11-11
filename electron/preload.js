@@ -1,6 +1,6 @@
 'use strict';
 // Ponte entre o site (que roda no domínio remoto) e o processo principal do Electron.
-// Expõe só `window.didiscordDesktop` — o site (public/js/app.js) usa isso pro áudio da tela
+// Expõe só `window.didiscordDesktop` — o site (public/js/app/) usa isso pro áudio da tela
 // compartilhada. Nada de Node/ipcRenderer vaza pra página.
 
 const { contextBridge, ipcRenderer } = require('electron');

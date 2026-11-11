@@ -34,6 +34,10 @@ function loadMemberServer(req, res, next) {
   next();
 }
 
+function requirePermission(key) {
+  return (req, res, next) => access.hasServerPermission(req.server.id, req.user.id, key) ? next() : res.status(403).json({ error: 'seu cargo não permite essa ação' });
+}
+
 function requireOwner(req, res, next) {
   if (req.server.owner_id !== req.user.id) {
     return res.status(403).json({ error: 'só o dono do servidor pode fazer isso' });
@@ -54,21 +58,21 @@ function requireAdmin(req, res, next) {
 function canModerate(server, actorId, targetId) {
   if (targetId === server.owner_id) return false;
   if (actorId === server.owner_id) return true;
-  return access.isServerAdmin(server.id, actorId) && !access.isServerAdmin(server.id, targetId);
+  return !access.isServerAdmin(server.id, targetId);
 }
 
-const CHANNEL_COLUMNS = 'id, name, type, position, server_id, private_view, private_connect';
+const CHANNEL_COLUMNS = 'id, name, type, position, server_id, category_id, private_view, private_connect, private_send, private_attach, private_react, private_pin';
 
 // canais que `userId` consegue ver, cada um com o que ele pode fazer ali. Pra administradores vai
 // junto a configuração de acesso (quais cargos veem/entram), usada na tela de editar canal.
 function listChannels(serverId, userId) {
-  const isAdmin = access.isServerAdmin(serverId, userId);
+  const isAdmin = access.hasServerPermission(serverId, userId, 'manage_channels');
   const rows = db.prepare(
     `SELECT ${CHANNEL_COLUMNS} FROM channels WHERE server_id = ? ORDER BY type, position, id`
   ).all(serverId);
   const grants = isAdmin
     ? db.prepare(`
-        SELECT a.channel_id, a.role_id, a.can_view, a.can_connect FROM channel_role_access a
+        SELECT a.channel_id, a.role_id, a.can_view, a.can_connect, a.can_send, a.can_attach, a.can_react, a.can_pin FROM channel_role_access a
         JOIN channels c ON c.id = a.channel_id WHERE c.server_id = ?
       `).all(serverId)
     : [];
@@ -78,12 +82,14 @@ function listChannels(serverId, userId) {
     if (!perms.view) continue;
     const item = {
       ...ch,
+      permissions: perms,
       private_view: !!ch.private_view,
       private_connect: !!ch.private_connect,
       can_connect: ch.type === 'voice' ? perms.connect : undefined,
     };
     if (isAdmin) {
       const mine = grants.filter((g) => g.channel_id === ch.id);
+      for (const key of ['send', 'attach', 'react', 'pin']) item[key + '_role_ids'] = mine.filter(g => g['can_' + key]).map(g => g.role_id);
       item.view_role_ids = mine.filter((g) => g.can_view).map((g) => g.role_id);
       item.connect_role_ids = mine.filter((g) => g.can_connect).map((g) => g.role_id);
     }
@@ -94,8 +100,8 @@ function listChannels(serverId, userId) {
 
 function listRoles(serverId) {
   return db.prepare(
-    'SELECT id, server_id, name, color, is_admin, hoist, position FROM roles WHERE server_id = ? ORDER BY position DESC, id'
-  ).all(serverId).map((r) => ({ ...r, is_admin: !!r.is_admin, hoist: !!r.hoist }));
+    'SELECT id, server_id, name, color, is_admin, hoist, position, permissions_json FROM roles WHERE server_id = ? ORDER BY position DESC, id'
+  ).all(serverId).map((r) => ({ ...r, permissions: JSON.parse(r.permissions_json), is_admin: !!r.is_admin, hoist: !!r.hoist }));
 }
 
 // avisa o servidor que cargos/permissões mudaram — cada um recarrega o que vê — e derruba das
@@ -252,7 +258,7 @@ router.get('/:serverId/members', requireAuth, loadMemberServer, (req, res) => {
 });
 
 // DELETE /api/servers/:serverId/members/:userId — expulsar alguém (administradores; ver canModerate)
-router.delete('/:serverId/members/:userId', requireAuth, loadMemberServer, requireAdmin, (req, res) => {
+router.delete('/:serverId/members/:userId', requireAuth, loadMemberServer, requirePermission('kick_members'), (req, res) => {
   const targetId = Number(req.params.userId);
   if (targetId === req.user.id) return res.status(400).json({ error: 'você não pode se expulsar' });
   if (!access.isServerMember(req.server.id, targetId)) {
@@ -272,14 +278,17 @@ router.delete('/:serverId/members/:userId', requireAuth, loadMemberServer, requi
 // GET /api/servers/:serverId/channels
 router.get('/:serverId/channels', requireAuth, loadMemberServer, (req, res) => {
   res.json({
+    categories: db.prepare('SELECT * FROM channel_categories WHERE server_id = ? ORDER BY position, id').all(req.server.id),
     channels: listChannels(req.server.id, req.user.id),
-    me: { is_admin: access.isServerAdmin(req.server.id, req.user.id), role_ids: access.memberRoleIds(req.server.id, req.user.id) },
+    me: { permissions: access.serverPermissions(req.server.id, req.user.id), is_admin: access.isServerAdmin(req.server.id, req.user.id), role_ids: access.memberRoleIds(req.server.id, req.user.id) },
   });
 });
 
 // POST /api/servers/:serverId/channels — cria canal (administradores)
-router.post('/:serverId/channels', requireAuth, loadMemberServer, requireAdmin, (req, res) => {
+router.post('/:serverId/channels', requireAuth, loadMemberServer, requirePermission('manage_channels'), (req, res) => {
   const { name, type } = req.body || {};
+  const categoryId = req.body.category_id == null ? null : Number(req.body.category_id);
+  if (categoryId !== null && !db.prepare('SELECT 1 FROM channel_categories WHERE id = ? AND server_id = ?').get(categoryId, req.server.id)) return res.status(400).json({ error: 'categoria inválida' });
   if (typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'nome do canal é obrigatório' });
   }
@@ -299,6 +308,7 @@ router.post('/:serverId/channels', requireAuth, loadMemberServer, requireAdmin, 
     'INSERT INTO channels (name, type, position, created_by, server_id) VALUES (?, ?, ?, ?, ?)'
   ).run(cleanName, type, maxPos + 1, req.user.id, req.server.id);
 
+  db.prepare('UPDATE channels SET category_id = ? WHERE id = ?').run(categoryId, result.lastInsertRowid);
   const created = access.getChannel(result.lastInsertRowid);
   // canal novo nasce aberto pra todo mundo do servidor
   const channel = { ...created, private_view: false, private_connect: false, can_connect: type === 'voice' ? true : undefined };
@@ -364,6 +374,7 @@ router.post('/:serverId/roles', requireAuth, loadMemberServer, requireAdmin, (re
   const body = req.body || {};
   const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ').slice(0, ROLE_NAME_MAX) : '';
   if (!name) return res.status(400).json({ error: 'dá um nome pro cargo' });
+  if (body.is_admin && req.server.owner_id !== req.user.id) return res.status(403).json({ error: 'só o dono pode criar administradores' });
   const color = COLOR_RE.test(body.color || '') ? body.color : null;
   const maxPos = db.prepare('SELECT COALESCE(MAX(position), 0) AS m FROM roles WHERE server_id = ?').get(req.server.id).m;
   const { lastInsertRowid } = db.prepare(
@@ -392,6 +403,11 @@ router.patch('/:serverId/roles/:roleId', requireAuth, loadMemberServer, requireA
   }
   if (body.color !== undefined) {
     sets.push('color = ?'); vals.push(COLOR_RE.test(body.color || '') ? body.color : null);
+  }
+  if (body.permissions !== undefined) {
+    if (!body.permissions || typeof body.permissions !== 'object' || Array.isArray(body.permissions)) return res.status(400).json({ error: 'permissões inválidas' });
+    const grants = Object.fromEntries(access.SERVER_PERMISSIONS.map(k => [k, body.permissions[k] === true]));
+    sets.push('permissions_json = ?'); vals.push(JSON.stringify(grants));
   }
   if (body.hoist !== undefined) {
     sets.push('hoist = ?'); vals.push(body.hoist ? 1 : 0);
@@ -469,13 +485,13 @@ function loadVoiceTarget(req, res, next) {
 }
 
 // POST /api/servers/:serverId/voice/:userId/disconnect — tira alguém da call
-router.post('/:serverId/voice/:userId/disconnect', requireAuth, loadMemberServer, requireAdmin, loadVoiceTarget, (req, res) => {
+router.post('/:serverId/voice/:userId/disconnect', requireAuth, loadMemberServer, requirePermission('moderate_voice'), loadVoiceTarget, (req, res) => {
   realtime.disconnectUser(req.targetId, req.user.username);
   res.json({ ok: true });
 });
 
 // POST /api/servers/:serverId/voice/:userId/move { channel_id } — leva alguém pra outro canal de voz
-router.post('/:serverId/voice/:userId/move', requireAuth, loadMemberServer, requireAdmin, loadVoiceTarget, (req, res) => {
+router.post('/:serverId/voice/:userId/move', requireAuth, loadMemberServer, requirePermission('moderate_voice'), loadVoiceTarget, (req, res) => {
   const channel = access.getChannel(Number((req.body || {}).channel_id));
   if (!channel || channel.server_id !== req.server.id || channel.type !== 'voice') {
     return res.status(400).json({ error: 'escolha um canal de voz deste servidor' });

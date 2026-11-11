@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-const DB_PATH = path.join(__dirname, 'didiscord.db');
+const DB_PATH = process.env.DIDISCORD_DB_PATH || path.join(__dirname, 'didiscord.db');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
 const db = new Database(DB_PATH);
@@ -36,6 +36,23 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_
 // cargos: canal restrito a alguns cargos pra ver (private_view) e/ou entrar na call (private_connect)
 ensureColumn('channels', 'private_view', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('channels', 'private_connect', 'INTEGER NOT NULL DEFAULT 0');
+// Organização não muda acesso: categorias agrupam canais, cada canal conserva suas regras.
+db.exec(`CREATE TABLE IF NOT EXISTS channel_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  subscription TEXT NOT NULL, level TEXT NOT NULL DEFAULT 'mentions', session_version INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS app_secrets (name TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+ensureColumn('channels', 'category_id', 'INTEGER REFERENCES channel_categories(id) ON DELETE SET NULL');
+for (const key of ['send', 'attach', 'react', 'pin']) {
+  ensureColumn('channels', 'private_' + key, 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('channel_role_access', 'can_' + key, 'INTEGER NOT NULL DEFAULT 0');
+}
+ensureColumn('roles', 'permissions_json', "TEXT NOT NULL DEFAULT '{}'");
 // cargo "mostrado separado" na lista de membros (igual ao Discord): quem tem o cargo aparece num grupo próprio
 ensureColumn('roles', 'hoist', 'INTEGER NOT NULL DEFAULT 0');
 

@@ -5,7 +5,7 @@
 // Quem entra no meio da música: além do "agora", recebe na hora os últimos RING_SECONDS de
 // áudio que já passaram. Sem isso o navegador recebia o áudio pingando em tempo real e demorava
 // vários segundos juntando dados antes de conseguir começar a tocar. Com essa "rajada" inicial
-// ele começa na hora, um pouquinho atrás dos outros — e o app (public/js/app.js, botCatchUp)
+// ele começa na hora, um pouquinho atrás dos outros — e o app (public/js/app/, botCatchUp)
 // acelera de leve até alcançar, pra todo mundo ouvir sincronizado.
 const BITRATE_KBPS = 128; // o mesmo do audioPipeline.js
 const BYTES_PER_SEC = (BITRATE_KBPS * 1000) / 8;

@@ -14,7 +14,10 @@ O site fica em **https://didiscord.veneno.space**, por um túnel do Cloudflare. 
 **Servidores**
 - Criar servidor, trocar nome e ícone, apagar, sair.
 - Convites por link (`https://didiscord.veneno.space/invite/CODIGO`), com limite de usos e validade.
-- Cargos: administrador, cargo "mostrado separado" na lista de membros, e canais restritos a alguns cargos (só ver, ou ver e entrar na call).
+- Cargos com permissões independentes: gerenciar canais/categorias, apagar mensagens de outros, expulsar membros e moderar calls. Administrador mantém acesso completo.
+- Restrições por canal e cargo: ver, entrar na call, enviar mensagens, anexar/GIFs, reagir e fixar. Sem restrição, mantém o comportamento anterior.
+- Categorias com nome, posição e recolhimento lembrado no aparelho. Texto e voz podem ficar juntos; apagar categoria conserva canais e histórico.
+- Configurações do servidor em abas: visão geral, cargos e permissões, categorias.
 - Moderação: expulsar membro, apagar mensagem de qualquer um, desconectar ou mover alguém de call.
 
 **Chat**
@@ -29,7 +32,7 @@ O site fica em **https://didiscord.veneno.space**, por um túnel do Cloudflare. 
 - **Busca** em todo o servidor (ou na DM), sem diferença de acento; `de:nome` filtra por quem escreveu. Clicar num resultado leva até a mensagem.
 - **Mensagens fixadas** por canal (alfinete no topo).
 - **Não lidas e menções** guardadas no servidor: continuam marcadas depois de recarregar, com contador de menções no canal, no servidor e no título da aba.
-- **Notificações do sistema** (menções e DMs, todas, ou nenhuma — nas configurações de áudio).
+- **Notificações do sistema e Web Push** (menções e DMs, todas, ou nenhuma — na aba notificações). Ativação por navegador permite receber com a aba fechada.
 - GIFs e stickers do GIPHY.
 
 **Visual e temas**
@@ -121,6 +124,22 @@ Todas são opcionais: sem uma delas, a função correspondente cai num modo mais
 | `CLOUDFLARE_TUNNEL_HOSTNAME` | endereço mostrado no terminal quando o túnel sobe | não mostra |
 | `YTDLP_PATH`, `FFMPEG_PATH` | usar um `yt-dlp`/`ffmpeg` específico | `yt-dlp` baixado pelo bot e `ffmpeg` do sistema |
 
+## Notificações com o site fechado
+
+Em **configurações → notificações → com o site fechado**, clique em **ativar neste aparelho** e autorize no navegador. O nível abaixo (menções/DMs, todas, nenhuma) também controla o push; “nenhuma” pausa os avisos. Desativar remove a inscrição deste navegador. Sair da conta também cancela essa inscrição.
+
+Requer HTTPS (localhost serve para desenvolvimento), navegador com Web Push e execução em segundo plano permitida pelo sistema. Fechar a aba funciona; encerrar totalmente o navegador ou bloquear sua execução em segundo plano pode impedir entrega. O Electron continua com as notificações da janela; o botão de Web Push é para navegadores compatíveis. Provedores aceitos: Google/Chromium, Mozilla e Apple.
+
+As chaves VAPID são geradas uma vez e persistidas em `app_secrets` no SQLite, fora do Git. Inclua o banco nos backups para preservar inscrições. `WEB_PUSH_SUBJECT` opcional muda o endereço público de contato VAPID (padrão: `https://didiscord.veneno.space`). O worker (`public/sw.js`) não faz cache de páginas privadas. O push leva apenas IDs; a leitura do conteúdo exige a sessão e as permissões atuais. Inscrições expiradas (404/410) são removidas. Senha redefinida, suspensão ou perda de acesso impedem novos avisos daquele conteúdo.
+
+Não exige chave externa nem alteração manual no `.env`. Depois de atualizar, rode `npm install`, reinicie o servidor e recarregue a página. A migração do banco é automática e conserva o histórico.
+
+Referências de implementação: [Web Push](https://github.com/web-push-libs/web-push) e [Service Worker: showNotification](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification).
+
+## Verificação
+
+`npm test` executa testes HTTP com SQLite em memória, cobrindo permissões, isolamento entre servidores, categorias e push. Nenhum teste usa o banco real. `DIDISCORD_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/didiscord.db`). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
+
 ## Estrutura do projeto
 
 ```
@@ -159,7 +178,8 @@ didiscord/
 │   ├── css/                # theme.css (variáveis e componentes base), um arquivo por área,
 │   │                       #   design.css (o visual atual, por cima de tudo) e media.css (imagens/vídeos)
 │   ├── js/themes.js        # motor de temas: aplica as variáveis, temas prontos, editor da aba "temas"
-│   ├── js/app.js           # o site inteiro: chat, servidores, perfil, calls, tela, configurações
+│   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 25
+│   │                       #   arquivos por assunto, carregados em ordem — o mapa está em js/app/README.md
 │   ├── js/realtime.js      # cliente WebSocket (reconexão, eventos)
 │   ├── js/markdown.js      # Markdown do chat (monta os elementos direto, sem innerHTML)
 │   ├── js/emoji.js         # seletor de emoji e busca por :atalho:
@@ -190,8 +210,8 @@ didiscord/
 1. O navegador pede um **ticket** de uso único (`GET /api/ws/ticket`) e abre o WebSocket em `/ws?ticket=...`.
 2. Cada evento (mensagem nova, alguém entrou na call, perfil mudou...) vai só pra quem pode ver aquilo. As regras ficam todas em `server/access.js`.
 3. As calls são **WebRTC direto entre as pessoas**. O servidor só repassa a sinalização (ofertas, respostas, candidatos ICE) entre quem está na mesma call. Voz, câmera e tela não passam por ele.
-   - Cada conexão tem **4 canais fixos, sempre nessa ordem**: 0 microfone, 1 câmera, 2 tela, 3 som da tela. Quem recebe identifica cada faixa pela posição. Por isso todo mundo numa call precisa estar com a mesma versão do `app.js` (recarregar a página resolve).
-   - A qualidade do Opus é definida no SDP que cada lado manda ("é assim que eu quero receber"). Quem estiver com um `app.js` antigo recebe o som na qualidade padrão do WebRTC (32 kbps mono).
+   - Cada conexão tem **4 canais fixos, sempre nessa ordem**: 0 microfone, 1 câmera, 2 tela, 3 som da tela. Quem recebe identifica cada faixa pela posição. Por isso todo mundo numa call precisa estar com a mesma versão dos arquivos de `public/js/app/` (recarregar a página resolve).
+   - A qualidade do Opus é definida no SDP que cada lado manda ("é assim que eu quero receber"). Quem estiver com uma versão antiga do site recebe o som na qualidade padrão do WebRTC (32 kbps mono).
 4. A credencial do TURN do Metered fica guardada por ~50 min (`server/routes/rtc.js`), porque o plano grátis tem um limite total de credenciais. O site pede uma nova ao entrar na call, ao começar a compartilhar a tela e ao reconectar.
 
 ## Servidor de mídia (SFU) — as calls passando pelo PC do servidor
@@ -211,7 +231,7 @@ Como funciona:
 - `server/sfu/livekit.js` baixa, configura e mantém o LiveKit de pé, gera a chave dele uma vez (`server/sfu/data/`, fora do git) e emite o ingresso de cada pessoa (`GET /api/rtc/sfu?channelId=`), só pra quem pode entrar naquela call.
 - A **sinalização** do LiveKit passa pelo próprio site, em `/livekit` (então também passa pelo túnel do Cloudflare). O **áudio e o vídeo não passam pelo túnel**: vão direto pro IP público do PC, pelas portas acima. Por isso elas precisam estar abertas, e não funciona atrás de CGNAT.
 - O IP público é descoberto sozinho a cada início. Quem está na mesma rede do servidor (ou no próprio PC) conecta pelo IP interno.
-- Quem está na call, mudo/surdo, "falando", mover e desconectar continuam pelo WebSocket do site, iguais nos dois modos. No `app.js`, o bloco "calls pelo servidor de mídia (SFU)" cuida de publicar e receber as faixas; o resto do código de call é compartilhado.
+- Quem está na call, mudo/surdo, "falando", mover e desconectar continuam pelo WebSocket do site, iguais nos dois modos. Em `public/js/app/21-call-sfu.js`, o código cuida de publicar e receber as faixas; o resto do código de call é compartilhado.
 - **Todo mundo numa call precisa estar no mesmo modo.** Quem entrou enquanto o LiveKit estava fora (em malha) não ouve quem entrou depois que ele voltou: é só sair e entrar de novo.
 - A tela **pela placa de vídeo** (app desktop) ainda sai do auxiliar direto pra cada pessoa; só o som dela passa pelo servidor. Pelo navegador, a tela inteira passa pelo servidor.
 
@@ -300,11 +320,12 @@ electron/native/build-cross.sh
 ## Coisas a saber antes de mexer
 
 - **JavaScript puro, sem TypeScript, framework ou bundler**, de propósito.
+- **O código do site fica em `public/js/app/`**, dividido por assunto. São scripts comuns que dividem o mesmo escopo e carregam em ordem; as regras pra mexer (ordem, nomes globais, `?v=`) e o mapa de onde está cada coisa estão em [`public/js/app/README.md`](public/js/app/README.md).
 - **`server/access.js` decide tudo sobre permissão.** Rota nova ou evento novo de tempo real deve perguntar pra ele, nunca refazer a regra na mão.
 - **`.env`, banco e uploads nunca vão pro git** (ver `.gitignore`). Chave nova no `config.js` deve entrar na tabela de variáveis acima.
 - Os comentários do código estão em português e explicam o porquê das decisões que não são óbvias. Vale ler antes de refatorar.
 - **Cores, fontes e cantos sempre por variável** (`var(--accent)`, `var(--bg-chat)`, `var(--text-normal)`…, lista no topo de `css/theme.css`), nunca cor fixa, senão o tema de cada um não pega. Os painéis usam as variáveis transparentes (`--bg-sidebar`, `--bg-chat`) e o que precisa ser sempre opaco (menus, campos) usa as `--bg-solid-*`.
-- Os arquivos estáticos são servidos sem cache (pra ninguém ficar com `app.js` velho depois de uma mudança), menos `public/vendor/`, que fica em cache por 30 dias.
+- Os arquivos estáticos são servidos sem cache (pra ninguém ficar com o código do site velho depois de uma mudança), menos `public/vendor/`, que fica em cache por 30 dias.
 
 ## Próximos passos
 

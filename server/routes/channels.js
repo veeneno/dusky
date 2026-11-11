@@ -23,7 +23,7 @@ function loadAdminChannel(req, res, next) {
   if (!channel || channel.server_id == null) {
     return res.status(404).json({ error: 'canal não encontrado' });
   }
-  if (!access.isServerAdmin(channel.server_id, req.user.id)) {
+  if (!access.hasServerPermission(channel.server_id, req.user.id, 'manage_channels')) {
     return res.status(403).json({ error: 'só administradores podem mexer nos canais' });
   }
   req.channel = channel;
@@ -41,38 +41,40 @@ router.patch('/:id', requireAuth, loadAdminChannel, (req, res) => {
   const ch = req.channel;
   const body = req.body || {};
 
+  const sets = [], values = [];
   if (body.name !== undefined) {
     let name = typeof body.name === 'string' ? body.name.trim().slice(0, CHANNEL_NAME_MAX) : '';
     if (ch.type === 'text') name = name.toLowerCase().replace(/\s+/g, '-');
     if (!name) return res.status(400).json({ error: 'nome do canal é obrigatório' });
-    db.prepare('UPDATE channels SET name = ? WHERE id = ?').run(name, ch.id);
+    sets.push('name = ?'); values.push(name);
   }
-
-  const validRoleIds = new Set(
-    db.prepare('SELECT id FROM roles WHERE server_id = ?').all(ch.server_id).map((r) => r.id)
-  );
-  const cleanIds = (list) => [...new Set((Array.isArray(list) ? list : []).map(Number))].filter((id) => validRoleIds.has(id));
-
+  if (body.category_id !== undefined) {
+    const id = body.category_id === null ? null : Number(body.category_id);
+    if (id !== null && !db.prepare('SELECT 1 FROM channel_categories WHERE id = ? AND server_id = ?').get(id, ch.server_id)) return res.status(400).json({ error: 'categoria inválida' });
+    sets.push('category_id = ?'); values.push(id);
+  }
+  if (body.position !== undefined) {
+    if (!Number.isSafeInteger(body.position) || body.position < 0) return res.status(400).json({ error: 'posição inválida' });
+    sets.push('position = ?'); values.push(body.position);
+  }
+  const actions = ['view', 'connect', 'send', 'attach', 'react', 'pin'];
+  const valid = new Set(db.prepare('SELECT id FROM roles WHERE server_id = ?').all(ch.server_id).map(r => r.id));
+  for (const key of actions) {
+    if (body['private_' + key] !== undefined) {
+      if (typeof body['private_' + key] !== 'boolean') return res.status(400).json({ error: 'permissão inválida' });
+      sets.push('private_' + key + ' = ?'); values.push(body['private_' + key] ? 1 : 0);
+    }
+    const ids = body[key + '_role_ids'];
+    if (ids !== undefined && (!Array.isArray(ids) || ids.some(id => !valid.has(id)))) return res.status(400).json({ error: 'cargo inválido' });
+  }
   db.transaction(() => {
-    if (body.private_view !== undefined) {
-      db.prepare('UPDATE channels SET private_view = ? WHERE id = ?').run(body.private_view ? 1 : 0, ch.id);
-    }
-    if (body.private_connect !== undefined && ch.type === 'voice') {
-      db.prepare('UPDATE channels SET private_connect = ? WHERE id = ?').run(body.private_connect ? 1 : 0, ch.id);
-    }
-    if (body.view_role_ids !== undefined || body.connect_role_ids !== undefined) {
-      const current = db.prepare('SELECT role_id, can_view, can_connect FROM channel_role_access WHERE channel_id = ?').all(ch.id);
-      const view = body.view_role_ids !== undefined
-        ? new Set(cleanIds(body.view_role_ids))
-        : new Set(current.filter((r) => r.can_view).map((r) => r.role_id));
-      const connect = body.connect_role_ids !== undefined
-        ? new Set(cleanIds(body.connect_role_ids))
-        : new Set(current.filter((r) => r.can_connect).map((r) => r.role_id));
-      db.prepare('DELETE FROM channel_role_access WHERE channel_id = ?').run(ch.id);
-      const insert = db.prepare('INSERT INTO channel_role_access (channel_id, role_id, can_view, can_connect) VALUES (?, ?, ?, ?)');
-      for (const roleId of new Set([...view, ...connect])) {
-        insert.run(ch.id, roleId, view.has(roleId) ? 1 : 0, connect.has(roleId) ? 1 : 0);
-      }
+    if (sets.length) db.prepare('UPDATE channels SET ' + sets.join(', ') + ' WHERE id = ?').run(...values, ch.id);
+    for (const key of actions) {
+      const ids = body[key + '_role_ids'];
+      if (ids === undefined) continue;
+      db.prepare('UPDATE channel_role_access SET can_' + key + ' = 0 WHERE channel_id = ?').run(ch.id);
+      const grant = db.prepare('INSERT INTO channel_role_access (channel_id, role_id, can_' + key + ') VALUES (?, ?, 1) ON CONFLICT(channel_id, role_id) DO UPDATE SET can_' + key + ' = 1');
+      for (const id of new Set(ids)) grant.run(ch.id, id);
     }
   })();
 

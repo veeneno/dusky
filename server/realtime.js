@@ -11,7 +11,7 @@ const onlineCounts = new Map(); // userId -> quantidade de conexões abertas (v�
 // na sidebar/call view) — o áudio do bot chega por um stream HTTP à parte (ver
 // server/bots/musicBot/stream.js + routes/musicbot.js), não por uma RTCPeerConnection de
 // verdade, então ele nunca troca rtc_signal e o front-end nunca tenta abrir peer connection
-// com ele (ver tratamento especial de BOT_USER_ID em public/js/app.js).
+// com ele (ver tratamento especial de BOT_USER_ID em public/js/app/).
 const BOT_USER_ID = -1;
 
 // heartbeat em nível de aplicação (mensagens JSON, não frame de controle WS cru): manda
@@ -114,7 +114,7 @@ function init(server) {
 // ===================================================================
 // sinalização de chamada de voz (WebRTC)
 // o WS aqui só relaia mensagens entre os dois clientes — quem faz a
-// lógica de RTCPeerConnection é o front (public/js/app.js)
+// lógica de RTCPeerConnection é o front (public/js/app/)
 // ===================================================================
 
 function handleClientMessage(ws, msg) {
@@ -210,7 +210,7 @@ function handleVoiceSpeaking(ws, msg) {
 
 // ------------------------------------------------------------------
 // "jogando X" (rich presence): o app desktop da pessoa detecta o jogo aberto e avisa por aqui
-// (electron/presence.js -> public/js/app.js -> activity_set). Fica só em memória e só vai pra quem
+// (electron/presence.js -> public/js/app/ -> activity_set). Fica só em memória e só vai pra quem
 // já enxerga essa pessoa (divide servidor ou DM). `ws` = a conexão que detectou: se ela cair, some.
 // ------------------------------------------------------------------
 const activities = new Map(); // userId -> { name, startedAt, ws }
@@ -256,7 +256,7 @@ function handleTyping(ws, msg) {
   if (!ws.typingAt) ws.typingAt = new Map();
   if (now - (ws.typingAt.get(channelId) || 0) < 2000) return;
   ws.typingAt.set(channelId, now);
-  if (!access.canAccessChannel(channelId, ws.userId)) return;
+  if (!access.canChannelAction(access.getChannel(channelId), ws.userId, 'send')) return;
   broadcastToChannel(channelId, { type: 'typing', channelId, userId: ws.userId }, ws);
 }
 

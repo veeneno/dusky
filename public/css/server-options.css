@@ -1,0 +1,31 @@
+/* Componentes seguem o tema da conta, inclusive nos modos claro e translúcido. */
+#serverSettingsBackdrop .server-settings-modal { width: min(900px, 95vw); max-width: 900px; max-height: 90vh; padding: 28px; overflow-y: auto; }
+.server-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.server-settings-heading h3 { margin: 4px 0 20px; }
+.server-settings-nav { display: flex; gap: 8px; padding: 8px; margin-bottom: 24px; background: var(--bg-solid-sidebar); border-radius: var(--radius-md, 8px); }
+.server-settings-nav button { flex: 1; padding: 12px; border: 0; border-radius: var(--radius-sm, 4px); color: var(--text-muted); background: transparent; font: inherit; cursor: pointer; }
+.server-settings-nav button:hover { color: var(--text-heading); }
+/* texto da aba ativa na cor de contraste do tema: com cor de destaque clara, --text-normal sumia */
+.server-settings-nav button[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+.server-settings-nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#serverSettingsBackdrop .roles-section { margin: 0; border: 0; padding: 0; }
+#serverSettingsBackdrop .role-row { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px; margin-top: 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-md, 8px); background: var(--bg-solid-sidebar); }
+#serverSettingsBackdrop .role-name { flex: 1; min-width: 120px; }
+.role-permissions { flex-basis: 100%; padding-top: 10px; border-top: 1px solid var(--border-strong); }
+.role-permissions summary { cursor: pointer; color: var(--text-muted); padding: 6px 0; }
+.role-permissions .perm-toggle { padding: 10px 0; }
+.category-settings-row { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 16px; margin: 10px 0; padding: 18px; background: var(--bg-solid-sidebar); color: var(--text-normal); border: 1px solid var(--border-strong); border-radius: var(--radius-md, 8px); font: inherit; cursor: pointer; text-align: left; }
+.category-settings-row span { color: var(--text-muted); font-size: 12px; }
+.category-heading { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; color: inherit; background: none; border: 0; font: inherit; cursor: pointer; }
+.channel-group.is-collapsed > :not(.channel-group-label) { display: none; }
+#channelEditBackdrop .channel-edit-modal { max-height: 88vh; overflow-y: auto; }
+#channelExtraPermissions .perm-block { padding: 12px; background: var(--bg-solid-sidebar); border-radius: var(--radius-md, 8px); }
+#serverSettingsBackdrop [hidden] { display: none !important; }
+@media (max-width: 600px) {
+  #serverSettingsBackdrop .server-settings-modal { padding: 16px; }
+  .server-settings-nav { flex-wrap: wrap; }
+  .server-settings-nav button { flex-basis: 100%; padding: 8px; }
+  .category-settings-row { flex-wrap: wrap; }
+}
+
+.perm-toggle input[type="checkbox"] { width: 40px; height: 24px; }

@@ -1,6 +1,6 @@
 // monta os objetos de embed usados pelas respostas do bot de música. formato:
 // { title, description, thumbnail, color, fields: [{name, value}], footer }
-// o front-end (public/js/app.js, .msg-embed em chat.css) sabe renderizar esse formato.
+// o front-end (public/js/app/, .msg-embed em chat.css) sabe renderizar esse formato.
 const { formatDuration } = require('./resolve');
 
 const COLOR = {

@@ -86,6 +86,7 @@ function publishNewMessage(channelId, messageId, author) {
   extras.markRead(author.id, channelId, messageId);
   const message = extras.decorateMessage(row);
   realtime.broadcastToChannel(channelId, { type: 'message_created', message });
+  require('../push').notifyMessage(message).catch(err => console.error('[push]', err.message));
   return message;
 }
 
@@ -94,6 +95,7 @@ router.post('/', requireAuth, (req, res) => {
   const channelId = Number(req.params.channelId);
   const channel = getChannel(channelId, req.user.id);
   if (!channel) return res.status(404).json({ error: 'canal não encontrado' });
+  if (!access.canChannelAction(channel, req.user.id, 'send')) return res.status(403).json({ error: 'você não pode escrever neste canal' });
   if (channel.type !== 'text') return res.status(400).json({ error: 'esse canal não é de texto' });
 
   const { content, reply_to_id } = req.body || {};
@@ -133,8 +135,10 @@ router.post('/attachment', requireAuth, (req, res) => {
   const channelId = Number(req.params.channelId);
   const channel = getChannel(channelId, req.user.id);
   if (!channel) return res.status(404).json({ error: 'canal não encontrado' });
+  if (!access.canChannelAction(channel, req.user.id, 'send')) return res.status(403).json({ error: 'você não pode escrever neste canal' });
   if (channel.type !== 'text') return res.status(400).json({ error: 'esse canal não é de texto' });
 
+  if (!access.canChannelAction(channel, req.user.id, 'attach')) return res.status(403).json({ error: 'você não pode enviar anexos neste canal' });
   attachmentUpload.single('file')(req, res, (err) => {
     if (err) {
       // multer sinaliza limite de tamanho estourado com esse code específico — mensagem
@@ -145,6 +149,11 @@ router.post('/attachment', requireAuth, (req, res) => {
       return res.status(400).json({ error: 'não deu pra enviar esse arquivo' });
     }
     if (!req.file) return res.status(400).json({ error: 'arquivo inválido' });
+    // Um upload pode levar minutos: revogação durante o envio também deve valer.
+    if (!access.canChannelAction(access.getChannel(channelId), req.user.id, 'attach')) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(403).json({ error: 'você perdeu permissão para enviar anexos neste canal' });
+    }
 
     const attachmentType = attachmentTypeOf(req.file.mimetype);
     const attachmentUrl = `/uploads/attachments/${req.file.filename}`;
@@ -170,8 +179,10 @@ router.post('/gif', requireAuth, (req, res) => {
   const channelId = Number(req.params.channelId);
   const channel = getChannel(channelId, req.user.id);
   if (!channel) return res.status(404).json({ error: 'canal não encontrado' });
+  if (!access.canChannelAction(channel, req.user.id, 'send')) return res.status(403).json({ error: 'você não pode escrever neste canal' });
   if (channel.type !== 'text') return res.status(400).json({ error: 'esse canal não é de texto' });
 
+  if (!access.canChannelAction(channel, req.user.id, 'attach')) return res.status(403).json({ error: 'você não pode enviar anexos neste canal' });
   const { url, reply_to_id } = req.body || {};
   if (typeof url !== 'string' || !url) {
     return res.status(400).json({ error: 'url do gif é obrigatória' });
@@ -202,6 +213,7 @@ router.post('/gif', requireAuth, (req, res) => {
 // (mensagem de bot e gif não têm o que editar). Em mensagem com anexo, edita a legenda e ela pode
 // ficar vazia; em mensagem só de texto, não pode ficar vazia. Não reexecuta comando de bot.
 router.patch('/:messageId', requireAuth, (req, res) => {
+  if (!access.canChannelAction(getChannel(Number(req.params.channelId), req.user.id), req.user.id, 'send')) return res.status(403).json({ error: 'você não pode editar neste canal' });
   const channelId = Number(req.params.channelId);
   const messageId = Number(req.params.messageId);
 
@@ -237,7 +249,7 @@ router.patch('/:messageId', requireAuth, (req, res) => {
 });
 
 // DELETE /api/channels/:channelId/messages/:messageId — apaga uma mensagem. Pode apagar: quem
-// escreveu, ou o dono do servidor (moderar). Mensagens de bot: qualquer membro do canal.
+// escreveu, ou quem tem a permissão de moderar mensagens (inclusive mensagens do bot).
 router.delete('/:messageId', requireAuth, (req, res) => {
   const channelId = Number(req.params.channelId);
   const messageId = Number(req.params.messageId);
@@ -252,10 +264,9 @@ router.delete('/:messageId', requireAuth, (req, res) => {
   if (!message) return res.status(404).json({ error: 'mensagem não encontrada' });
 
   const isAuthor = message.user_id === req.user.id;
-  const isBotMessage = message.user_id == null;
   const server = channel.server_id != null ? access.getServer(channel.server_id) : null;
-  const isServerAdmin = !!(server && access.isServerAdmin(server.id, req.user.id));
-  if (!isAuthor && !isBotMessage && !isServerAdmin) {
+  const isServerAdmin = !!(server && access.hasServerPermission(server.id, req.user.id, 'manage_messages'));
+  if (!isAuthor && !isServerAdmin) {
     return res.status(403).json({ error: 'você só pode apagar as suas mensagens' });
   }
 
@@ -293,6 +304,7 @@ function broadcastReactions(channelId, messageId) {
 
 // PUT /api/channels/:channelId/messages/:messageId/reactions/:emoji — reage
 router.put('/:messageId/reactions/:emoji', requireAuth, (req, res) => {
+  if (!access.canChannelAction(getChannel(Number(req.params.channelId), req.user.id), req.user.id, 'react')) return res.status(403).json({ error: 'você não pode reagir neste canal' });
   const ctx = loadChannelMessage(req, res);
   if (!ctx) return;
   const emoji = String(req.params.emoji || '');
@@ -318,6 +330,7 @@ router.delete('/:messageId/reactions/:emoji', requireAuth, (req, res) => {
 const MAX_PINS_PER_CHANNEL = 100;
 
 function setPinned(req, res, pinned) {
+  if (!access.canChannelAction(getChannel(Number(req.params.channelId), req.user.id), req.user.id, 'pin')) return res.status(403).json({ error: 'você não pode fixar neste canal' });
   const ctx = loadChannelMessage(req, res);
   if (!ctx) return;
   if (pinned && !ctx.message.pinned_at) {

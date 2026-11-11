@@ -29,7 +29,7 @@ function serverMemberIds(serverId) {
 }
 
 function getChannel(channelId) {
-  return db.prepare('SELECT id, name, type, position, server_id, private_view, private_connect FROM channels WHERE id = ?').get(channelId);
+  return db.prepare('SELECT id, name, type, position, server_id, category_id, private_view, private_connect, private_send, private_attach, private_react, private_pin FROM channels WHERE id = ?').get(channelId);
 }
 
 // ------------------------------------------------------------------
@@ -51,6 +51,26 @@ function isServerAdmin(serverId, userId) {
   `).get(serverId, userId);
 }
 
+const SERVER_PERMISSIONS = ['manage_channels', 'manage_messages', 'kick_members', 'moderate_voice'];
+function serverPermissions(serverId, userId) {
+  const result = Object.fromEntries(SERVER_PERMISSIONS.map(k => [k, false]));
+  if (!isServerMember(serverId, userId)) return result;
+  if (isServerAdmin(serverId, userId)) return Object.fromEntries(SERVER_PERMISSIONS.map(k => [k, true]));
+  const roles = db.prepare(`SELECT r.permissions_json FROM roles r JOIN member_roles mr ON mr.role_id = r.id
+    WHERE mr.server_id = ? AND mr.user_id = ?`).all(serverId, userId);
+  for (const role of roles) {
+    let grants = {}; try { grants = JSON.parse(role.permissions_json); } catch (_) {}
+    for (const key of SERVER_PERMISSIONS) if (grants[key] === true) result[key] = true;
+  }
+  return result;
+}
+function hasServerPermission(serverId, userId, key) { return serverPermissions(serverId, userId)[key] === true; }
+function canChannelAction(channel, userId, action) {
+  if (!channel || !canAccessChannel(channel.id, userId)) return false;
+  if (channel.server_id == null) return true;
+  return channelPermissions(channel, userId)[action] === true;
+}
+
 // algum cargo dessa pessoa tem a permissão `column` ('can_view' ou 'can_connect') nesse canal?
 function hasChannelRoleGrant(channelId, serverId, userId, column) {
   return !!db.prepare(`
@@ -62,13 +82,16 @@ function hasChannelRoleGrant(channelId, serverId, userId, column) {
 // o que essa pessoa pode fazer nesse canal de servidor: { view, connect, admin }. Quem não é membro
 // não pode nada. Admin/dono pode tudo. Canal sem restrição: todo membro vê e entra.
 function channelPermissions(channel, userId) {
-  const none = { view: false, connect: false, admin: false };
+  const none = { view: false, connect: false, admin: false, send: false, attach: false, react: false, pin: false };
   if (!channel || channel.server_id == null) return none;
   if (!isServerMember(channel.server_id, userId)) return none;
-  if (isServerAdmin(channel.server_id, userId)) return { view: true, connect: true, admin: true };
+  if (isServerAdmin(channel.server_id, userId)) return { view: true, connect: true, admin: true, send: true, attach: true, react: true, pin: true };
   const view = !channel.private_view || hasChannelRoleGrant(channel.id, channel.server_id, userId, 'can_view');
   const connect = view && (!channel.private_connect || hasChannelRoleGrant(channel.id, channel.server_id, userId, 'can_connect'));
-  return { view, connect, admin: false };
+  const actions = {};
+  for (const key of ['send', 'attach', 'react', 'pin']) actions[key] = view && (!channel['private_' + key] || hasChannelRoleGrant(channel.id, channel.server_id, userId, 'can_' + key));
+  actions.attach = actions.attach && actions.send;
+  return { view, connect, admin: false, ...actions };
 }
 
 // pode entrar na call desse canal de voz?
@@ -156,6 +179,7 @@ function mutualServers(userA, userB) {
 }
 
 module.exports = {
+  SERVER_PERMISSIONS, serverPermissions, hasServerPermission, canChannelAction,
   PUBLIC_USER_COLUMNS,
   publicUser,
   getUser,

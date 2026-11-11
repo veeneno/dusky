@@ -4,7 +4,7 @@
 // O Chromium do Electron só sabe pegar o áudio do sistema inteiro (e só no Windows/macOS), o que
 // devolveria a voz de quem está na call pra própria call. Então cada plataforma usa um captador
 // próprio (linux.js / windows.js) que entrega PCM cru pro processo principal, que repassa pro site
-// pelo IPC. O site (public/js/app.js, capturePcmAudioTrack) monta uma MediaStreamTrack com isso.
+// pelo IPC. O site (public/js/app/, capturePcmAudioTrack) monta uma MediaStreamTrack com isso.
 //
 // Fluxo:
 //   1. o seletor de tela devolve a fonte escolhida -> prepare()      (decide o plano, não inicia nada)
