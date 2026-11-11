@@ -546,25 +546,68 @@
         toast(`tema "${name}" salvo`);
       },
     });
+    // Campo dentro das configurações: Electron não oferece window.prompt().
+    const transferLabel = h('span', { text: 'código do tema' });
+    const transferInput = h('textarea', {
+      class: 'theme-css', rows: '4', spellcheck: 'false',
+      placeholder: 'didiscord-tema:', 'aria-label': 'código do tema',
+    });
+    const transferError = h('p', { class: 'field-help', role: 'alert', hidden: true });
+    const closeTransfer = () => {
+      transferPanel.hidden = true;
+      (transferInput.readOnly ? exportBtn : importBtn).focus();
+    };
+    const applyImport = h('button', {
+      type: 'button', class: 'btn btn-primary', text: 'aplicar tema',
+      onclick: () => {
+        let t;
+        try {
+          if (!transferInput.value.trim()) throw new Error('empty');
+          t = fromCode(transferInput.value);
+        } catch (_) {
+          transferError.textContent = 'Código inválido. Cole o código completo, começando com didiscord-tema:.';
+          transferError.hidden = false;
+          transferInput.setAttribute('aria-invalid', 'true');
+          transferInput.focus();
+          return;
+        }
+        apply(t); persist(); renderGrids(); syncControls();
+        closeTransfer();
+        toast(`tema "${t.name}" aplicado${t.css ? ' (ele tem CSS próprio)' : ''}`);
+      },
+    });
+    const transferPanel = h('div', { hidden: true },
+      h('label', {}, transferLabel, transferInput), transferError,
+      h('div', { class: 'settings-row theme-actions' }, applyImport,
+        h('button', { type: 'button', class: 'btn btn-quiet', text: 'fechar', onclick: closeTransfer })),
+    );
+    transferPanel.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeTransfer(); }
+    });
+    function openTransfer(code, exporting) {
+      transferInput.value = code;
+      transferInput.readOnly = exporting;
+      transferInput.removeAttribute('aria-invalid');
+      transferError.hidden = true;
+      transferLabel.textContent = exporting ? 'Copie o código abaixo para compartilhar seu tema.' : 'Cole o código do tema abaixo e clique em aplicar tema.';
+      applyImport.hidden = exporting;
+      transferPanel.hidden = false;
+      transferInput.focus();
+      if (exporting) transferInput.select();
+    }
     const exportBtn = h('button', {
       type: 'button', class: 'btn btn-ghost', text: 'copiar código do tema',
-      onclick: () => {
+      onclick: async () => {
         const code = toCode(current);
-        navigator.clipboard.writeText(code).then(() => toast('código copiado — é só mandar pro seu amigo colar em "importar"'))
-          .catch(() => { window.prompt('copie o código do tema:', code); });
+        try {
+          await navigator.clipboard.writeText(code);
+          toast('código copiado — é só mandar pro seu amigo colar em "importar"');
+        } catch (_) { openTransfer(code, true); }
       },
     });
     const importBtn = h('button', {
       type: 'button', class: 'btn btn-ghost', text: 'importar tema',
-      onclick: () => {
-        const code = window.prompt('cole o código do tema (começa com "didiscord-tema:")');
-        if (!code) return;
-        try {
-          const t = fromCode(code);
-          apply(t); persist(); renderGrids(); syncControls();
-          toast(`tema "${t.name}" aplicado${t.css ? ' (ele tem CSS próprio)' : ''}`);
-        } catch (_) { toast('esse código de tema não é válido', 'error'); }
-      },
+      onclick: () => openTransfer('', false),
     });
     const resetBtn = h('button', { type: 'button', class: 'btn btn-quiet', text: 'voltar pro padrão', onclick: () => { apply(clone(BASE)); persist(); renderGrids(); syncControls(); } });
 
@@ -575,7 +618,7 @@
       section('temas prontos', 'Clique pra experimentar. Tudo aqui embaixo muda o tema atual na hora — e fica salvo na sua conta.', presetGrid),
       section('meus temas', '', mineGrid,
         h('div', { class: 'settings-row theme-actions' }, nameInput, saveBtn),
-        h('div', { class: 'settings-row theme-actions' }, exportBtn, importBtn, resetBtn)),
+        h('div', { class: 'settings-row theme-actions' }, exportBtn, importBtn, resetBtn), transferPanel),
       section('cores', 'Clique no quadradinho pra escolher, ou digite o código da cor.', colorList),
       section('vidro e transparência', 'Deixe os painéis transparentes e desfocados pra ver o fundo atrás — o efeito de vidro.', ...glassFields),
       section('imagem de fundo', 'Aparece atrás do app quando os painéis estão transparentes.',
