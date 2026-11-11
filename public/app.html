@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e1f22">
-  <script src="/js/themes.js?v=20"></script>
+  <script src="/js/themes.js?v=21"></script>
   <script>DidiTheme.boot();</script>
   <title>concord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="/css/servers.css?v=20">
   <link rel="stylesheet" href="/css/call-roles.css?v=20">
   <link rel="stylesheet" href="/css/chat-extras.css?v=20">
-  <link rel="stylesheet" href="/css/design.css?v=20">
+  <link rel="stylesheet" href="/css/design.css?v=21">
   <link rel="stylesheet" href="/css/media.css?v=20">
   <link rel="stylesheet" href="/css/server-options.css?v=30">
 </head>
@@ -95,7 +95,10 @@
       </div>
 
       <div class="profile-bar" id="profileBar" title="editar perfil">
-        <div class="profile-avatar" id="profileAvatar" style="--pfp-ring: var(--amethyst)">?</div>
+        <div class="profile-avatar-wrap" id="profileAvatarWrap" title="mudar status">
+          <div class="profile-avatar" id="profileAvatar" style="--pfp-ring: var(--amethyst)">?</div>
+          <span class="presence-dot profile-presence-dot is-online" id="profilePresenceDot"></span>
+        </div>
         <div class="profile-meta">
           <div class="profile-name" id="profileName">carregando...</div>
           <div class="profile-status" id="profileStatus">online</div>

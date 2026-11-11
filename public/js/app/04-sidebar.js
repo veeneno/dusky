@@ -237,7 +237,7 @@ function buildDmItem(dm) {
   if (currentChannel && currentChannel.id === dm.id) el.classList.add('active');
   if (unreadChannels.has(dm.id)) el.classList.add('is-unread');
   el.innerHTML = `
-      <span class="dm-item-avatar">${memberAvatarInner(u)}<span class="presence-dot${u.online ? ' is-online' : ''}"></span></span>
+      <span class="dm-item-avatar">${memberAvatarInner(u)}<span class="presence-dot${presenceDotClass(u)}" title="${presenceLabel(u)}"></span></span>
       <span class="dm-item-text">
         <span class="dm-item-name"></span>
         <span class="dm-item-status"></span>

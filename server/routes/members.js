@@ -11,7 +11,7 @@ router.get('/', requireAuth, (req, res) => {
     'SELECT id, username, avatar_url, banner_url, accent_color, accent_color_2, bio, status_text FROM users ORDER BY id'
   ).all();
 
-  const members = users.map((u) => ({ ...u, online: realtime.isOnline(u.id) }));
+  const members = users.map((u) => ({ ...u, online: realtime.isOnline(u.id), status: realtime.presenceStatusOf(u.id) }));
   res.json({ members });
 });
 

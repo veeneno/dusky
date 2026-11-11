@@ -69,7 +69,7 @@ function renderMembers() {
       item.innerHTML = `
           <div class="member-item-avatar">
             ${memberAvatarInner(m)}
-            <span class="member-presence-dot"></span>
+            <span class="member-presence-dot${presenceDotClass(m)}" title="${presenceLabel(m)}"></span>
           </div>
           <div class="member-item-text">
             <span class="member-item-name"><span class="member-item-name-text"></span>${isOwner ? `<span class="member-owner" title="dono do servidor">${CROWN_ICON}</span>` : ''}</span>
@@ -211,7 +211,7 @@ function renderProfileCard(el, user, opts = {}) {
   el.innerHTML = `
       <div class="pc-banner"${user.banner_url ? ` style="background-image:url('${escapeAttr(user.banner_url)}')"` : ''}></div>
       <div class="pc-avatar-row">
-        <div class="pc-avatar">${avatar}<span class="pc-dot${online ? ' is-online' : ''}" title="${online ? 'online' : 'offline'}"></span></div>
+        <div class="pc-avatar">${avatar}<span class="pc-dot${presenceDotClass(user, online)}" title="${presenceLabel(user, online)}"></span></div>
       </div>
       <div class="pc-body">
         <div class="pc-identity">
@@ -450,8 +450,9 @@ const profileStatusLine = document.getElementById('profileStatus');
 
 function applyUserToProfileBar(user) {
   profileName.textContent = user.username;
-  profileStatusLine.textContent = user.status_text || 'online';
+  profileStatusLine.textContent = user.status_text || (userPresenceStatus(user) === 'idle' ? 'inativo' : 'ativo');
   profileStatusLine.classList.toggle('has-custom', !!user.status_text);
+  applyMyPresenceDot();
   profileAvatar.style.setProperty('--pfp-ring', user.accent_color || 'var(--amethyst)');
   if (user.avatar_url) {
     profileAvatar.innerHTML = `<img src="${escapeAttr(user.avatar_url)}" alt="">`;
@@ -608,6 +609,7 @@ function closeProfileModal() {
 
 profileBar.addEventListener('click', (e) => {
   if (e.target.closest('.profile-actions')) return; // botões de mudo/config/sair não abrem o perfil
+  if (e.target.closest('#profileAvatarWrap')) { openStatusMenu(); return; } // avatar = ativo/inativo
   openProfileModal();
 });
 profileCloseBtn.addEventListener('click', closeProfileModal);

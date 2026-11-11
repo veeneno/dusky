@@ -18,8 +18,9 @@ function getKeys() {
 function eligible(sub, message) {
   if (sub.user_id === message.user_id || sub.level === 'none') return false;
   if (!access.canAccessChannel(message.channel_id, sub.user_id)) return false;
-  const user = db.prepare('SELECT banned_at, session_version FROM users WHERE id = ?').get(sub.user_id);
+  const user = db.prepare('SELECT banned_at, session_version, presence_status FROM users WHERE id = ?').get(sub.user_id);
   if (!user || user.banned_at || user.session_version !== sub.session_version) return false;
+  if (user.presence_status === 'idle') return false; // inativo: mensagem não avisa (ver realtime.js)
   return sub.level === 'all' || message.server_id == null || !!db.prepare('SELECT 1 FROM message_mentions WHERE message_id = ? AND user_id IN (0, ?)').get(message.id, sub.user_id);
 }
 async function notifyMessage(message) {

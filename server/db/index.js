@@ -26,6 +26,9 @@ ensureColumn('messages', 'attachment_size', 'INTEGER'); // tamanho em bytes do a
 ensureColumn('messages', 'reply_to_id', 'INTEGER REFERENCES messages(id) ON DELETE SET NULL');
 ensureColumn('users', 'accent_color_2', 'TEXT'); // cor secundária opcional — forma um degradê com accent_color no banner
 ensureColumn('users', 'bio', 'TEXT'); // bio curta do perfil
+// status escolhido pela pessoa: 'online' (ativo, bolinha verde) ou 'idle' (inativo, lua roxa).
+// Só vale enquanto ela está conectada — desconectada continua aparecendo offline.
+ensureColumn('users', 'presence_status', "TEXT NOT NULL DEFAULT 'online'");
 ensureColumn('messages', 'embed_json', 'TEXT'); // embed estruturado (bot de música) — JSON: {title, description, thumbnail, color, fields, footer}
 // canal pertence a um servidor; NULL = conversa de DM (ver dm_members). ON DELETE CASCADE: apagar
 // o servidor leva junto canais (e, pelo cascade de messages, todo o histórico deles)

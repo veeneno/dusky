@@ -16,7 +16,7 @@ router.get('/contacts', requireAuth, (req, res) => {
     WHERE u.id != ?
     ORDER BY u.username COLLATE NOCASE
   `).all(req.user.id, req.user.id);
-  res.json({ users: rows.map((u) => ({ ...u, online: realtime.isOnline(u.id) })) });
+  res.json({ users: rows.map((u) => ({ ...u, online: realtime.isOnline(u.id), status: realtime.presenceStatusOf(u.id) })) });
 });
 
 // GET /api/users/:id — perfil completo de alguém (pro cartão de perfil). Só de quem divide
@@ -33,7 +33,7 @@ router.get('/:id', requireAuth, (req, res) => {
   res.json({
     user: {
       ...user,
-      online: realtime.isOnline(user.id),
+      online: realtime.isOnline(user.id), status: realtime.presenceStatusOf(user.id),
       activity: realtime.activityOf(user.id),
       mutual_servers: isSelf ? [] : access.mutualServers(req.user.id, id),
     },

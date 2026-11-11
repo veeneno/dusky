@@ -61,7 +61,7 @@ function init(server) {
     const prevCount = onlineCounts.get(ws.userId) || 0;
     onlineCounts.set(ws.userId, prevCount + 1);
     if (prevCount === 0) {
-      sendToUsers(access.relatedUserIds(ws.userId), { type: 'presence_online', userId: ws.userId });
+      sendToUsers(access.relatedUserIds(ws.userId), { type: 'presence_online', userId: ws.userId, status: presenceStatusOf(ws.userId) });
     }
 
     ws.on('message', (raw) => {
@@ -138,6 +138,8 @@ function handleClientMessage(ws, msg) {
       return handleVoiceSpeaking(ws, msg);
     case 'activity_set':
       return handleActivitySet(ws, msg);
+    case 'status_set':
+      return handleStatusSet(ws, msg);
     default:
       return; // tipo desconhecido, ignora
   }
@@ -245,6 +247,32 @@ function handleActivitySet(ws, msg) {
   const startedAt = Number.isFinite(started) && started <= now + 60000 && started > now - 7 * 24 * 3600 * 1000 ? Math.min(now, Math.floor(started)) : now;
   activities.set(ws.userId, { name, startedAt, ws });
   broadcastActivity(ws.userId);
+}
+
+// ------------------------------------------------------------------
+// status escolhido (ativo / inativo): fica salvo na conta (users.presence_status), então vale em
+// qualquer aparelho e sobrevive a reiniciar o servidor. Cache em memória pra não consultar o banco
+// a cada membro listado.
+// ------------------------------------------------------------------
+const PRESENCE_STATUSES = new Set(['online', 'idle']);
+const statusCache = new Map(); // userId -> 'online' | 'idle'
+
+function presenceStatusOf(userId) {
+  if (statusCache.has(userId)) return statusCache.get(userId);
+  const row = db.prepare('SELECT presence_status FROM users WHERE id = ?').get(userId);
+  const status = row && PRESENCE_STATUSES.has(row.presence_status) ? row.presence_status : 'online';
+  statusCache.set(userId, status);
+  return status;
+}
+
+function handleStatusSet(ws, msg) {
+  const status = typeof msg.status === 'string' ? msg.status : '';
+  if (!PRESENCE_STATUSES.has(status)) return;
+  if (presenceStatusOf(ws.userId) === status) return; // nada mudou (o site reenvia ao reconectar)
+  db.prepare('UPDATE users SET presence_status = ? WHERE id = ?').run(status, ws.userId);
+  statusCache.set(ws.userId, status);
+  // relatedUserIds já inclui a própria pessoa: as outras abas/aparelhos dela atualizam também
+  sendToUsers(access.relatedUserIds(ws.userId), { type: 'presence_status', userId: ws.userId, status });
 }
 
 // "fulano está digitando…": o site manda a cada ~3s enquanto a pessoa digita; aqui só confere se ela
@@ -515,7 +543,7 @@ module.exports = {
   init, broadcast, sendToUsers, broadcastToServer, broadcastToChannel,
   isOnline, onlineUserIds, voiceOccupancy, kickFromServerVoice, kickFromChannelVoice,
   voiceStateOf, disconnectUser, moveUser, enforceVoicePermissions, onVoiceLeave,
-  dropUserConnections, voiceOccupancyAll, activityOf,
+  dropUserConnections, voiceOccupancyAll, activityOf, presenceStatusOf,
   BOT_USER_ID, botJoinVoice, botLeaveVoice,
   humansInChannel, voiceChannelOf,
 };

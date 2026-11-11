@@ -28,7 +28,7 @@ function decorate(row) {
     id: row.id,
     created_at: row.created_at,
     last_message_at: row.last_message_at,
-    user: user ? { ...user, online: realtime.isOnline(user.id) } : null,
+    user: user ? { ...user, online: realtime.isOnline(user.id), status: realtime.presenceStatusOf(user.id) } : null,
   };
 }
 

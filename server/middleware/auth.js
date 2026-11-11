@@ -11,7 +11,7 @@ function requireAuth(req, res, next) {
   }
 
   const row = db.prepare(
-    'SELECT id, username, avatar_url, banner_url, accent_color, accent_color_2, bio, status_text, created_at, is_site_admin, banned_at, ban_reason, session_version FROM users WHERE id = ?'
+    'SELECT id, username, avatar_url, banner_url, accent_color, accent_color_2, bio, status_text, presence_status, created_at, is_site_admin, banned_at, ban_reason, session_version FROM users WHERE id = ?'
   ).get(userId);
 
   if (!row) {

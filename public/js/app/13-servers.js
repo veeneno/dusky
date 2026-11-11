@@ -753,7 +753,7 @@ function renderContacts() {
     b.type = 'button';
     b.className = 'new-dm-row';
     b.innerHTML = `
-        <span class="dm-item-avatar">${memberAvatarInner(u)}<span class="presence-dot${u.online ? ' is-online' : ''}"></span></span>
+        <span class="dm-item-avatar">${memberAvatarInner(u)}<span class="presence-dot${presenceDotClass(u)}" title="${presenceLabel(u)}"></span></span>
         <span class="dm-item-text"><span class="dm-item-name"></span><span class="dm-item-status"></span></span>
       `;
     b.querySelector('.dm-item-name').textContent = u.username;

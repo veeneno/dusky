@@ -62,6 +62,7 @@ function appIsInFront() {
 function shouldNotify(message, isDm, mentionsMe) {
   const level = getNotifyLevel();
   if (level === 'none') return false;
+  if (myPresenceStatus() === 'idle') return false; // inativo: mensagem não avisa (ver 24-presence.js)
   if (level === 'all') return true;
   return isDm || mentionsMe;
 }

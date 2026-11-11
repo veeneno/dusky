@@ -117,7 +117,7 @@ function memberRow(serverId, userId) {
     FROM server_members sm JOIN users u ON u.id = sm.user_id
     WHERE sm.server_id = ? AND sm.user_id = ?
   `).get(serverId, userId);
-  return row ? { ...row, online: realtime.isOnline(row.id), activity: realtime.activityOf(row.id) } : null;
+  return row ? { ...row, online: realtime.isOnline(row.id), status: realtime.presenceStatusOf(row.id), activity: realtime.activityOf(row.id) } : null;
 }
 
 // ------------------------------------------------------------------
@@ -250,7 +250,7 @@ router.get('/:serverId/members', requireAuth, loadMemberServer, (req, res) => {
   const roleRows = db.prepare('SELECT user_id, role_id FROM member_roles WHERE server_id = ?').all(req.server.id);
   const members = rows.map((u) => ({
     ...u,
-    online: realtime.isOnline(u.id),
+    online: realtime.isOnline(u.id), status: realtime.presenceStatusOf(u.id),
     activity: realtime.activityOf(u.id), // "jogando X", se o app dela estiver detectando um jogo
     role_ids: roleRows.filter((r) => r.user_id === u.id).map((r) => r.role_id),
   }));

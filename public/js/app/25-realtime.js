@@ -54,9 +54,9 @@ function wireRealtime() {
     const mentionsMe = messageMentionsMe(message);
     if (message.user_id) setTyping(message.channel_id, message.user_id, false);
 
-    // som só pra DM, pro servidor que estou olhando, ou quando me mencionam — com vários
-    // servidores, tocar pra tudo vira barulho
-    if (!mine && message.user_id && (isDm || message.server_id === currentServerId || mentionsMe)) {
+    // som só pra DM ou quando me mencionam (e só com o status "ativo", ver playMessageSound) —
+    // mensagem comum de canal não toca nada, senão vira barulho
+    if (!mine && message.user_id && (isDm || mentionsMe)) {
       playMessageSound();
     }
     // notificação do sistema quando o didiscord não está na frente (ou é outro canal)
@@ -154,9 +154,17 @@ function wireRealtime() {
     if (currentChannel && currentChannel.dm && currentChannel.userId === userId) renderDmProfilePanel();
   }
 
-  Realtime.on('presence_online', ({ userId }) => setPresence(userId, true));
+  Realtime.on('presence_online', ({ userId, status }) => {
+    if (status) setUserPresenceStatus(userId, status);
+    setPresence(userId, true);
+  });
+  Realtime.on('presence_status', ({ userId, status }) => setUserPresenceStatus(userId, status));
   Realtime.on('activity_update', ({ userId, activity }) => setUserActivity(userId, activity));
-  Realtime.on('connection_status', ({ status }) => { if (status === 'open') sendMyActivity(); }); // reconectou: o servidor esqueceu
+  Realtime.on('connection_status', ({ status }) => {
+    if (status !== 'open') return;
+    sendMyActivity(); // reconectou: o servidor esqueceu
+    sendMyPresenceStatus(); // se o status foi trocado sem conexão, chega agora
+  });
   Realtime.on('presence_offline', ({ userId }) => setPresence(userId, false));
 
   Realtime.on('server_joined', ({ server }) => upsertServer(server));
@@ -395,6 +403,7 @@ document.addEventListener('visibilitychange', readCurrentIfInFront);
   await loadMusicbotState();
   wireRealtime();
   initPresence();
+  initPresenceStatus();
   DidiTheme.load();
   loadUnread();
   updateNotificationPermissionUi();
