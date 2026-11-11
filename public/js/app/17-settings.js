@@ -575,6 +575,7 @@ noiseSuppressionLevelSelect?.addEventListener('change', () => {
   try { localStorage.setItem(NOISE_SUPPRESSION_LEVEL_KEY, String(level)); } catch (_) { /* vale nesta página */ }
   for (const graph of [callMicGraph, settingsMicGraph, micTest?.graph]) {
     graph?.setSuppressionLevel?.(level);
+    graph?.setPostFilterBeta?.(noiseSuppressionPostFilterBeta(level));
   }
 });
 screenResolutionSelect.addEventListener('change', () => {

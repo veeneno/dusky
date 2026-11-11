@@ -819,8 +819,8 @@
             <div class="field" id="micLevelerField">
               <label for="micLevelerSelect">volume automático</label>
               <select id="micLevelerSelect">
-                <option value="browser">do navegador (padrão)</option>
-                <option value="own">do didiscord — novo, ajusta depois da supressão (experimental)</option>
+                <option value="own">do didiscord — ajusta depois da supressão (padrão)</option>
+                <option value="browser">do navegador — age antes da supressão</option>
               </select>
               <span class="field-help">deixa sua voz sempre no mesmo volume pra quem ouve. O do navegador age antes da supressão de ruído e pode subir o chiado nas pausas; o do didiscord age depois, só enquanto você fala. Compare os dois com o "testar microfone". No modo estúdio nenhum dos dois é usado. Dá pra trocar com a call aberta.</span>
             </div>
@@ -839,9 +839,9 @@
             <div class="field" id="noiseSuppressionLevelField" hidden>
               <label for="noiseSuppressionLevelSelect">intensidade da supressão avançada</label>
               <select id="noiseSuppressionLevelSelect">
-                <option value="20">leve</option>
-                <option value="40" selected>média</option>
-                <option value="60">forte</option>
+                <option value="35">leve</option>
+                <option value="50" selected>média</option>
+                <option value="100">forte — tira todo o ruído</option>
               </select>
             </div>
 

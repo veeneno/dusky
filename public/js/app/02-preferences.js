@@ -37,7 +37,14 @@ const MIC_GATE_MODE_KEY = 'didiscord:micGateMode';
 const MIC_SENSITIVITY_KEY = 'didiscord:micSensitivity';
 const NOISE_SUPPRESSION_KEY = 'didiscord:noiseSuppression';
 const NOISE_SUPPRESSION_LEVEL_KEY = 'didiscord:noiseSuppressionLevel';
-const NOISE_SUPPRESSION_LEVELS = [20, 40, 60];
+// limites de atenuação do DeepFilterNet3 em dB, os mesmos do CleanMic (que usa os padrões do
+// EasyEffects): 35 leve, 50 média, 100 forte (100 = sem limite: o ruído some de vez, e liga o
+// pós-filtro). Os antigos 20/40/60 deixavam o chiado passar (no máximo 40 dB a menos, por padrão).
+const NOISE_SUPPRESSION_LEVELS = [35, 50, 100];
+const NOISE_SUPPRESSION_LEGACY_LEVELS = { 20: 35, 40: 50, 60: 100 };
+// pós-filtro do DeepFilterNet (beta): limpa o resto de ruído entre as palavras. Só no "forte",
+// como o CleanMic — em excesso ele abafa a voz.
+function noiseSuppressionPostFilterBeta(level) { return level >= 100 ? 0.05 : 0; }
 const MIC_GAIN_KEY = 'didiscord:micGain';
 
 function getSavedMicGain() {
@@ -111,11 +118,13 @@ function getSavedVoiceProcessing() {
 function saveVoiceProcessing(v) {
   try { localStorage.setItem(VOICE_PROCESSING_KEY, VOICE_PROCESSING_MODES.includes(v) ? v : 'speakers'); } catch (_) { /* ok */ }
 }
-// volume automático: 'browser' (o do navegador, antes do supressor — padrão) ou 'own' (o nivelador
-// do didiscord, depois do supressor — ver worklets/mic-leveler.js). No modo estúdio não tem nenhum.
+// volume automático: 'own' (o nivelador do didiscord, depois do supressor — padrão, ver
+// worklets/mic-leveler.js) ou 'browser' (o do navegador, que age ANTES do supressor e sobe o chiado
+// nas pausas — o supressor recebe um ruído que "respira" e deixa resto passar). O CleanMic entrega
+// o mic cru pro DeepFilterNet; aqui é o mais perto disso. No modo estúdio não tem nenhum.
 const MIC_LEVELER_KEY = 'didiscord:micLeveler';
 function getSavedMicLeveler() {
-  try { return localStorage.getItem(MIC_LEVELER_KEY) === 'own' ? 'own' : 'browser'; } catch (_) { return 'browser'; }
+  try { return localStorage.getItem(MIC_LEVELER_KEY) === 'browser' ? 'browser' : 'own'; } catch (_) { return 'own'; }
 }
 function usesOwnLeveler() {
   return getSavedMicLeveler() === 'own' && getSavedVoiceProcessing() !== 'studio';
@@ -166,8 +175,9 @@ function getSavedNoiseSuppressionLevel() {
   try {
     const level = Number(localStorage.getItem(NOISE_SUPPRESSION_LEVEL_KEY));
     if (NOISE_SUPPRESSION_LEVELS.includes(level)) return level;
+    if (NOISE_SUPPRESSION_LEGACY_LEVELS[level]) return NOISE_SUPPRESSION_LEGACY_LEVELS[level];
   } catch (_) { /* segue com a intensidade padrão */ }
-  return 40;
+  return 50;
 }
 
 

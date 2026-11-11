@@ -208,9 +208,10 @@ let deepFilterCorePromise = null;
 function loadDeepFilterCore() {
   if (!deepFilterCorePromise) {
     deepFilterCorePromise = (async () => {
-      const { DeepFilterNet3Core } = await import(`${DEEPFILTER_BASE}/index.esm.js?v=2`);
-      // Os níveis são limites de atenuação em dB. 40 dB mantém o ajuste das calls anteriores.
-      const core = new DeepFilterNet3Core({ sampleRate: 48000, noiseReductionLevel: 40, assetConfig: { cdnUrl: DEEPFILTER_BASE } });
+      const { DeepFilterNet3Core } = await import(`${DEEPFILTER_BASE}/index.esm.js?v=6`);
+      // Os níveis são limites de atenuação em dB (ver NOISE_SUPPRESSION_LEVELS). Já nasce no nível
+      // salvo pra não ter um instante com a intensidade errada.
+      const core = new DeepFilterNet3Core({ sampleRate: 48000, noiseReductionLevel: getSavedNoiseSuppressionLevel(), assetConfig: { cdnUrl: DEEPFILTER_BASE } });
       await core.initialize();
       return core;
     })().catch((err) => {
@@ -233,6 +234,7 @@ async function createNoiseSuppressorNode(ctx, mode) {
         node,
         mode: 'deepfilter',
         setSuppressionLevel: (level) => core.setSuppressionLevel(level, node),
+        setPostFilterBeta: (beta) => core.setPostFilterBeta(beta, node),
         teardown: () => {
           node.disconnect();
           node.port.close();
@@ -495,7 +497,7 @@ async function buildMicProcessingGraph(rawStream, gainValue, noiseMode) {
     gainNode.connect(analyser);
     return {
       stream: dest.stream, gainNode, gate, analyser, noiseMode: ns.mode,
-      setSuppressionLevel: ns.setSuppressionLevel, teardown,
+      setSuppressionLevel: ns.setSuppressionLevel, setPostFilterBeta: ns.setPostFilterBeta, teardown,
     };
   } catch (err) {
     teardown();
@@ -509,6 +511,7 @@ async function tryBuildMicProcessingGraph(stream) {
     // A pessoa pode mexer nas configurações enquanto os módulos carregam.
     graph.gainNode.gain.value = getSavedMicGain() / 100;
     graph.setSuppressionLevel?.(getSavedNoiseSuppressionLevel());
+    graph.setPostFilterBeta?.(noiseSuppressionPostFilterBeta(getSavedNoiseSuppressionLevel()));
     graph.gate.configure();
     return graph;
   } catch (err) {
