@@ -186,7 +186,8 @@ const callParticipantsState = new Map(); // userId -> { muted, deafened, cameraO
 const peers = new Map(); // userId -> peer (ver newPeer)
 let voiceStatsTimer = null;
 let localScreenAudioTrack = null; // áudio da MINHA tela (pode vir à parte do vídeo, ex: app desktop)
-// compartilhamento pela placa de vídeo (app desktop): { encoderName, hardware, viewers:Set, stats }
+// compartilhamento pela placa de vídeo (app desktop): { encoderName, hardware, viewers:Set, stats,
+// sfuCapable, viaSfu } — viaSfu = o vídeo está saindo pelo servidor de mídia (ver 20-screencast-native.js)
 let nativeScreencast = null;
 const unwatchedScreens = new Set(); // userIds cuja tela eu parei de assistir
 let spotlightUserId = null; // câmera ampliada na call (pode ser a minha)

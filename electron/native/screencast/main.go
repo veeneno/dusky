@@ -24,6 +24,8 @@
 //	  {"cmd":"answer","viewer":"12","sdp":{"type":"answer","sdp":"..."}}
 //	  {"cmd":"candidate","viewer":"12","candidate":{...}}
 //	  {"cmd":"remove","viewer":"12"}                       parou de assistir / saiu da call
+//	  {"cmd":"publish","url":"wss://site/livekit","token":"..."}   manda a tela pelo servidor de mídia
+//	  {"cmd":"unpublish"}                                  (ver sfu.go — aí não precisa de "add")
 //	  {"cmd":"stop"}
 //
 //	saída (eventos):
@@ -53,6 +55,7 @@ import (
 	"sync"
 	"time"
 
+	lksdk "github.com/livekit/server-sdk-go/v2"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/webrtc/v4"
@@ -72,6 +75,10 @@ type message struct {
 	Viewer     string                     `json:"viewer,omitempty"`
 	SDP        *webrtc.SessionDescription `json:"sdp,omitempty"`
 	Candidate  *webrtc.ICECandidateInit   `json:"candidate,omitempty"`
+	URL        string                     `json:"url,omitempty"`    // publish: endereço do servidor de mídia
+	Token      string                     `json:"token,omitempty"`  // publish: ingresso da sala
+	Width      int                        `json:"width,omitempty"`  // publish: tamanho do vídeo
+	Height     int                        `json:"height,omitempty"` // (só informativo pro servidor)
 }
 
 // servidor STUN/TURN como o site manda. A Metered manda "urls" como TEXTO ("turn:..."), e o tipo do
@@ -138,6 +145,8 @@ type caster struct {
 	portalBusy bool
 	stopOnce   sync.Once
 	done       chan struct{}
+	room       *lksdk.Room // sala do servidor de mídia em que a tela está publicada (ver sfu.go)
+	publishSeq int         // muda a cada "publish"/"unpublish": tentativa antiga não vale mais
 }
 
 func newCaster() (*caster, error) {
@@ -258,6 +267,7 @@ func (c *caster) stop(reason string) {
 		}
 		c.mu.Unlock()
 		portal.close()
+		c.unpublish()
 		emit(map[string]any{"ev": "ended", "reason": reason})
 		close(c.done)
 	})
@@ -500,6 +510,14 @@ func handle(c *caster, msg message) {
 		}
 	case "remove":
 		c.removeViewer(msg.Viewer)
+	case "publish":
+		if msg.URL == "" || msg.Token == "" {
+			fail(errors.New("publish precisa de url e token"))
+			return
+		}
+		c.publish(msg.URL, msg.Token, msg.Width, msg.Height)
+	case "unpublish":
+		c.unpublish()
 	case "stop":
 		c.stop("parado pelo app")
 	default:

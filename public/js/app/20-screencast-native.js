@@ -52,6 +52,7 @@ function abandonNativeScreenShare(why) {
 function syncNativeViewer(userId, want) {
   const api = nativeApi();
   if (!api || !nativeScreencast) return;
+  if (nativeScreencast.viaSfu) return; // pelo servidor de mídia não tem conexão por pessoa
   const has = nativeScreencast.viewers.has(userId);
   if (want && !has) {
     nativeScreencast.viewers.add(userId);
@@ -77,9 +78,58 @@ function resyncNativeViewer(userId, why) {
   });
 }
 
+// ---------- a tela pela placa de vídeo passando pelo servidor de mídia ----------
+// Com a call no servidor de mídia (ver 21-call-sfu.js) e o app na versão 0.5.2 ou mais nova, o
+// auxiliar entra na sala como "tela-<meu id>" e publica o vídeo lá: sai UMA cópia do meu PC e o
+// servidor distribui. Se não der (app antigo, servidor de mídia fora), vale o jeito de sempre: uma
+// conexão direta do auxiliar com cada pessoa (syncNativeViewer).
+
+async function publishNativeToSfu() {
+  const api = nativeApi();
+  const share = nativeScreencast;
+  if (!api || !share || !share.sfuCapable || !sfu || !voiceChannel) return false;
+  try {
+    const res = await fetch(`/api/rtc/sfu?channelId=${voiceChannel.id}&screen=1`);
+    const info = res.ok ? await res.json() : null;
+    if (!info || !info.enabled || nativeScreencast !== share) return false;
+    share.viaSfu = true;
+    api.command({ cmd: 'publish', path: info.path, token: info.token, width: share.width, height: share.height });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// não deu pelo servidor de mídia: liga o auxiliar direto em cada pessoa que está assistindo
+function fallbackNativeToViewers(why) {
+  if (!nativeScreencast || !nativeScreencast.viaSfu) return;
+  console.warn('[screencast] tela pelo servidor de mídia indisponível, indo direto pra cada pessoa:', why);
+  nativeScreencast.viaSfu = false;
+  const api = nativeApi();
+  if (api) api.command({ cmd: 'unpublish' });
+  for (const peer of peers.values()) applyScreenSendersToPeer(peer);
+}
+
+let nativeSfuRetryTimer = null;
+function retryNativeSfuPublish() {
+  clearTimeout(nativeSfuRetryTimer);
+  const share = nativeScreencast;
+  nativeSfuRetryTimer = setTimeout(async () => {
+    if (nativeScreencast !== share || !share.viaSfu) return;
+    if (!(await publishNativeToSfu())) retryNativeSfuPublish(); // o servidor de mídia ainda não voltou
+  }, 3000);
+}
+
 // eventos do auxiliar (ofertas pra cada pessoa, estatísticas, fim)
 function handleNativeScreencastEvent(ev) {
   if (!ev || !nativeScreencast) return;
+  if (ev.ev === 'published') { console.log('[screencast] tela publicada no servidor de mídia'); return; }
+  if (ev.ev === 'sfu') {
+    // caiu de vez: pede pra publicar de novo (com ingresso novo) até voltar
+    if (ev.state === 'disconnected' && nativeScreencast.viaSfu) retryNativeSfuPublish();
+    return;
+  }
+  if (ev.ev === 'error' && ev.sfu) { fallbackNativeToViewers(ev.message); return; }
   const to = Number(ev.viewer);
   if (ev.ev === 'offer' && to) {
     Realtime.send('rtc_signal', { to, data: { kind: 'sc-offer', sdp: ev.sdp } });
@@ -125,7 +175,7 @@ function updateNativeScreencastBadge() {
   const parts = [];
   if (nativeScreencast.width) parts.push(`${nativeScreencast.width}\u00d7${nativeScreencast.height}`);
   if (st) parts.push(`${Math.round(st.fps)} fps`, st.kbps >= 1000 ? `${(st.kbps / 1000).toFixed(1)} Mbps` : `${st.kbps} kbps`);
-  parts.push(viewers === 1 ? '1 pessoa assistindo' : `${viewers} pessoas assistindo`);
+  parts.push(nativeScreencast.viaSfu ? 'pelo servidor de mídia' : viewers === 1 ? '1 pessoa assistindo' : `${viewers} pessoas assistindo`);
   el.textContent = parts.join(' · ');
 }
 
@@ -150,7 +200,7 @@ async function startNativeScreenShare({ fps, width, height, wantAudio }) {
     return 'fallback';
   }
 
-  nativeScreencast = { encoderName: res.encoderName, hardware: res.hardware, width: res.width, height: res.height, viewers: new Set(), stats: null, started: false };
+  nativeScreencast = { encoderName: res.encoderName, hardware: res.hardware, width: res.width, height: res.height, viewers: new Set(), sfuCapable: !!info.sfu, viaSfu: false, stats: null, started: false };
   clearTimeout(nativeStartTimer);
   nativeStartTimer = setTimeout(() => {
     if (nativeScreencast && !nativeScreencast.started) abandonNativeScreenShare('nenhum quadro em 10s');
@@ -158,6 +208,8 @@ async function startNativeScreenShare({ fps, width, height, wantAudio }) {
   screenOn = true;
   setScreenButtonsLive(true);
   for (const peer of peers.values()) peer.wantsMyScreen = true;
+  // call no servidor de mídia: a tela sai uma vez só, por ele (senão, direto pra cada pessoa)
+  await publishNativeToSfu();
 
   // o som da tela vai pelo caminho de sempre (o main.js já preparou a captura pra fonte escolhida)
   localScreenAudioTrack = null;

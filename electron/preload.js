@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld('didiscordDesktop', {
     // abre o seletor e começa: { ok, cancelled, reason, encoderName, hardware, width, height, kbps, sourceName }
     start: (opts) => ipcRenderer.invoke('screencast:start', opts),
     // { cmd: 'add'|'answer'|'candidate'|'remove', viewer, sdp?, candidate? }
+    // { cmd: 'publish', path, token, width, height } / { cmd: 'unpublish' } — tela pelo servidor de mídia
     command: (msg) => ipcRenderer.send('screencast:command', msg),
     stop: () => ipcRenderer.invoke('screencast:stop'),
     // eventos: offer, candidate, state, stats, started, error, ended. Devolve a função que cancela.

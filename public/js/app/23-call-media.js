@@ -310,6 +310,7 @@ async function applyScreenBitrate(sender) {
 function stopScreenShare() {
   if (nativeScreencast) {
     nativeScreencast = null;
+    clearTimeout(nativeSfuRetryTimer);
     clearTimeout(nativeStartTimer);
     nativeStartTimer = null;
     const api = nativeApi();

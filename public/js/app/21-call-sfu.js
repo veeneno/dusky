@@ -39,8 +39,10 @@ function loadSfuLib() {
 const sfuActive = () => !!sfu || sfuRequired;
 
 // identidade no LiveKit = id da conta
+// identidade no LiveKit = id da conta. O auxiliar de tela do app desktop entra como "tela-<id>":
+// é a mesma pessoa, só que mandando o vídeo da tela por outra conexão.
 function sfuUserId(participant) {
-  const id = Number(participant && participant.identity);
+  const id = Number(String((participant && participant.identity) || '').replace(/^tela-/, ''));
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
@@ -91,7 +93,8 @@ function sfuTrackSubscribed(track, publication, participant) {
     ensurePeerScreenBoostGraph(peer);
     applyLocalOverrideToRemoteScreenAudio(userId);
   } else if (track.kind === 'video') {
-    const isScreen = source === 'screen_share';
+    // vídeo que vem do auxiliar de tela é sempre a tela, qualquer que seja a etiqueta
+    const isScreen = source === 'screen_share' || /^tela-/.test(participant.identity);
     const target = isScreen ? peer.screenStream : peer.cameraStream;
     for (const old of target.getVideoTracks()) target.removeTrack(old);
     target.addTrack(mst);
@@ -110,17 +113,20 @@ function sfuTrackUnsubscribed(track, publication, participant) {
     if (s && mst) { try { s.removeTrack(mst); } catch (_) { /* não estava nesse */ } }
   }
   if (publication.source === 'microphone') peer.sfuMicReceiver = null;
-  if (publication.source === 'screen_share') { peer.sfuScreenReceiver = null; screenStatsPrev.delete(`in:${peer.userId}`); }
+  if (publication.source === 'screen_share' || /^tela-/.test(participant.identity)) { peer.sfuScreenReceiver = null; screenStatsPrev.delete(`in:${peer.userId}`); }
   renderCallParticipants();
 }
 
 // "parar de assistir" a tela de alguém: no SFU é só deixar de assinar as faixas da tela dela
 function sfuSetScreenSubscribed(userId, on) {
   if (!sfu) return;
-  const participant = sfu.room.remoteParticipants.get(String(userId));
-  if (!participant) return;
-  for (const pub of participant.trackPublications.values()) {
-    if (/^screen_share/.test(pub.source)) { try { pub.setSubscribed(on); } catch (_) { /* some sozinha se a faixa acabou */ } }
+  // a tela pode vir da própria pessoa (navegador) ou do auxiliar dela (app desktop, "tela-<id>")
+  for (const identity of [String(userId), `tela-${userId}`]) {
+    const participant = sfu.room.remoteParticipants.get(identity);
+    if (!participant) continue;
+    for (const pub of participant.trackPublications.values()) {
+      if (/^screen_share/.test(pub.source)) { try { pub.setSubscribed(on); } catch (_) { /* some sozinha se a faixa acabou */ } }
+    }
   }
 }
 

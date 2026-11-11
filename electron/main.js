@@ -503,6 +503,7 @@ ipcMain.handle('screencast:available', async (event) => {
     encoderName: info.encoderName || null,
     hardware: !!info.hardware,
     reason: info.reason || null,
+    sfu: true, // este app sabe mandar a tela pelo servidor de mídia (comando "publish")
     deps: deps.getStatus(),
   };
 });
@@ -548,6 +549,18 @@ ipcMain.handle('screencast:start', async (event, opts) => {
 // sinalização de cada pessoa assistindo (o site repassa pelo servidor)
 ipcMain.on('screencast:command', (event, msg) => {
   if (!trustedSender(event) || !msg || typeof msg !== 'object') return;
+  // tela pelo servidor de mídia: o site manda só o caminho e o ingresso; o endereço é sempre o do
+  // servidor em que o app está conectado (um site não consegue apontar o auxiliar pra outro lugar)
+  if (msg.cmd === 'publish') {
+    const pathOk = typeof msg.path === 'string' && /^\/[A-Za-z0-9/_-]{0,64}$/.test(msg.path);
+    if (!pathOk || typeof msg.token !== 'string' || msg.token.length > 4096) return;
+    screencast.command({
+      cmd: 'publish', url: SITE_URL.replace(/^http/i, 'ws') + msg.path, token: msg.token,
+      width: Math.max(0, Math.floor(Number(msg.width) || 0)), height: Math.max(0, Math.floor(Number(msg.height) || 0)),
+    });
+    return;
+  }
+  if (msg.cmd === 'unpublish') { screencast.command({ cmd: 'unpublish' }); return; }
   if (!['add', 'answer', 'candidate', 'remove'].includes(msg.cmd)) return;
   screencast.command({
     cmd: msg.cmd, viewer: String(msg.viewer || ''), sdp: msg.sdp, candidate: msg.candidate,

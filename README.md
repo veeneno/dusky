@@ -233,7 +233,7 @@ Como funciona:
 - O IP público é descoberto sozinho a cada início. Quem está na mesma rede do servidor (ou no próprio PC) conecta pelo IP interno.
 - Quem está na call, mudo/surdo, "falando", mover e desconectar continuam pelo WebSocket do site, iguais nos dois modos. Em `public/js/app/21-call-sfu.js`, o código cuida de publicar e receber as faixas; o resto do código de call é compartilhado.
 - **Todo mundo numa call precisa estar no mesmo modo.** Quem entrou enquanto o LiveKit estava fora (em malha) não ouve quem entrou depois que ele voltou: é só sair e entrar de novo.
-- A tela **pela placa de vídeo** (app desktop) ainda sai do auxiliar direto pra cada pessoa; só o som dela passa pelo servidor. Pelo navegador, a tela inteira passa pelo servidor.
+- A tela **pela placa de vídeo** (app desktop 0.5.2 ou mais novo) também passa pelo servidor: o auxiliar entra na sala como um participante à parte (`tela-<id da conta>`) e publica o vídeo já codificado, então sai uma cópia só do PC de quem compartilha (`electron/native/screencast/sfu.go`). Com um app mais antigo, ou se o servidor de mídia não responder, o auxiliar volta a mandar direto pra cada pessoa. O som da tela sempre vai pelo site.
 
 | Variável | Pra quê | Sem ela |
 |---|---|---|
@@ -308,7 +308,7 @@ O Electron não sabe capturar o som de um app só, então cada sistema tem um ca
 Os executáveis prontos ficam em `electron/native/bin/` (dentro do git, porque sem eles não dá pra gerar o app).
 
 ```bash
-# compartilhamento de tela (Go 1.26+)
+# compartilhamento de tela (Go 1.26+; usa a biblioteca do LiveKit pra mandar a tela pelo servidor de mídia)
 cd electron/native/screencast
 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/didiscord-screencast .
 GOOS=windows CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/didiscord-screencast.exe .

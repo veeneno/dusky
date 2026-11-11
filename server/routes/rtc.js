@@ -79,6 +79,9 @@ router.get('/ice-servers', requireAuth, async (req, res) => {
   }
 });
 
+// Com &screen=1 o ingresso é pro auxiliar de tela do app desktop: ele entra na mesma sala como um
+// participante à parte, "tela-<id da conta>", que só envia o vídeo da tela (ver electron/native/
+// screencast/sfu.go). O site junta esse vídeo à pessoa certa pelo número no nome.
 // GET /api/rtc/sfu?channelId=N — as calls passam pelo servidor de mídia (LiveKit) deste PC?
 // { enabled: false } = não: o site usa a malha (conexão direta entre as pessoas), como sempre.
 // { enabled: true, path, token } = sim: `token` deixa ESTA pessoa entrar na sala DESTE canal e só
@@ -91,7 +94,9 @@ router.get('/sfu', requireAuth, (req, res) => {
   res.json({
     enabled: true,
     path: sfu.PREFIX,
-    token: sfu.createToken({ room: sfu.roomForChannel(ch.id), identity: req.user.id, name: req.user.username }),
+    token: req.query.screen === '1'
+      ? sfu.createToken({ room: sfu.roomForChannel(ch.id), identity: `tela-${req.user.id}`, name: `${req.user.username} (tela)`, publishOnly: true })
+      : sfu.createToken({ room: sfu.roomForChannel(ch.id), identity: req.user.id, name: req.user.username }),
   });
 });
 
