@@ -30,9 +30,11 @@ const HEARTBEAT_TIMEOUT_MS = 45 * 1000;  // sem pong há mais que isso = conside
 const voiceStates = new Map();
 
 function init(server) {
+  // noServer: quem decide pra onde vai cada upgrade é o listener abaixo. Com `server` + `path`, o ws
+  // respondia 400 pra QUALQUER outro caminho — e /livekit (sinalização do servidor de mídia, ver
+  // server/sfu/livekit.js) divide o mesmo servidor HTTP.
   const wss = new WebSocketServer({
-    server,
-    path: '/ws',
+    noServer: true,
     verifyClient: (info, cb) => {
       const url = new URL(info.req.url, 'http://localhost');
       const ticket = url.searchParams.get('ticket');
@@ -41,6 +43,13 @@ function init(server) {
       info.req.userId = entry.userId;
       cb(true);
     },
+  });
+
+  server.on('upgrade', (req, socket, head) => {
+    let pathname = '';
+    try { pathname = new URL(req.url, 'http://localhost').pathname; } catch (_) { /* url torta: não é nosso */ }
+    if (pathname !== '/ws') return; // outro caminho: outro listener cuida (ver server/index.js)
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   });
 
   wss.on('connection', (ws, req) => {
@@ -71,6 +80,8 @@ function init(server) {
 
       // se essa conexão era a "dona" da presença em chamada de voz do usuário, sai da call
       leaveVoiceIfOwner(ws);
+      // idem pro "jogando X": era o app dessa conexão que estava detectando o jogo
+      clearActivityIfOwner(ws);
 
       const count = (onlineCounts.get(ws.userId) || 1) - 1;
       if (count <= 0) {
@@ -125,6 +136,8 @@ function handleClientMessage(ws, msg) {
       return handleTyping(ws, msg);
     case 'voice_speaking':
       return handleVoiceSpeaking(ws, msg);
+    case 'activity_set':
+      return handleActivitySet(ws, msg);
     default:
       return; // tipo desconhecido, ignora
   }
@@ -193,6 +206,45 @@ function handleVoiceSpeaking(ws, msg) {
   if (state.speaking === speaking) return;
   state.speaking = speaking;
   broadcastToChannel(state.channelId, { type: 'voice_speaking', channelId: state.channelId, userId: ws.userId, speaking }, ws);
+}
+
+// ------------------------------------------------------------------
+// "jogando X" (rich presence): o app desktop da pessoa detecta o jogo aberto e avisa por aqui
+// (electron/presence.js -> public/js/app.js -> activity_set). Fica só em memória e só vai pra quem
+// já enxerga essa pessoa (divide servidor ou DM). `ws` = a conexão que detectou: se ela cair, some.
+// ------------------------------------------------------------------
+const activities = new Map(); // userId -> { name, startedAt, ws }
+
+function activityOf(userId) {
+  const a = activities.get(userId);
+  return a ? { type: 'playing', name: a.name, startedAt: a.startedAt } : null;
+}
+
+function broadcastActivity(userId) {
+  sendToUsers(access.relatedUserIds(userId), { type: 'activity_update', userId, activity: activityOf(userId) });
+}
+
+function clearActivityIfOwner(ws) {
+  const cur = activities.get(ws.userId);
+  if (!cur || cur.ws !== ws) return;
+  activities.delete(ws.userId);
+  broadcastActivity(ws.userId);
+}
+
+// { name, startedAt? } — nome vazio (ou a pessoa desligou a opção) = não está jogando nada
+function handleActivitySet(ws, msg) {
+  const name = typeof msg.name === 'string'
+    ? msg.name.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 64)
+    : '';
+  if (!name) { clearActivityIfOwner(ws); return; }
+  const cur = activities.get(ws.userId);
+  if (cur && cur.ws === ws && cur.name === name) return;
+  const now = Date.now();
+  const started = Number(msg.startedAt);
+  // aceita o horário do app (o jogo pode ter aberto antes de o site conectar), dentro do razoável
+  const startedAt = Number.isFinite(started) && started <= now + 60000 && started > now - 7 * 24 * 3600 * 1000 ? Math.min(now, Math.floor(started)) : now;
+  activities.set(ws.userId, { name, startedAt, ws });
+  broadcastActivity(ws.userId);
 }
 
 // "fulano está digitando…": o site manda a cada ~3s enquanto a pessoa digita; aqui só confere se ela
@@ -463,7 +515,7 @@ module.exports = {
   init, broadcast, sendToUsers, broadcastToServer, broadcastToChannel,
   isOnline, onlineUserIds, voiceOccupancy, kickFromServerVoice, kickFromChannelVoice,
   voiceStateOf, disconnectUser, moveUser, enforceVoicePermissions, onVoiceLeave,
-  dropUserConnections, voiceOccupancyAll,
+  dropUserConnections, voiceOccupancyAll, activityOf,
   BOT_USER_ID, botJoinVoice, botLeaveVoice,
   humansInChannel, voiceChannelOf,
 };

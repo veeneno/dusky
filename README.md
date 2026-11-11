@@ -194,6 +194,35 @@ didiscord/
    - A qualidade do Opus é definida no SDP que cada lado manda ("é assim que eu quero receber"). Quem estiver com um `app.js` antigo recebe o som na qualidade padrão do WebRTC (32 kbps mono).
 4. A credencial do TURN do Metered fica guardada por ~50 min (`server/routes/rtc.js`), porque o plano grátis tem um limite total de credenciais. O site pede uma nova ao entrar na call, ao começar a compartilhar a tela e ao reconectar.
 
+## Servidor de mídia (SFU) — as calls passando pelo PC do servidor
+
+Por padrão as calls são em malha (cada pessoa ligada direto em cada outra, item 3 acima). Com `SFU=livekit` no `.env`, o servidor sobe um [LiveKit](https://github.com/livekit/livekit) ao lado do site e as calls passam por ele: cada pessoa manda voz, câmera e tela **uma vez** pro servidor, e ele repassa pros outros. É de graça e roda só neste PC.
+
+**Pra ligar:**
+
+1. No roteador, abra pro PC do servidor as portas **UDP 7882** (a mídia passa por ela) e **TCP 7881** (reserva pra quem tem UDP bloqueado). Se o PC tiver firewall, libere as duas nele também.
+2. Ponha `SFU=livekit` no `.env`.
+3. Reinicie o `npm start`. Na primeira vez ele baixa o `livekit-server` (~20 MB, em `server/sfu/bin/`, fora do git) e mostra `[sfu] no ar` quando estiver pronto.
+
+**Pra voltar pra malha:** tire a linha (ou ponha `SFU=off`) e reinicie. Se o LiveKit não subir ou cair, as calls novas também entram em malha sozinhas.
+
+Como funciona:
+
+- `server/sfu/livekit.js` baixa, configura e mantém o LiveKit de pé, gera a chave dele uma vez (`server/sfu/data/`, fora do git) e emite o ingresso de cada pessoa (`GET /api/rtc/sfu?channelId=`), só pra quem pode entrar naquela call.
+- A **sinalização** do LiveKit passa pelo próprio site, em `/livekit` (então também passa pelo túnel do Cloudflare). O **áudio e o vídeo não passam pelo túnel**: vão direto pro IP público do PC, pelas portas acima. Por isso elas precisam estar abertas, e não funciona atrás de CGNAT.
+- O IP público é descoberto sozinho a cada início. Quem está na mesma rede do servidor (ou no próprio PC) conecta pelo IP interno.
+- Quem está na call, mudo/surdo, "falando", mover e desconectar continuam pelo WebSocket do site, iguais nos dois modos. No `app.js`, o bloco "calls pelo servidor de mídia (SFU)" cuida de publicar e receber as faixas; o resto do código de call é compartilhado.
+- **Todo mundo numa call precisa estar no mesmo modo.** Quem entrou enquanto o LiveKit estava fora (em malha) não ouve quem entrou depois que ele voltou: é só sair e entrar de novo.
+- A tela **pela placa de vídeo** (app desktop) ainda sai do auxiliar direto pra cada pessoa; só o som dela passa pelo servidor. Pelo navegador, a tela inteira passa pelo servidor.
+
+| Variável | Pra quê | Sem ela |
+|---|---|---|
+| `SFU` | `livekit` liga o servidor de mídia | calls em malha |
+| `LIVEKIT_UDP_PORT`, `LIVEKIT_TCP_PORT` | portas da mídia (as que abrem no roteador) | `7882` e `7881` |
+| `LIVEKIT_NODE_IP` | IP público fixo, se a descoberta automática falhar (`local` = só rede interna, pra teste) | descobre sozinho |
+| `LIVEKIT_HTTP_PORT` | porta interna da sinalização (só `127.0.0.1`) | `7880` |
+| `LIVEKIT_VERSION`, `LIVEKIT_PATH` | outra versão, ou um `livekit-server` já instalado | versão fixa, baixada sozinha |
+
 ## App desktop (Electron)
 
 O app **não roda o servidor**: é uma janela do Chromium que abre o site. Saiu do Tauri pro Electron porque o motor do Tauri no Linux (WebKitGTK) tinha bugs de microfone e de compartilhamento de tela.
@@ -218,6 +247,15 @@ A atualização funciona no instalador do Windows e no AppImage. No `.deb` tamb�
 - **Endereço**: já abre em `https://didiscord.veneno.space`. Dá pra trocar pela tela de "conectando…" ou pelo menu **Servidor** (aparece apertando Alt). `DIDISCORD_URL` força um endereço.
 - **Segurança da janela**: só navega pro servidor escolhido; links de fora abrem no navegador do sistema. Mic, câmera e tela são liberados sem perguntar, só pra esse endereço.
 - **Seletor de tela**: no X11/Windows é um seletor próprio com miniaturas (`electron/picker/`). No Wayland quem mostra é o próprio sistema (o seletor do Hyprland, GNOME ou KDE).
+
+### "Jogando X" (rich presence)
+
+O app descobre qual jogo está aberto no computador (`electron/presence.js`, a cada ~15 s) e avisa o site, que mostra "jogando X" na lista de membros e no cartão de perfil de quem divide servidor ou DM com a pessoa. No navegador não tem detecção.
+
+- Reconhece sozinho os jogos da Steam (pelo caminho `steamapps/common/...`, com o nome vindo do appmanifest) e uma lista pequena de jogos conhecidos de fora dela. Os outros a pessoa cadastra em **configurações → app → atividade → adicionar jogo**, escolhendo o programa aberto e o nome.
+- Dá pra desligar no mesmo lugar ("mostrar o que estou jogando"). Desligado, o app nem lê os programas abertos.
+- A lista de programas nunca sai do app: pro site vai só o nome do jogo. No servidor fica só em memória (`activities` em `server/realtime.js`) e some quando o app fecha.
+- No Linux lê `/proc`; no Windows usa um `Get-Process` do PowerShell a cada 20 s. macOS ainda não detecta.
 
 ### Compartilhamento de tela pela placa de vídeo
 

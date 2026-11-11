@@ -25,3 +25,7 @@ electron/dist/
 _teste_nvenc.h264
 prompt.txt
 *.orig
+
+# servidor de mídia (LiveKit): binário baixado e chave gerada na primeira vez
+server/sfu/bin/
+server/sfu/data/

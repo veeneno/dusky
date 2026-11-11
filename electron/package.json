@@ -1,7 +1,7 @@
 {
   "name": "didiscord-desktop",
   "productName": "didiscord",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "App desktop do didiscord (janela nativa que carrega o site hospedado)",
   "main": "main.js",
   "author": {
@@ -38,7 +38,8 @@
       "shell/**/*",
       "build/icon.png",
       "package.json",
-      "updater.js"
+      "updater.js",
+      "presence.js"
     ],
     "linux": {
       "target": [

@@ -7,6 +7,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const pcmListeners = new Set();
 const screencastListeners = new Set();
+const presenceListeners = new Set();
+
+ipcRenderer.on('presence:activity', (_event, activity) => {
+  for (const listener of presenceListeners) {
+    try { listener(activity); } catch (_) { /* idem */ }
+  }
+});
 
 ipcRenderer.on('screencast:event', (_event, ev) => {
   for (const listener of screencastListeners) {
@@ -30,6 +37,22 @@ contextBridge.exposeInMainWorld('didiscordDesktop', {
   // traz a janela pra frente (clique numa notificação)
   focusWindow: () => ipcRenderer.send('didiscord:focus'),
   checkForUpdates: () => ipcRenderer.invoke('didiscord:checkUpdates'),
+
+  // "jogando X": o app descobre o jogo aberto e avisa o site (ver electron/presence.js)
+  presence: {
+    // { enabled, custom: [{ exe, name }] } — desligado = não lê nem envia nada
+    configure: (cfg) => ipcRenderer.send('presence:configure', cfg || {}),
+    // [{ exe, label }] programas abertos que podem ser um jogo (pra "adicionar jogo")
+    candidates: () => ipcRenderer.invoke('presence:candidates'),
+    // { name, startedAt } | null
+    current: () => ipcRenderer.invoke('presence:current'),
+    // chamado com { name, startedAt } quando um jogo abre/troca, ou null quando fecha
+    onActivity: (callback) => {
+      if (typeof callback !== 'function') return () => {};
+      presenceListeners.add(callback);
+      return () => presenceListeners.delete(callback);
+    },
+  },
 
   // Depois do getDisplayMedia: como o áudio da tela vai ser obtido.
   //   { mode: 'none' }                                             sem áudio

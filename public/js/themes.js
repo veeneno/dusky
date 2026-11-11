@@ -122,6 +122,7 @@
     'JetBrains Mono': 'JetBrains+Mono:wght@400;500;600;700;800',
     Fraunces: 'Fraunces:wght@500;600;700',
     'Comic Neue': 'Comic+Neue:wght@400;700',
+    'Times New Roman': null, // fonte do próprio computador, não vem do Google Fonts
     'Sistema': null,
   };
 
@@ -191,6 +192,8 @@
   function fontStack(name) {
     if (!name || name === 'Sistema') return "system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif";
     const mono = /Mono/.test(name);
+    // já vem instalada no Windows/macOS; no Linux as equivalentes livres têm as mesmas medidas
+    if (name === 'Times New Roman') return "'Times New Roman', Times, 'Liberation Serif', 'Nimbus Roman', 'Tinos', serif";
     const serif = name === 'Fraunces';
     return `'${name}', ${mono ? 'ui-monospace, monospace' : serif ? 'Georgia, serif' : "system-ui, 'Segoe UI', sans-serif"}`;
   }
@@ -496,6 +499,8 @@
       try {
         const res = await fetch('/api/profile/theme/background', { method: 'POST', body: form });
         const data = await res.json().catch(() => ({}));
+        // 404 = o servidor que está no ar é de antes dessa função existir (precisa reiniciar o npm start)
+        if (res.status === 404) return toast('o servidor precisa ser reiniciado pra aceitar imagem de fundo', 'error');
         if (!res.ok) return toast(data.error || 'não deu pra enviar a imagem', 'error');
         update((t) => { t.background.image = data.url; t.background.gradient = ''; if (t.glass.opacity === 100) t.glass.opacity = 70; });
       } catch (_) { toast('sem conexão', 'error'); }

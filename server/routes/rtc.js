@@ -1,6 +1,8 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const config = require('../config');
+const access = require('../access');
+const sfu = require('../sfu/livekit');
 
 const router = express.Router();
 
@@ -75,6 +77,22 @@ router.get('/ice-servers', requireAuth, async (req, res) => {
     }
     res.json({ iceServers: FALLBACK_STUN });
   }
+});
+
+// GET /api/rtc/sfu?channelId=N — as calls passam pelo servidor de mídia (LiveKit) deste PC?
+// { enabled: false } = não: o site usa a malha (conexão direta entre as pessoas), como sempre.
+// { enabled: true, path, token } = sim: `token` deixa ESTA pessoa entrar na sala DESTE canal e só
+// é emitido pra quem pode entrar na call (mesma regra do voice_join, em access.js).
+router.get('/sfu', requireAuth, (req, res) => {
+  if (!sfu.isReady()) return res.json({ enabled: false });
+  const channelId = Number(req.query.channelId);
+  const ch = channelId ? access.canConnectChannel(channelId, req.user.id) : null;
+  if (!ch) return res.status(403).json({ error: 'você não pode entrar nessa call' });
+  res.json({
+    enabled: true,
+    path: sfu.PREFIX,
+    token: sfu.createToken({ room: sfu.roomForChannel(ch.id), identity: req.user.id, name: req.user.username }),
+  });
 });
 
 module.exports = router;

@@ -670,3 +670,54 @@ html[data-translucent] .call-control-btn { background: var(--bg-floating); }
 .chat-body > .member-panel, .chat-body > .side-panel, .chat-body > .dm-profile-panel { height: auto; align-self: stretch; overflow-y: auto; }
 html[data-translucent] .member-panel { background: transparent; box-shadow: inset 1px 0 0 var(--border); }
 .chat-column .gif-picker { left: 16px; right: 16px; bottom: 76px; }
+
+/* ---------- atalhos da call na barra lateral (supressão de ruído, compartilhar tela) ---------- */
+.call-minibar { flex-direction: column; align-items: stretch; gap: 8px; cursor: pointer; }
+.call-minibar-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.call-minibar-actions { display: flex; gap: 6px; }
+.call-quick-btn {
+  flex: 1; min-width: 0; height: 30px; padding: 0 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: none; border-radius: var(--radius-sm);
+  background: var(--bg-active); color: var(--text-normal);
+  font: inherit; font-size: 0.75rem; font-weight: 600; cursor: pointer;
+}
+.call-quick-btn:hover { color: var(--text-heading); background: color-mix(in srgb, var(--bg-active), var(--text-heading) 12%); }
+.call-quick-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.call-quick-btn.is-narrow { flex: 0 0 30px; padding: 0; }
+.call-quick-btn.is-live { background: var(--success); color: var(--bg-solid-app); }
+.call-quick-btn.is-live:hover { background: color-mix(in srgb, var(--success), var(--text-heading) 15%); color: var(--bg-solid-app); }
+
+.quick-popup {
+  position: fixed; z-index: 500; width: 288px; max-width: calc(100vw - 16px);
+  padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  background: var(--bg-floating); color: var(--text-normal);
+  border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+  font-size: 0.8125rem;
+}
+.quick-popup-title { font-weight: 700; font-size: 0.875rem; color: var(--text-heading); }
+.quick-popup-row { display: flex; gap: 8px; }
+.quick-popup-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.quick-popup-field[hidden] { display: none; }
+.quick-popup-field > span { font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); }
+.quick-popup-field select { width: 100%; min-width: 0; }
+.quick-popup-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.quick-popup-check input { accent-color: var(--accent); }
+.quick-popup-help, .quick-popup-status { font-size: 0.75rem; line-height: 1.4; color: var(--text-muted); }
+.quick-popup-status:empty { display: none; }
+.quick-popup-link { align-self: flex-start; padding: 0; border: none; background: none; color: var(--accent); font: inherit; font-size: 0.75rem; cursor: pointer; }
+.quick-popup-link:hover { text-decoration: underline; }
+
+/* ---------- "jogando X" (rich presence) ---------- */
+.member-item-status.is-activity strong { color: var(--text-normal); font-weight: 600; }
+.pc-activity { color: var(--text-heading); font-weight: 600; }
+.pc-activity-time { color: var(--text-muted); font-size: 0.8125rem; }
+.settings-subtitle { margin: 32px 0 12px; font-size: 1rem; font-weight: 700; color: var(--text-heading); }
+#presenceSettings { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+#presenceSettings .settings-toggle { align-self: stretch; }
+.presence-games { align-self: stretch; display: flex; flex-direction: column; gap: 6px; }
+.presence-game { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--bg-active); }
+.presence-game-name { color: var(--text-heading); font-weight: 600; }
+.presence-game-exe { flex: 1; min-width: 0; color: var(--text-muted); font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.presence-add { align-self: stretch; display: flex; flex-wrap: wrap; gap: 8px; }
+.presence-add select, .presence-add input { flex: 1 1 180px; min-width: 0; }

@@ -28,6 +28,7 @@ const activityRoutes = require('./routes/activity');
 const embedRoutes = require('./routes/embeds');
 const downloadRoutes = require('./routes/downloads');
 const realtime = require('./realtime');
+const sfu = require('./sfu/livekit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -39,6 +40,10 @@ app.set('trust proxy', 'loopback');
 
 // gerado uma vez e fixado aqui; se você mudar isso, todo mundo é deslogado
 const SESSION_SECRET = process.env.SESSION_SECRET || 'troque-essa-chave-antes-de-expor-o-site-na-internet';
+
+// sinalização do servidor de mídia (LiveKit) pelo mesmo endereço do site — antes do express.json,
+// pra o corpo do pedido chegar intacto lá. Só responde quando SFU=livekit está ligado e de pé.
+app.use(sfu.PREFIX, sfu.proxyHttp);
 
 app.use(express.json({ limit: '1mb' })); // tema com CSS próprio passa dos 100kb padrão
 app.use(express.urlencoded({ extended: true }));
@@ -103,6 +108,14 @@ app.use('/api/embed', embedRoutes);
 
 const server = http.createServer(app);
 realtime.init(server); // liga o WebSocket em /ws no mesmo servidor HTTP
+// os outros upgrades: /livekit vai pro servidor de mídia; qualquer outra coisa é recusada
+server.on('upgrade', (req, socket, head) => {
+  let pathname = '';
+  try { pathname = new URL(req.url, 'http://localhost').pathname; } catch (_) { /* url torta */ }
+  if (pathname === '/ws') return; // já tratado pelo realtime
+  if (sfu.isProxyPath(pathname)) return sfu.proxyUpgrade(req, socket, head);
+  socket.destroy();
+});
 
 // o Node (18+) mata qualquer request que passe de 5min por padrão (server.requestTimeout).
 // isso é curto demais pra upload de anexo de até 2GB numa conexão mais lenta — desativado aqui
@@ -115,4 +128,6 @@ server.listen(PORT, () => {
   console.log(`didiscord rodando em http://localhost:${PORT}`);
   // deixa o yt-dlp/ffmpeg do bot de música prontos sem esperar o primeiro /play
   require('./bots/musicBot/binaries').warmUp();
+  // servidor de mídia das calls (só com SFU=livekit no .env; sem isso as calls seguem em malha)
+  sfu.start();
 });

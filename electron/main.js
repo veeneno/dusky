@@ -15,6 +15,7 @@ const { createScreenAudio } = require('./audio');
 const { createDeps } = require('./deps');
 const { createScreencast } = require('./screencast');
 const { createUpdater } = require('./updater');
+const { createPresence } = require('./presence');
 
 const DEV = process.env.DIDISCORD_DEV === '1';
 
@@ -161,6 +162,13 @@ const screenAudio = createScreenAudio({ log });
 // compartilhamento de tela pela placa de vídeo (ver screencast.js) e o que ele baixa sozinho (deps.js)
 const deps = createDeps({ log });
 const screencast = createScreencast({ log, deps });
+// "jogando X": o jogo detectado vai só pra janela do site (ver presence.js)
+const presence = createPresence({
+  log,
+  onChange: (activity) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('presence:activity', activity);
+  },
+});
 const updater = createUpdater({ log, getWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null), getSiteUrl: () => SITE_URL });
 
 function createMainWindow() {
@@ -190,7 +198,7 @@ function createMainWindow() {
 
   win.on('resize', () => { if (!win.isMaximized() && !win.isMinimized()) win._lastNormalBounds = win.getBounds(); });
   win.on('close', () => saveWindowState(win));
-  win.on('closed', () => { screenAudio.stop(); mainWindow = null; });
+  win.on('closed', () => { screenAudio.stop(); presence.stop(); mainWindow = null; });
   win.on('focus', () => { try { win.flashFrame(false); } catch (_) { /* ok */ } });
 
   const wc = win.webContents;
@@ -571,6 +579,16 @@ ipcMain.on('didiscord:focus', (event) => {
   mainWindow.show();
   mainWindow.focus();
 });
+
+// ---------- "jogando X" (presence.js) ----------
+
+// { enabled, custom: [{ exe, name }] } — o site manda ao abrir e toda vez que a pessoa muda a opção
+ipcMain.on('presence:configure', (event, cfg) => {
+  if (trustedSender(event)) presence.configure(cfg || {});
+});
+// programas abertos que podem ser um jogo, pra tela de "adicionar jogo" (só enquanto ela está aberta)
+ipcMain.handle('presence:candidates', async (event) => (trustedSender(event) ? presence.listCandidates() : []));
+ipcMain.handle('presence:current', (event) => (trustedSender(event) ? presence.getCurrent() : null));
 
 ipcMain.handle('didiscord:checkUpdates', (event) => {
   if (trustedSender(event)) updater.check(true);

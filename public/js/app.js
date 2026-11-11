@@ -328,6 +328,15 @@
   function saveVoiceProcessing(v) {
     try { localStorage.setItem(VOICE_PROCESSING_KEY, VOICE_PROCESSING_MODES.includes(v) ? v : 'speakers'); } catch (_) { /* ok */ }
   }
+  // volume automático: 'browser' (o do navegador, antes do supressor — padrão) ou 'own' (o nivelador
+  // do didiscord, depois do supressor — ver worklets/mic-leveler.js). No modo estúdio não tem nenhum.
+  const MIC_LEVELER_KEY = 'didiscord:micLeveler';
+  function getSavedMicLeveler() {
+    try { return localStorage.getItem(MIC_LEVELER_KEY) === 'own' ? 'own' : 'browser'; } catch (_) { return 'browser'; }
+  }
+  function usesOwnLeveler() {
+    return getSavedMicLeveler() === 'own' && getSavedVoiceProcessing() !== 'studio';
+  }
 
   // ---------- preferências do chat e de acessibilidade (aba "chat"/"acessibilidade") ----------
   const PREF_DEFAULTS = {
@@ -696,7 +705,8 @@
     const base = {
       noiseSuppression: false,
       echoCancellation: mode === 'speakers',
-      autoGainControl: mode !== 'studio',
+      // com o nivelador do didiscord ligado, o do navegador sai: dois ajustes brigando deixam a voz "bombeando"
+      autoGainControl: mode !== 'studio' && !usesOwnLeveler(),
       sampleRate: { ideal: 48000 },
       channelCount: { ideal: 1 },
     };
@@ -1364,13 +1374,14 @@
       <span class="msg-time-inline">${formatTime(m.created_at)}</span>
       <div class="msg-body">
         <div class="msg-meta">
-          <span class="msg-author ${isBot ? 'is-bot' : 'is-clickable'}">${escapeHtml(name)}</span>
+          <span class="msg-author ${isBot ? 'is-bot' : 'is-clickable'}"${isBot ? '' : ` data-user-id="${Number(m.user_id)}"`}>${escapeHtml(name)}</span>
           ${isBot ? '<span class="msg-bot-tag">bot</span>' : ''}
           <span class="msg-time">${formatTime(m.created_at)}</span>
         </div>
         <div class="msg-text"></div>
       </div>
     `;
+    if (!isBot) applyAuthorColors(el);
     renderMessageText(el.querySelector('.msg-text'), m.content || '', !!m.edited, m);
     if (messageMentionsMe(m)) el.classList.add('mentions-me');
     if (m.pinned) {
@@ -3254,8 +3265,18 @@
         const roleColor = memberColor(m);
         if (roleColor) item.querySelector('.member-item-name-text').style.color = roleColor;
         const statusEl = item.querySelector('.member-item-status');
-        statusEl.textContent = m.status_text || '';
-        statusEl.hidden = !m.status_text;
+        if (m.activity && m.online) {
+          // "jogando X" (rich presence) ocupa o lugar do status enquanto a pessoa está no jogo
+          const game = document.createElement('strong');
+          game.textContent = m.activity.name;
+          statusEl.replaceChildren('jogando ', game);
+          statusEl.classList.add('is-activity');
+          statusEl.title = `${m.activity.name} — ${formatActivitySince(m.activity.startedAt)}`;
+          statusEl.hidden = false;
+        } else {
+          statusEl.textContent = m.status_text || '';
+          statusEl.hidden = !m.status_text;
+        }
         item.addEventListener('click', () => openViewProfile(m.id, item));
         if (!currentUser || currentUser.id !== m.id) {
           item.addEventListener('contextmenu', (e) => {
@@ -3312,6 +3333,7 @@
       item.title = b.description || '';
       memberSectionBots.appendChild(item);
     }
+    applyAuthorColors(); // membros/cargos mudaram: os nomes no chat acompanham
   }
 
   async function loadMembers() {
@@ -3381,6 +3403,11 @@
           <h3 class="pc-name display"></h3>
           <p class="pc-status"></p>
         </div>
+        <div class="pc-section pc-activity-wrap" hidden>
+          <h4>jogando</h4>
+          <p class="pc-activity"></p>
+          <p class="pc-activity-time"></p>
+        </div>
         <div class="pc-section pc-about">
           <h4>sobre mim</h4>
           <p class="pc-bio"></p>
@@ -3406,6 +3433,12 @@
     const statusEl = el.querySelector('.pc-status');
     statusEl.textContent = user.status_text || '';
     statusEl.hidden = !user.status_text;
+
+    if (user.activity && user.activity.name && online) {
+      el.querySelector('.pc-activity-wrap').hidden = false;
+      el.querySelector('.pc-activity').textContent = user.activity.name;
+      el.querySelector('.pc-activity-time').textContent = formatActivitySince(user.activity.startedAt);
+    }
 
     const bioEl = el.querySelector('.pc-bio');
     if (user.bio) {
@@ -4657,10 +4690,23 @@
     return memberRoles(members.find((m) => m.id === userId)).some((r) => r.is_admin);
   }
 
-  // cor do nome = cor do cargo mais alto que tem cor
+  // cor do nome (lista de membros e chat) = cor do cargo mais alto "mostrado separado" da pessoa;
+  // quem não tem nenhum desses fica com a cor do cargo mais alto que tem cor
   function memberColor(member) {
-    const r = memberRoles(member).find((x) => x.color);
+    const roles = memberRoles(member);
+    const r = roles.find((x) => x.hoist && x.color) || roles.find((x) => x.color);
     return r ? r.color : null;
+  }
+
+  // pinta o nome de quem escreveu cada mensagem com a cor do cargo. Chamado ao montar a mensagem e
+  // de novo quando membros/cargos chegam ou mudam (as mensagens podem aparecer antes deles)
+  function applyAuthorColors(root) {
+    const inServer = currentServerId != null && !(currentChannel && currentChannel.dm);
+    (root || document).querySelectorAll('.msg-author[data-user-id]').forEach((el) => {
+      const id = Number(el.dataset.userId);
+      const color = inServer ? memberColor(members.find((m) => m.id === id)) : null;
+      el.style.color = color || '';
+    });
   }
 
   // mesma regra do servidor (routes/servers.js, canModerate): ninguém mexe no dono, e só o dono
@@ -4700,6 +4746,7 @@
     if (serverId !== currentServerId) return;
     await Promise.all([loadChannelsForCurrent(), loadMembers(), loadRoles()]);
     if (serverId !== currentServerId) return;
+    renderMembers(); // os cargos podem ter chegado depois dos membros: refaz grupos e cores (lista e chat)
 
     if (currentChannel && !currentChannel.dm) {
       const fresh = channels.find((c) => c.id === currentChannel.id);
@@ -4846,8 +4893,35 @@
         <label class="role-admin" title="${amOwner ? 'administradores gerenciam o servidor, canais, cargos e calls' : 'só o dono muda quem é administrador'}">
           <input type="checkbox"> <span>admin</span>
         </label>
+        <span class="role-move">
+          <button type="button" class="role-up" title="subir o cargo" aria-label="subir o cargo">▲</button>
+          <button type="button" class="role-down" title="descer o cargo" aria-label="descer o cargo">▼</button>
+        </span>
         <button type="button" class="role-delete" title="apagar cargo" aria-label="apagar cargo">${TRASH_ICON}</button>
       `;
+      // ordem dos cargos: o de cima vale mais (cor do nome, grupo na lista de membros). Trocar de
+      // lugar regrava as posições de cima pra baixo, o que também desempata cargos antigos.
+      const index = serverRoles.indexOf(role);
+      const moveBy = async (delta) => {
+        const order = serverRoles.slice();
+        const target = index + delta;
+        if (target < 0 || target >= order.length) return;
+        [order[index], order[target]] = [order[target], order[index]];
+        rolesList.querySelectorAll('.role-move button').forEach((b) => { b.disabled = true; });
+        for (let k = 0; k < order.length; k++) {
+          const position = order.length - k;
+          if (order[k].position !== position) await roleRequest('PATCH', `/${order[k].id}`, { position });
+        }
+        await loadRoles();
+        renderRolesList();
+        renderMembers();
+      };
+      const up = row.querySelector('.role-up');
+      const down = row.querySelector('.role-down');
+      up.disabled = index === 0;
+      down.disabled = index === serverRoles.length - 1;
+      up.addEventListener('click', () => moveBy(-1));
+      down.addEventListener('click', () => moveBy(1));
       const color = row.querySelector('.role-color');
       const name = row.querySelector('.role-name');
       const admin = row.querySelector('.role-admin input');
@@ -6059,6 +6133,18 @@
     });
   }
 
+  const micLevelerSelect = document.getElementById('micLevelerSelect');
+  if (micLevelerSelect) {
+    micLevelerSelect.value = getSavedMicLeveler();
+    micLevelerSelect.addEventListener('change', async () => {
+      try { localStorage.setItem(MIC_LEVELER_KEY, micLevelerSelect.value === 'own' ? 'own' : 'browser'); } catch (_) { /* vale nesta página */ }
+      // muda o que é pedido ao navegador (ajuste dele ligado/desligado), então reabre o microfone
+      if (!voiceChannel || !rawMicStream || isTauriApp()) refreshVoiceSettings();
+      micLevelerSelect.disabled = true;
+      try { await reacquireMicInCall(); } finally { micLevelerSelect.disabled = false; }
+    });
+  }
+
   selfMonitorCheckbox.addEventListener('change', () => {
     saveSelfMonitor(selfMonitorCheckbox.checked);
     updateSelfMonitor();
@@ -6156,6 +6242,8 @@
     for (const peer of peers.values()) {
       if (peer.screen && peer.screen.sender.track) applyScreenBitrate(peer.screen.sender);
     }
+    const sfuScreen = sfu && sfu.pubs.get('screen');
+    if (sfuScreen && sfuScreen.track && sfuScreen.track.sender) applyScreenBitrate(sfuScreen.track.sender);
   }
   screenAudioCheckbox.addEventListener('change', () => {
     saveScreenAudioEnabled(screenAudioCheckbox.checked);
@@ -6601,6 +6689,28 @@
     };
   }
 
+  // último ganho que o nivelador achou: remontar o processamento (trocar supressão, microfone…)
+  // começa dele em vez de reaprender o volume do zero
+  let lastLevelerGainDb = 0;
+
+  function connectMicLeveler(input, output, worklet) {
+    input.connect(worklet);
+    worklet.connect(output);
+    worklet.port.onmessage = ({ data }) => { if (data && data.type === 'gain') lastLevelerGainDb = data.gainDb; };
+    worklet.onprocessorerror = (err) => {
+      try { input.disconnect(worklet); } catch (_) { /* já desligado */ }
+      input.connect(output); // sem o nivelador a voz continua passando, só sem o ajuste
+      console.warn('[call] nivelador de volume parou, seguindo sem ele:', err);
+    };
+    return () => {
+      worklet.onprocessorerror = null;
+      worklet.port.onmessage = null;
+      worklet.port.postMessage('stop');
+      worklet.port.close();
+      worklet.disconnect();
+    };
+  }
+
   async function buildMicProcessingGraph(rawStream, gainValue, noiseMode) {
     const ctx = getAudioCtx();
     const source = ctx.createMediaStreamSource(rawStream);
@@ -6615,17 +6725,24 @@
     const gateGainNode = ctx.createGain();
     const analyser = ctx.createAnalyser();
     const dest = ctx.createMediaStreamDestination();
-    const [ns, limiterWorklet, gateWorklet] = await Promise.all([
+    const wantsLeveler = usesOwnLeveler();
+    const [ns, limiterWorklet, gateWorklet, levelerWorklet] = await Promise.all([
       createNoiseSuppressorNode(ctx, noiseMode),
       createMicWorklet(ctx, 'didiscord-mic-limiter', '/js/worklets/mic-limiter.js?v=1'),
-      createMicWorklet(ctx, 'didiscord-mic-gate', '/js/worklets/mic-gate.js?v=1', { numberOfInputs: 2 }),
+      createMicWorklet(ctx, 'didiscord-mic-gate', '/js/worklets/mic-gate.js?v=2', { numberOfInputs: 2 }),
+      wantsLeveler
+        ? createMicWorklet(ctx, 'didiscord-mic-leveler', '/js/worklets/mic-leveler.js?v=1', { processorOptions: { initialGainDb: lastLevelerGainDb } })
+        : null,
     ]);
+    if (wantsLeveler && !levelerWorklet) console.warn('[call] nivelador de volume indisponível — o microfone segue sem ajuste automático');
     let gate;
     let teardownLimiter;
+    let teardownLeveler;
     const teardown = () => {
       for (const node of [source, highpass, gainNode, gateGainNode]) node.disconnect();
       gate?.teardown();
       teardownLimiter?.();
+      teardownLeveler?.();
       ns.teardown?.();
       dest.stream.getTracks().forEach((track) => track.stop());
     };
@@ -6635,7 +6752,10 @@
       gate = connectMicGate(gainNode, highpass, gateGainNode, gateWorklet);
       source.connect(highpass);
       if (ns.node) highpass.connect(ns.node);
-      (ns.node || highpass).connect(gainNode);
+      // nivelador (se ligado) logo depois do supressor: mede só a voz, já sem o ruído
+      const cleaned = ns.node || highpass;
+      if (levelerWorklet) teardownLeveler = connectMicLeveler(cleaned, gainNode, levelerWorklet);
+      else cleaned.connect(gainNode);
       gainNode.gain.value = gainValue / 100;
 
       // Call e prévia leem o mesmo ponto: depois da supressão e do ganho, antes do gate.
@@ -6994,12 +7114,178 @@
   callMinibarLeaveBtn.addEventListener('click', (e) => { e.stopPropagation(); leaveVoiceCall(); });
   callMinibar.addEventListener('click', () => { if (voiceChannel) selectChannel(voiceChannel); });
 
+  // ---------- atalhos da call na barra lateral: supressão de ruído e compartilhar tela ----------
+  // Cada campo dos popups é um ESPELHO do campo de verdade nas configurações: muda o original e
+  // dispara o 'change' dele. Salvar e aplicar na call é exatamente o mesmo código das configurações.
+  const callQuickNoiseBtn = document.getElementById('callQuickNoiseBtn');
+  const callQuickScreenBtn = document.getElementById('callQuickScreenBtn');
+  const callQuickScreenOptsBtn = document.getElementById('callQuickScreenOptsBtn');
+  let quickPopup = null;
+
+  function closeQuickPopup() {
+    if (!quickPopup) return;
+    const p = quickPopup;
+    quickPopup = null;
+    p.el.remove();
+    document.removeEventListener('mousedown', p.onDown, true);
+    document.removeEventListener('keydown', p.onKey, true);
+    window.removeEventListener('resize', closeQuickPopup);
+    if (p.cleanup) p.cleanup();
+  }
+
+  // abre em cima do botão; clicar no mesmo botão de novo fecha. `build(el)` monta o conteúdo e pode
+  // devolver uma função de limpeza
+  function openQuickPopup(anchor, title, build) {
+    const same = quickPopup && quickPopup.anchor === anchor;
+    closeQuickPopup();
+    if (same) return;
+    const el = document.createElement('div');
+    el.className = 'quick-popup';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', title);
+    const head = document.createElement('div');
+    head.className = 'quick-popup-title';
+    head.textContent = title;
+    el.appendChild(head);
+    const cleanup = build(el);
+    el.addEventListener('click', (e) => e.stopPropagation());
+    document.body.appendChild(el);
+    const r = anchor.getBoundingClientRect();
+    el.style.left = Math.max(8, Math.min(window.innerWidth - el.offsetWidth - 8, r.left)) + 'px';
+    el.style.top = Math.max(8, r.top - el.offsetHeight - 8) + 'px';
+    const onDown = (e) => { if (!el.contains(e.target) && !anchor.contains(e.target)) closeQuickPopup(); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeQuickPopup(); } };
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', closeQuickPopup);
+    quickPopup = { el, anchor, onDown, onKey, cleanup };
+  }
+
+  // `labels` troca o texto de algumas opções por um mais curto (o popup é estreito)
+  function quickMirrorSelect(parent, label, original, savedValue, labels) {
+    const wrap = document.createElement('label');
+    wrap.className = 'quick-popup-field';
+    const span = document.createElement('span');
+    span.textContent = label;
+    const sel = document.createElement('select');
+    for (const opt of original.options) {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = (labels && labels[opt.value]) || opt.textContent;
+      sel.appendChild(o);
+    }
+    sel.value = String(savedValue);
+    sel.addEventListener('change', () => {
+      original.value = sel.value;
+      original.dispatchEvent(new Event('change'));
+    });
+    wrap.append(span, sel);
+    parent.appendChild(wrap);
+    return sel;
+  }
+
+  function openNoisePopup() {
+    openQuickPopup(callQuickNoiseBtn, 'supressão de ruído', (el) => {
+      const mode = quickMirrorSelect(el, 'modo', noiseSuppressionSelect, getSavedNoiseSuppression(),
+        { deepfilter: 'avançada (recomendado)', rnnoise: 'leve', off: 'nenhuma' });
+      let level = null;
+      if (noiseSuppressionLevelSelect) {
+        level = quickMirrorSelect(el, 'intensidade', noiseSuppressionLevelSelect, getSavedNoiseSuppressionLevel());
+        const syncLevel = () => { level.parentElement.hidden = mode.value !== 'deepfilter'; };
+        mode.addEventListener('change', syncLevel);
+        syncLevel();
+      }
+      if (micLevelerSelect) {
+        quickMirrorSelect(el, 'volume automático', micLevelerSelect, getSavedMicLeveler(),
+          { browser: 'do navegador (padrão)', own: 'do didiscord (novo)' });
+      }
+      // mesmo aviso das configurações ("aplicando…", "ativa nesta call: …")
+      const status = document.createElement('div');
+      status.className = 'quick-popup-status';
+      status.setAttribute('role', 'status');
+      const syncStatus = () => { status.textContent = noiseSuppressionStatus ? noiseSuppressionStatus.textContent : ''; };
+      el.appendChild(status);
+      updateNoiseSuppressionStatus();
+      syncStatus();
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'quick-popup-link';
+      more.textContent = 'todas as configurações de voz';
+      more.addEventListener('click', () => { closeQuickPopup(); openSettingsModal('microfone'); });
+      el.appendChild(more);
+      if (!noiseSuppressionStatus || typeof MutationObserver === 'undefined') return null;
+      const observer = new MutationObserver(syncStatus);
+      observer.observe(noiseSuppressionStatus, { childList: true, characterData: true, subtree: true });
+      return () => observer.disconnect();
+    });
+  }
+
+  function openScreenPopup(anchor) {
+    openQuickPopup(anchor, 'compartilhar tela', (el) => {
+      const row = document.createElement('div');
+      row.className = 'quick-popup-row';
+      el.appendChild(row);
+      quickMirrorSelect(row, 'resolução', screenResolutionSelect, getSavedScreenResolution());
+      quickMirrorSelect(row, 'fps', screenFpsSelect, getSavedScreenFps());
+      quickMirrorSelect(el, 'prioridade', screenPrioritySelect, getSavedScreenPriority(),
+        { balanced: 'equilibrado (recomendado)', smooth: 'fluidez — jogos e vídeos', sharp: 'nitidez — texto e código' });
+      quickMirrorSelect(el, 'bitrate', screenBitrateSelect, getSavedScreenBitrateKbps(), { 0: 'automático (até 16 Mbps)' });
+
+      const check = document.createElement('label');
+      check.className = 'quick-popup-check';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = getSavedScreenAudioEnabled();
+      box.addEventListener('change', () => {
+        screenAudioCheckbox.checked = box.checked;
+        screenAudioCheckbox.dispatchEvent(new Event('change'));
+      });
+      check.append(box, document.createTextNode('compartilhar com som'));
+      el.appendChild(check);
+
+      const help = document.createElement('div');
+      help.className = 'quick-popup-help';
+      help.textContent = screenOn
+        ? 'prioridade e bitrate valem na hora. Resolução, fps e som valem quando você compartilhar de novo.'
+        : 'fica salvo: vale pra este e pros próximos compartilhamentos.';
+      el.appendChild(help);
+
+      const go = document.createElement('button');
+      go.type = 'button';
+      go.className = screenOn ? 'btn btn-ghost' : 'btn btn-primary';
+      go.textContent = screenOn ? 'parar de compartilhar' : 'compartilhar tela';
+      go.addEventListener('click', () => { closeQuickPopup(); toggleScreenShare(); });
+      el.appendChild(go);
+      return null;
+    });
+  }
+
+  // botão da tela mostra se está compartilhando (chamado de todo lugar que liga/desliga a tela)
+  function setScreenButtonsLive(live) {
+    callViewScreenBtn.classList.toggle('active', live);
+    if (!callQuickScreenBtn) return;
+    callQuickScreenBtn.classList.toggle('is-live', live);
+    const text = live ? 'parar de compartilhar a tela' : 'compartilhar tela';
+    callQuickScreenBtn.title = text;
+    callQuickScreenBtn.setAttribute('aria-label', text);
+  }
+
+  if (callQuickNoiseBtn) callQuickNoiseBtn.addEventListener('click', (e) => { e.stopPropagation(); openNoisePopup(); });
+  if (callQuickScreenBtn) {
+    callQuickScreenBtn.addEventListener('click', (e) => { e.stopPropagation(); closeQuickPopup(); toggleScreenShare(); });
+    callQuickScreenBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openScreenPopup(callQuickScreenBtn); });
+  }
+  if (callQuickScreenOptsBtn) callQuickScreenOptsBtn.addEventListener('click', (e) => { e.stopPropagation(); openScreenPopup(callQuickScreenOptsBtn); });
+  // botão direito no botão de tela da própria call abre as mesmas opções
+  callViewScreenBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); openScreenPopup(callViewScreenBtn); });
+
   function updateMinibar() {
     if (voiceChannel) {
       callMinibar.hidden = false;
       callMinibarName.textContent = `#${voiceChannel.name}`;
     } else {
       callMinibar.hidden = true;
+      closeQuickPopup();
     }
   }
 
@@ -7191,6 +7477,7 @@
       closeScreencastPc(peers.get(userId));
     }
     Realtime.send('rtc_signal', { to: userId, data: { kind: 'watch', screen: !!watching } });
+    sfuSetScreenSubscribed(userId, !!watching);
     renderScreenShareArea();
     applyLocalOverrideToRemoteScreenAudio(userId);
   }
@@ -7407,9 +7694,11 @@
   async function updateScreenStats() {
     // o que EU estou mandando (medido na conexão com a primeira pessoa que está assistindo)
     const sendingPeer = screenOn ? [...peers.values()].find((p) => p.screen && p.screen.sender.track) : null;
-    if (sendingPeer) {
+    const sfuScreenPub = screenOn && sfu ? sfu.pubs.get('screen') : null;
+    const screenSender = (sfuScreenPub && sfuScreenPub.track && sfuScreenPub.track.sender) || (sendingPeer && sendingPeer.screen.sender) || null;
+    if (screenSender) {
       try {
-        const report = await sendingPeer.screen.sender.getStats();
+        const report = await screenSender.getStats();
         let out = null;
         report.forEach((r) => { if (r.type === 'outbound-rtp' && r.kind === 'video') out = r; });
         if (out) {
@@ -7427,9 +7716,11 @@
     // o que eu estou RECEBENDO de cada pessoa que está compartilhando
     for (const peer of peers.values()) {
       const st = callParticipantsState.get(peer.userId);
-      if (!st || !st.screenOn || unwatchedScreens.has(peer.userId) || !peer.screen) continue;
+      const screenReceiver = peer.sfu ? peer.sfuScreenReceiver : (peer.screen && peer.screen.receiver);
+      const scLive = peer.scPc && peer.scPc.connectionState !== 'closed';
+      if (!st || !st.screenOn || unwatchedScreens.has(peer.userId) || (!screenReceiver && !scLive)) continue;
       try {
-        const report = await (peer.scPc && peer.scPc.connectionState !== 'closed' ? peer.scPc : peer.screen.receiver).getStats();
+        const report = await (scLive ? peer.scPc : screenReceiver).getStats();
         let inbound = null;
         report.forEach((r) => { if (r.type === 'inbound-rtp' && r.kind === 'video') inbound = r; });
         if (inbound) {
@@ -7664,7 +7955,7 @@
       if (nativeScreencast && !nativeScreencast.started) abandonNativeScreenShare('nenhum quadro em 10s');
     }, NATIVE_START_TIMEOUT_MS);
     screenOn = true;
-    callViewScreenBtn.classList.add('active');
+    setScreenButtonsLive(true);
     for (const peer of peers.values()) peer.wantsMyScreen = true;
 
     // o som da tela vai pelo caminho de sempre (o main.js já preparou a captura pra fonte escolhida)
@@ -7678,6 +7969,7 @@
       }
     }
     await Promise.all([...peers.values()].map(applyScreenSendersToPeer));
+    sfuSyncScreen();
     renderCallParticipants();
     syncLocalVoiceState();
     return 'started';
@@ -7736,6 +8028,253 @@
       if (data.kind === 'sc-answer') api.command({ cmd: 'answer', viewer: String(from), sdp: data.sdp });
       else api.command({ cmd: 'candidate', viewer: String(from), candidate: data.candidate });
     }
+  }
+
+
+  // ===================================================================
+  // calls pelo servidor de mídia (SFU) — LiveKit rodando no PC do servidor
+  // ===================================================================
+  // Com SFU=livekit no .env do servidor (ver server/sfu/livekit.js), cada pessoa manda voz, câmera
+  // e tela UMA vez pro servidor, e ele repassa pros outros. Sem isso, vale a malha de sempre (uma
+  // conexão direta com cada pessoa) — o resto deste arquivo. O que continua igual nos dois modos:
+  //   - quem está na call, mudo/surdo, "falando" etc. (tudo pelo WebSocket do site)
+  //   - o objeto `peer` de cada pessoa (newPeer): aqui ele só não tem RTCPeerConnection própria;
+  //     as faixas que chegam do servidor entram nos mesmos streams (audioStream, screenStream…)
+  //   - a tela pela placa de vídeo do app desktop: o auxiliar ainda manda direto pra cada pessoa
+  let sfu = null;          // { room, lib, pubs: Map(tipo -> publicação), queue: Map(tipo -> Promise), reconnecting }
+  let sfuRequired = false; // o servidor disse que esta call é pelo SFU (mesmo se a conexão caiu e está voltando)
+  let sfuRetryTimer = null;
+  let sfuLibPromise = null;
+
+  function loadSfuLib() {
+    if (window.LivekitClient) return Promise.resolve(window.LivekitClient);
+    if (!sfuLibPromise) {
+      sfuLibPromise = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = '/vendor/livekit/livekit-client.umd.js?v=2.23.0';
+        s.onload = () => (window.LivekitClient ? resolve(window.LivekitClient) : reject(new Error('a biblioteca do servidor de mídia não carregou')));
+        s.onerror = () => reject(new Error('não consegui baixar a biblioteca do servidor de mídia'));
+        document.head.appendChild(s);
+      }).catch((err) => { sfuLibPromise = null; throw err; });
+    }
+    return sfuLibPromise;
+  }
+
+  const sfuActive = () => !!sfu || sfuRequired;
+
+  // identidade no LiveKit = id da conta
+  function sfuUserId(participant) {
+    const id = Number(participant && participant.identity);
+    return Number.isInteger(id) && id > 0 ? id : null;
+  }
+
+  function sfuEnsurePeer(userId) {
+    let peer = peers.get(userId);
+    if (peer) return peer;
+    peer = newPeer(userId);
+    peer.sfu = true;
+    peer.iceState = sfu && !sfu.reconnecting ? 'connected' : 'disconnected';
+    peers.set(userId, peer);
+    if (voiceStatsTimer === null) voiceStatsTimer = setInterval(updateVoiceStats, 1500);
+    // compartilhando pela placa de vídeo: a tela pra essa pessoa sai pelo auxiliar (conexão própria)
+    applyScreenSendersToPeer(peer);
+    return peer;
+  }
+
+  function sfuMarkPeers(connected) {
+    for (const peer of peers.values()) if (peer.sfu) peer.iceState = connected ? 'connected' : 'disconnected';
+    refreshConnectionStatus();
+  }
+
+  function sfuTrackSubscribed(track, publication, participant) {
+    const userId = sfuUserId(participant);
+    if (userId == null || (currentUser && userId === currentUser.id)) return;
+    const peer = sfuEnsurePeer(userId);
+    const mst = track.mediaStreamTrack;
+    const source = publication.source;
+    if (source === 'microphone') {
+      for (const old of peer.audioStream.getTracks()) peer.audioStream.removeTrack(old);
+      peer.audioStream.addTrack(mst);
+      peer.sfuMicReceiver = track.receiver || null;
+      peer.voiceStatsPrevious = null;
+      // faixa nova = refaz o que lê direto dela (reforço acima de 100% e indicador de fala)
+      if (peer.boostGain) { try { peer.boostGain.disconnect(); } catch (_) { /* já desligado */ } }
+      peer.boostGain = null;
+      peer.boostSource = null;
+      connectPeerAudio(peer);
+      if (!peer.hasSpeakingSignal) setupRemoteSpeakingDetection(peer);
+    } else if (source === 'screen_share_audio') {
+      for (const s of [peer.screenStream, peer.screenAudioStream]) {
+        for (const old of s.getAudioTracks()) s.removeTrack(old);
+        s.addTrack(mst);
+      }
+      if (peer.scDisplayStream) peer.scDisplayStream.addTrack(mst);
+      if (peer.screenBoostGain) { try { peer.screenBoostGain.disconnect(); } catch (_) { /* já desligado */ } }
+      peer.screenBoostGain = null;
+      peer.screenBoostSource = null;
+      ensurePeerScreenBoostGraph(peer);
+      applyLocalOverrideToRemoteScreenAudio(userId);
+    } else if (track.kind === 'video') {
+      const isScreen = source === 'screen_share';
+      const target = isScreen ? peer.screenStream : peer.cameraStream;
+      for (const old of target.getVideoTracks()) target.removeTrack(old);
+      target.addTrack(mst);
+      if (isScreen) peer.sfuScreenReceiver = track.receiver || null;
+      mst.addEventListener('mute', () => renderCallParticipants());
+      mst.addEventListener('unmute', () => renderCallParticipants());
+    }
+    renderCallParticipants();
+  }
+
+  function sfuTrackUnsubscribed(track, publication, participant) {
+    const peer = peers.get(sfuUserId(participant));
+    if (!peer) return;
+    const mst = track.mediaStreamTrack;
+    for (const s of [peer.audioStream, peer.cameraStream, peer.screenStream, peer.screenAudioStream, peer.scDisplayStream]) {
+      if (s && mst) { try { s.removeTrack(mst); } catch (_) { /* não estava nesse */ } }
+    }
+    if (publication.source === 'microphone') peer.sfuMicReceiver = null;
+    if (publication.source === 'screen_share') { peer.sfuScreenReceiver = null; screenStatsPrev.delete(`in:${peer.userId}`); }
+    renderCallParticipants();
+  }
+
+  // "parar de assistir" a tela de alguém: no SFU é só deixar de assinar as faixas da tela dela
+  function sfuSetScreenSubscribed(userId, on) {
+    if (!sfu) return;
+    const participant = sfu.room.remoteParticipants.get(String(userId));
+    if (!participant) return;
+    for (const pub of participant.trackPublications.values()) {
+      if (/^screen_share/.test(pub.source)) { try { pub.setSubscribed(on); } catch (_) { /* some sozinha se a faixa acabou */ } }
+    }
+  }
+
+  function sfuPublishOptions(kind, LK) {
+    const S = LK.Track.Source;
+    // voz: sem DTX (cortava começo de palavra), com RED (cada pacote leva uma cópia do anterior)
+    if (kind === 'mic') return { source: S.Microphone, name: 'mic', dtx: false, red: true, forceStereo: false, audioPreset: { maxBitrate: AUDIO_MAX_BITRATE.mic }, stopMicTrackOnMute: false };
+    if (kind === 'screenAudio') return { source: S.ScreenShareAudio, name: 'som-da-tela', dtx: false, red: false, forceStereo: true, audioPreset: { maxBitrate: AUDIO_MAX_BITRATE.screen } };
+    // uma qualidade só por faixa (sem simulcast): menos processador pra quem envia, igual à malha
+    if (kind === 'camera') return { source: S.Camera, name: 'camera', simulcast: false };
+    const kbps = getSavedScreenBitrateKbps();
+    const encoding = { maxBitrate: (kbps > 0 ? kbps : SCREEN_MAX_BITRATE_KBPS) * 1000, maxFramerate: getSavedScreenFps() };
+    return {
+      source: S.ScreenShare, name: 'tela', simulcast: false,
+      screenShareEncoding: encoding, videoEncoding: encoding,
+      degradationPreference: SCREEN_PRIORITIES[getSavedScreenPriority()].degradation,
+    };
+  }
+
+  // publica, troca ou tira uma das minhas faixas ('mic' | 'camera' | 'screen' | 'screenAudio').
+  // Uma fila por tipo: ligar e desligar rápido nunca atropela a operação anterior.
+  function sfuSetTrack(kind, track) {
+    const ctx = sfu;
+    if (!ctx) return Promise.resolve();
+    const run = async () => {
+      if (sfu !== ctx) return;
+      const local = ctx.room.localParticipant;
+      const cur = ctx.pubs.get(kind);
+      if (((cur && cur.track && cur.track.mediaStreamTrack) || null) === track) return;
+      // microfone remontado (trocou supressão, aparelho…): troca a faixa sem tirar do ar
+      if (cur && cur.track && track && kind === 'mic') { await cur.track.replaceTrack(track, true); return; }
+      if (cur) {
+        ctx.pubs.delete(kind);
+        try { if (cur.track) await local.unpublishTrack(cur.track, false); } catch (_) { /* já tinha saído */ }
+      }
+      if (!track || sfu !== ctx) return;
+      const pub = await local.publishTrack(track, sfuPublishOptions(kind, ctx.lib));
+      if (sfu !== ctx) return;
+      ctx.pubs.set(kind, pub);
+      if (kind === 'screen' && pub.track && pub.track.sender) applyScreenBitrate(pub.track.sender);
+    };
+    const next = (ctx.queue.get(kind) || Promise.resolve()).then(run)
+      .catch((err) => console.warn('[sfu] não consegui publicar', kind, err));
+    ctx.queue.set(kind, next);
+    return next;
+  }
+
+  // a tela pelo navegador vai pelo SFU; pela placa de vídeo o VÍDEO sai pelo auxiliar e só o som vai por aqui
+  function sfuSyncScreen() {
+    if (!sfu) return Promise.resolve();
+    const video = screenOn && !nativeScreencast && localScreenStream ? (localScreenStream.getVideoTracks()[0] || null) : null;
+    const audio = screenOn ? (localScreenAudioTrack || (localScreenStream && localScreenStream.getAudioTracks()[0]) || null) : null;
+    return Promise.all([sfuSetTrack('screen', video), sfuSetTrack('screenAudio', audio)]);
+  }
+
+  function sfuPublishAll() {
+    if (!sfu) return;
+    sfuSetTrack('mic', (localStream && localStream.getAudioTracks()[0]) || null);
+    sfuSetTrack('camera', cameraOn && localCameraStream ? (localCameraStream.getVideoTracks()[0] || null) : null);
+    sfuSyncScreen();
+  }
+
+  // conecta na sala do canal. Devolve false se o servidor não usa SFU (aí a call vai em malha)
+  async function sfuConnect(ch) {
+    const res = await fetch(`/api/rtc/sfu?channelId=${ch.id}`);
+    const info = res.ok ? await res.json() : null;
+    if (!info || !info.enabled) return false;
+    sfuRequired = true;
+    const LK = await loadSfuLib();
+    try { LK.setLogLevel('warn'); } catch (_) { /* só deixa o console mais limpo */ }
+    const room = new LK.Room({ adaptiveStream: false, dynacast: false });
+    const ctx = { room, lib: LK, pubs: new Map(), queue: new Map(), reconnecting: false };
+    const mine = (fn) => (...args) => { if (sfu === ctx) fn(...args); };
+    room.on(LK.RoomEvent.TrackSubscribed, mine(sfuTrackSubscribed));
+    room.on(LK.RoomEvent.TrackUnsubscribed, mine(sfuTrackUnsubscribed));
+    room.on(LK.RoomEvent.TrackPublished, mine((publication, participant) => {
+      // tela de alguém que eu tinha parado de assistir: continua sem assistir
+      if (/^screen_share/.test(publication.source) && unwatchedScreens.has(sfuUserId(participant))) {
+        try { publication.setSubscribed(false); } catch (_) { /* ok */ }
+      }
+    }));
+    room.on(LK.RoomEvent.Reconnecting, mine(() => { ctx.reconnecting = true; sfuMarkPeers(false); }));
+    room.on(LK.RoomEvent.Reconnected, mine(() => { ctx.reconnecting = false; sfuMarkPeers(true); }));
+    room.on(LK.RoomEvent.Disconnected, mine((reason) => {
+      // caiu de vez (o servidor de mídia reiniciou, a rede sumiu por muito tempo…): tenta voltar sozinho
+      console.warn('[sfu] conexão com o servidor de mídia caiu:', reason);
+      sfu = null;
+      sfuScheduleRetry();
+    }));
+    sfu = ctx;
+    try {
+      const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+      await room.connect(`${scheme}://${location.host}${info.path}`, info.token, { autoSubscribe: true });
+    } catch (err) {
+      if (sfu === ctx) sfu = null;
+      try { room.disconnect(false); } catch (_) { /* nem conectou */ }
+      throw err;
+    }
+    return sfu === ctx;
+  }
+
+  function sfuScheduleRetry() {
+    clearTimeout(sfuRetryTimer);
+    const ch = voiceChannel;
+    if (!ch || !sfuRequired) return;
+    sfuMarkPeers(false);
+    sfuRetryTimer = setTimeout(async () => {
+      if (voiceChannel !== ch || sfu) return;
+      try {
+        if (await sfuConnect(ch)) {
+          if (voiceChannel !== ch) { sfuDisconnect(); return; }
+          sfuMarkPeers(true);
+          sfuPublishAll();
+          return;
+        }
+      } catch (err) {
+        console.warn('[sfu] ainda sem conexão com o servidor de mídia:', err && err.message);
+      }
+      if (voiceChannel === ch && !sfu) sfuScheduleRetry();
+    }, 4000);
+  }
+
+  function sfuDisconnect() {
+    clearTimeout(sfuRetryTimer);
+    sfuRetryTimer = null;
+    sfuRequired = false;
+    const ctx = sfu;
+    sfu = null;
+    // false: não para as minhas faixas — quem cuida delas é o resto do código da call
+    if (ctx) { try { ctx.room.disconnect(false); } catch (_) { /* já fechada */ } }
   }
 
   // ===================================================================
@@ -7838,7 +8377,8 @@
     const trackId = peer.mic?.receiver.track.id;
     const inbound = [...stats.values()].find((report) =>
       report.type === 'inbound-rtp' && (report.kind || report.mediaType) === 'audio' &&
-      ((mid != null && report.mid === mid) || (trackId && report.trackIdentifier === trackId))
+      // pelo servidor de mídia o relatório já vem só da faixa de voz dessa pessoa
+      (peer.sfu || (mid != null && report.mid === mid) || (trackId && report.trackIdentifier === trackId))
     );
     const pair = getSelectedCandidatePair(stats, inbound?.transportId);
     const previous = peer.voiceStatsPrevious;
@@ -7877,7 +8417,7 @@
 
     return {
       loss, jitter, rtt, bitrate, discarded, bufferMs, concealed, concealment, quality,
-      route: getCandidateRoute(stats, pair),
+      route: peer.sfu ? 'pelo servidor de mídia' : getCandidateRoute(stats, pair),
       micRed: peer.micRed,
     };
   }
@@ -7917,6 +8457,12 @@
   function updateVoiceJitterBuffer(peer, stats) {
     const receiver = peer.mic?.receiver;
     if (!receiver || peer.voiceBufferUnsupported) return;
+    // DESLIGADO: cada vez que o alvo do buffer muda, o navegador acelera ou estica a voz pra chegar
+    // no atraso novo — e como o alvo subia e voltava conforme a rede oscilava, a voz de quem fala
+    // ficava "mudando" no meio da frase. O buffer do próprio navegador (NetEQ) já se adapta sozinho,
+    // de forma contínua; é esse comportamento padrão que o Discord usa. O código abaixo fica só de
+    // referência, caso um dia valha testar de novo com um alvo fixo.
+    if (peer.mic) return;
     const property = 'jitterBufferTarget' in receiver ? 'jitterBufferTarget'
       : 'playoutDelayHint' in receiver ? 'playoutDelayHint' : null;
     if (!property) {
@@ -7953,8 +8499,10 @@
   function updateVoiceStats() {
     for (const peer of peers.values()) {
       if (peer.voiceStatsPending || !['connected', 'completed'].includes(peer.iceState)) continue;
+      const statsSource = peer.sfu ? peer.sfuMicReceiver : peer.pc;
+      if (!statsSource) continue;
       peer.voiceStatsPending = true;
-      peer.pc.getStats().then((stats) => {
+      statsSource.getStats().then((stats) => {
         if (peers.get(peer.userId) !== peer || !['connected', 'completed'].includes(peer.iceState)) return;
         peer.voiceStats = readPeerVoiceStats(peer, stats);
         updateVoiceJitterBuffer(peer, peer.voiceStats);
@@ -8024,6 +8572,9 @@
 
   // troca a faixa de um dos canais ('camera' | 'screen' | 'screenAudio' | 'mic') em todas as conexões
   function replaceOnAllPeers(kind, track) {
+    if (sfuActive()) {
+      return kind === 'screen' || kind === 'screenAudio' ? sfuSyncScreen() : sfuSetTrack(kind, track);
+    }
     return Promise.all([...peers.values()].map((peer) => {
       const t = peer[kind];
       return t ? t.sender.replaceTrack(track).catch(() => {}) : null;
@@ -8031,6 +8582,7 @@
   }
 
   async function createPeer(userId, isInitiator) {
+    if (sfuActive()) return sfuEnsurePeer(userId); // pelo servidor de mídia não tem conexão por pessoa
     closePeer(userId);
     const peer = newPeer(userId);
     peer.isInitiator = isInitiator;
@@ -8356,6 +8908,9 @@
       return;
     }
 
+    // pelo servidor de mídia não existe oferta/resposta entre as pessoas (só 'watch' e 'sc-*' acima)
+    if (sfuActive()) return;
+
     if (data.kind === 'offer') {
       const peer = await createPeer(from, false);
       const offer = acceptMicRedOffer(data.sdp, data.micRed === true);
@@ -8492,7 +9047,7 @@
       return; // usuário cancelou o seletor do navegador
     }
     screenOn = true;
-    callViewScreenBtn.classList.add('active');
+    setScreenButtonsLive(true);
     const track = localScreenStream.getVideoTracks()[0];
     track.contentHint = SCREEN_PRIORITIES[getSavedScreenPriority()].contentHint;
     track.addEventListener('ended', () => stopScreenShare()); // clicou em "parar de compartilhar" na barra do navegador
@@ -8500,6 +9055,7 @@
     for (const peer of peers.values()) peer.wantsMyScreen = true;
     localScreenAudioTrack = null;
     await Promise.all([...peers.values()].map(applyScreenSendersToPeer));
+    sfuSyncScreen();
 
     // no navegador normal (ou quando o app desktop decide incluir áudio de sistema pro caso de
     // "tela inteira"), o áudio já vem embutido no próprio localScreenStream — usa direto.
@@ -8529,6 +9085,7 @@
 
     localScreenAudioTrack = audioTrack || null;
     if (localScreenAudioTrack) await Promise.all([...peers.values()].map(applyScreenSendersToPeer));
+    sfuSyncScreen();
     syncLocalVoiceState();
   }
 
@@ -8717,7 +9274,7 @@
       if (api) api.stop().catch(() => {});
     }
     screenOn = false;
-    callViewScreenBtn.classList.remove('active');
+    setScreenButtonsLive(false);
     if (localScreenStream) {
       localScreenStream.getTracks().forEach((t) => t.stop());
       localScreenStream = null;
@@ -8802,6 +9359,19 @@
     updateSelfMonitor();
     playJoinSound();
     await refreshIceServers(); // credencial TURN fresca pra essa call
+    // servidor de mídia (se estiver ligado no servidor): conecta ANTES do voice_join, pra já estar na
+    // sala quando a lista de quem está na call chegar. Se não estiver ligado, segue em malha.
+    try {
+      await sfuConnect(ch);
+    } catch (err) {
+      console.warn('[sfu] não consegui conectar ao servidor de mídia:', err);
+      if (voiceChannel === ch) {
+        toast('não consegui conectar ao servidor de mídia — tentando de novo…', 'error');
+        sfuScheduleRetry();
+      }
+    }
+    if (voiceChannel !== ch) { if (!voiceChannel) sfuDisconnect(); return; } // saiu/trocou enquanto conectava
+    sfuPublishAll();
     applyLocalTrackState();
     callParticipantsState.set(currentUser.id, { muted: isMuted, deafened: isDeafened, cameraOn, screenOn });
     updateMinibar();
@@ -8824,6 +9394,7 @@
     if (!opts.silent) Realtime.send('voice_leave');
 
     closeAllPeers();
+    sfuDisconnect();
     stopBotAudio(); // sem isso a "rádio" do bot continuava tocando depois de sair da call
     stopSpeakingDetection();
 
@@ -8857,7 +9428,7 @@
     }
     cameraOn = false;
     callViewCameraBtn.classList.remove('active');
-    callViewScreenBtn.classList.remove('active');
+    setScreenButtonsLive(false);
     callScreenShareArea.hidden = true;
     callScreenShareArea.innerHTML = '';
     stopScreenStatsLoop();
@@ -8884,6 +9455,181 @@
       renderChannels();
       setMainEmpty('você saiu da chamada', 'Escolha um canal na lateral pra continuar.');
     }
+  }
+
+  // ---------- "jogando X" (rich presence) ----------
+  // O app desktop descobre o jogo aberto neste computador (electron/presence.js) e avisa aqui; o
+  // site repassa pro servidor (activity_set), que mostra pros amigos. No navegador não tem detecção.
+  // A opção e os jogos cadastrados ficam neste aparelho (localStorage): o que está aberto é coisa
+  // do computador, não da conta.
+  const PRESENCE_ENABLED_KEY = 'didiscord:presenceEnabled';
+  const PRESENCE_GAMES_KEY = 'didiscord:presenceGames';
+  const presenceApi = () => (window.didiscordDesktop && window.didiscordDesktop.presence) || null;
+  let myActivity = null; // { name, startedAt } — o que o app detectou agora
+
+  function getPresenceEnabled() {
+    try { return localStorage.getItem(PRESENCE_ENABLED_KEY) !== '0'; } catch (_) { return true; } // ligado por padrão
+  }
+  function getPresenceGames() {
+    try {
+      const list = JSON.parse(localStorage.getItem(PRESENCE_GAMES_KEY) || '[]');
+      return Array.isArray(list) ? list.filter((g) => g && typeof g.exe === 'string' && typeof g.name === 'string').slice(0, 100) : [];
+    } catch (_) { return []; }
+  }
+  function savePresenceGames(list) {
+    try { localStorage.setItem(PRESENCE_GAMES_KEY, JSON.stringify(list.slice(0, 100))); } catch (_) { /* vale nesta página */ }
+  }
+
+  // manda o estado atual pro servidor (ele ignora repetição, então dá pra chamar à vontade)
+  function sendMyActivity() {
+    const a = getPresenceEnabled() ? myActivity : null;
+    Realtime.send('activity_set', a ? { name: a.name, startedAt: a.startedAt } : { name: '' });
+  }
+
+  function configurePresence() {
+    const api = presenceApi();
+    if (!api) return;
+    const enabled = getPresenceEnabled();
+    api.configure({ enabled, custom: getPresenceGames() });
+    if (!enabled) { myActivity = null; sendMyActivity(); }
+  }
+
+  function initPresence() {
+    renderPresenceSettings();
+    const api = presenceApi();
+    if (!api) return; // navegador, ou app desktop antigo (antes da 0.5.1)
+    api.onActivity((a) => {
+      myActivity = a && a.name ? { name: String(a.name), startedAt: Number(a.startedAt) || Date.now() } : null;
+      sendMyActivity();
+      renderPresenceSettings();
+    });
+    configurePresence();
+    // reenvia de tempos em tempos: cobre reconexão do site e reinício do servidor
+    setInterval(sendMyActivity, 60000);
+  }
+
+  function setUserActivity(userId, activity) {
+    const value = activity && activity.name ? activity : null;
+    const u = usersById.get(userId);
+    if (u) u.activity = value;
+    if (currentUser && currentUser.id === userId) currentUser.activity = value;
+    for (const d of dms) if (d.user && d.user.id === userId) d.user.activity = value;
+    renderMembers();
+    if (currentChannel && currentChannel.dm && currentChannel.userId === userId) renderDmProfilePanel();
+  }
+
+  function formatActivitySince(startedAt) {
+    const min = Math.max(0, Math.floor((Date.now() - Number(startedAt)) / 60000));
+    if (!Number.isFinite(min) || min < 1) return 'começou agora';
+    if (min < 60) return `há ${min} min`;
+    const h = Math.floor(min / 60);
+    return `há ${h} h${min % 60 ? ` ${min % 60} min` : ''}`;
+  }
+
+  // configurações → app → atividade
+  function renderPresenceSettings() {
+    const host = document.getElementById('presenceSettings');
+    if (!host) return;
+    const api = presenceApi();
+    const enabled = getPresenceEnabled();
+    host.replaceChildren();
+    const make = (tag, cls, text) => {
+      const el = document.createElement(tag);
+      if (cls) el.className = cls;
+      if (text != null) el.textContent = text;
+      return el;
+    };
+
+    const toggle = make('label', 'settings-toggle');
+    const text = make('span', 'settings-toggle-text');
+    text.append(make('strong', null, 'mostrar o que estou jogando'), make('small', null, 'aparece "jogando …" pros seus amigos, na lista de membros e no seu perfil'));
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = enabled;
+    box.addEventListener('change', () => {
+      try { localStorage.setItem(PRESENCE_ENABLED_KEY, box.checked ? '1' : '0'); } catch (_) { /* vale nesta página */ }
+      configurePresence();
+      renderPresenceSettings();
+    });
+    toggle.append(text, box);
+    host.append(toggle);
+
+    if (!api) {
+      host.append(make('p', 'field-help', window.didiscordDesktop
+        ? 'este app é de uma versão antiga: atualize pra 0.5.1 ou mais nova pra ele detectar os jogos.'
+        : 'a detecção só funciona no app do computador (o navegador não enxerga os programas abertos).'));
+      return;
+    }
+    if (!enabled) {
+      host.append(make('p', 'field-help', 'desligado: o app não olha os programas abertos e nada é enviado.'));
+      return;
+    }
+
+    host.append(make('p', 'field-help presence-now', myActivity ? `detectado agora: ${myActivity.name}` : 'nenhum jogo detectado agora. Jogos da Steam e os mais conhecidos aparecem sozinhos; os outros você adiciona abaixo.'));
+
+    const games = getPresenceGames();
+    if (games.length) {
+      const list = make('div', 'presence-games');
+      for (const g of games) {
+        const row = make('div', 'presence-game');
+        const label = make('span', 'presence-game-name', g.name);
+        const exe = make('span', 'presence-game-exe', g.exe);
+        const del = make('button', 'btn btn-ghost btn-sm', 'remover');
+        del.type = 'button';
+        del.addEventListener('click', () => {
+          savePresenceGames(getPresenceGames().filter((x) => x.exe !== g.exe));
+          configurePresence();
+          renderPresenceSettings();
+        });
+        row.append(label, exe, del);
+        list.append(row);
+      }
+      host.append(list);
+    }
+
+    const addBtn = make('button', 'btn btn-ghost', 'adicionar jogo');
+    addBtn.type = 'button';
+    addBtn.addEventListener('click', async () => {
+      addBtn.disabled = true;
+      let found = [];
+      try { found = await api.candidates(); } catch (_) { found = []; }
+      addBtn.remove();
+      const known = new Set(getPresenceGames().map((g) => g.exe));
+      found = (found || []).filter((c) => c && c.exe && !known.has(c.exe));
+      if (!found.length) {
+        host.append(make('p', 'field-help', 'não achei nenhum programa que pareça um jogo aberto agora. Abra o jogo e tente de novo.'));
+        return;
+      }
+      const form = make('div', 'presence-add');
+      const select = document.createElement('select');
+      select.setAttribute('aria-label', 'programa aberto');
+      for (const c of found) {
+        const opt = document.createElement('option');
+        opt.value = c.exe;
+        opt.textContent = c.label || c.exe;
+        select.append(opt);
+      }
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.maxLength = 64;
+      name.placeholder = 'nome que aparece (ex: Hollow Knight)';
+      name.setAttribute('aria-label', 'nome do jogo');
+      const save = make('button', 'btn btn-primary', 'salvar');
+      save.type = 'button';
+      const commit = () => {
+        const label = name.value.trim().replace(/\s+/g, ' ');
+        if (!label) { name.focus(); return; }
+        savePresenceGames([...getPresenceGames().filter((x) => x.exe !== select.value), { exe: select.value, name: label }]);
+        configurePresence();
+        renderPresenceSettings();
+      };
+      save.addEventListener('click', commit);
+      name.addEventListener('keydown', (e) => { if (e.key === 'Enter') commit(); });
+      form.append(select, name, save);
+      host.append(make('p', 'field-help', 'escolha o programa do jogo (ele precisa estar aberto) e o nome que deve aparecer:'), form);
+      name.focus();
+    });
+    host.append(addBtn);
   }
 
   // ---------- eventos em tempo real ----------
@@ -9026,14 +9772,16 @@
 
     function setPresence(userId, online) {
       const u = usersById.get(userId);
-      if (u) u.online = online;
-      for (const d of dms) if (d.user && d.user.id === userId) d.user.online = online;
+      if (u) { u.online = online; if (!online) u.activity = null; }
+      for (const d of dms) if (d.user && d.user.id === userId) { d.user.online = online; if (!online) d.user.activity = null; }
       renderMembers();
       if (currentServerId == null) renderChannels();
       if (currentChannel && currentChannel.dm && currentChannel.userId === userId) renderDmProfilePanel();
     }
 
     Realtime.on('presence_online', ({ userId }) => setPresence(userId, true));
+    Realtime.on('activity_update', ({ userId, activity }) => setUserActivity(userId, activity));
+    Realtime.on('connection_status', ({ status }) => { if (status === 'open') sendMyActivity(); }); // reconectou: o servidor esqueceu
     Realtime.on('presence_offline', ({ userId }) => setPresence(userId, false));
 
     Realtime.on('server_joined', ({ server }) => upsertServer(server));
@@ -9116,6 +9864,7 @@
         startBotAudio();
       } else {
         playJoinSound(); // alguém entrou na call que eu já estou — a oferta WebRTC vem dele
+        if (sfuActive()) sfuEnsurePeer(userId); // pelo servidor de mídia não vem oferta: cria a entrada já
       }
       renderCallParticipants();
     });
@@ -9270,6 +10019,7 @@
     await loadVoiceOccupancy();
     await loadMusicbotState();
     wireRealtime();
+    initPresence();
     DidiTheme.load();
     loadUnread();
     updateNotificationPermissionUi();

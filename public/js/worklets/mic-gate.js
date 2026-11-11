@@ -1,8 +1,12 @@
 import { createRnnoiseState } from '/vendor/web-noise-suppressor/rnnoiseWorkletProcessor.js?v=2';
 
 const SILENCE_DB = -90;
-const VAD_ONSET = 0.58;
-const VAD_SUSTAIN = 0.38;
+// Limiares mais folgados: com 0.58/0.38 a detecção perdia começo e fim de palavra em fala baixa,
+// e a voz chegava picotada. Preferimos deixar passar um pouco a mais do que cortar voz.
+const VAD_ONSET = 0.45;
+const VAD_SUSTAIN = 0.2;
+// A entrada do gate já passou pelo supressor: som forte aqui é voz, mesmo se o detector hesitar.
+const LOUD_IS_VOICE_DB = -40;
 const BYPASS_SPEAKING_DB = -55;
 
 class MicGate extends AudioWorkletProcessor {
@@ -20,8 +24,8 @@ class MicGate extends AudioWorkletProcessor {
     this.preRoll = new Float32Array(Math.round(sampleRate * 0.02));
     this.delayIndex = 0;
     this.attack = Math.exp(-1 / (sampleRate * 0.001));
-    this.release = Math.exp(-1 / (sampleRate * 0.03));
-    this.holdFrames = Math.round(sampleRate * 0.35);
+    this.release = Math.exp(-1 / (sampleRate * 0.12)); // fecha devagar: sem "degrau" no fim da frase
+    this.holdFrames = Math.round(sampleRate * 0.6);
     this.hold = 0;
     this.gain = 0;
     this.speaking = false;
@@ -91,7 +95,7 @@ class MicGate extends AudioWorkletProcessor {
     if (!this.muted) {
       if (useVad) {
         try {
-          active = this.detectVoice(sidechain);
+          active = this.detectVoice(sidechain) || levelDb >= LOUD_IS_VOICE_DB;
         } catch (_) {
           this.vad.destroy();
           this.vad = null;

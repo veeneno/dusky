@@ -34,6 +34,7 @@ router.get('/:id', requireAuth, (req, res) => {
     user: {
       ...user,
       online: realtime.isOnline(user.id),
+      activity: realtime.activityOf(user.id),
       mutual_servers: isSelf ? [] : access.mutualServers(req.user.id, id),
     },
   });

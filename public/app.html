@@ -66,6 +66,7 @@
 
       <!-- minibar de chamada em andamento — some quando não tem call ativa -->
       <div class="call-minibar" id="callMinibar" hidden>
+       <div class="call-minibar-top">
         <div class="call-minibar-info">
           <span class="call-minibar-dot"></span>
           <div class="call-minibar-text">
@@ -76,6 +77,20 @@
         <button class="icon-btn danger" id="callMinibarLeaveBtn" title="sair da chamada" aria-label="sair da chamada">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 4.28 1.36 2 2 0 0 1 1.72 2v3.5a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 5.11 3.5h3.5a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 1.36 4.28 2 2 0 0 1-.45 2.11z"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
         </button>
+       </div>
+        <div class="call-minibar-actions">
+          <button type="button" class="call-quick-btn" id="callQuickNoiseBtn" title="supressão de ruído" aria-label="supressão de ruído">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="10" x2="4" y2="14"/><line x1="8" y1="7" x2="8" y2="17"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="16" y1="8" x2="16" y2="16"/><line x1="20" y1="11" x2="20" y2="13"/></svg>
+            <span>ruído</span>
+          </button>
+          <button type="button" class="call-quick-btn" id="callQuickScreenBtn" title="compartilhar tela" aria-label="compartilhar tela">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <span>tela</span>
+          </button>
+          <button type="button" class="call-quick-btn is-narrow" id="callQuickScreenOptsBtn" title="opções do compartilhamento de tela" aria-label="opções do compartilhamento de tela">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>
+          </button>
+        </div>
       </div>
 
       <div class="profile-bar" id="profileBar" title="editar perfil">
@@ -500,6 +515,7 @@
           <button class="btn btn-ghost btn-sm" type="button" id="roleCreateBtn">novo cargo</button>
         </div>
         <p class="field-help">Dá cargos pras pessoas pelo perfil delas (clique no nome na lista de membros). Administradores gerenciam o servidor, os canais, os cargos e as calls.</p>
+        <p class="field-help">A ordem importa: use as setas pra subir ou descer um cargo. O nome da pessoa (no chat e na lista de membros) fica com a cor do cargo mais alto dela marcado como "separado".</p>
         <div class="roles-list" id="rolesList"></div>
       </section>
       <div class="danger-zone" id="serverDangerZone">
@@ -791,6 +807,15 @@
               <span class="field-help">o cancelamento de eco é o que mais "metaliza" a voz e corta quando duas pessoas falam juntas. Com fone de ouvido ele não é necessário. "estúdio" também desliga o ajuste automático de volume — regule pelo ganho acima. Dá pra trocar com a call aberta.</span>
             </div>
 
+            <div class="field" id="micLevelerField">
+              <label for="micLevelerSelect">volume automático</label>
+              <select id="micLevelerSelect">
+                <option value="browser">do navegador (padrão)</option>
+                <option value="own">do didiscord — novo, ajusta depois da supressão (experimental)</option>
+              </select>
+              <span class="field-help">deixa sua voz sempre no mesmo volume pra quem ouve. O do navegador age antes da supressão de ruído e pode subir o chiado nas pausas; o do didiscord age depois, só enquanto você fala. Compare os dois com o "testar microfone". No modo estúdio nenhum dos dois é usado. Dá pra trocar com a call aberta.</span>
+            </div>
+
             <div class="field">
               <label for="noiseSuppressionSelect">supressão de ruído</label>
               <select id="noiseSuppressionSelect">
@@ -923,6 +948,9 @@
             <a class="btn btn-primary" href="/baixar" target="_blank" rel="noopener" id="settingsDownloadBtn">página de download</a>
             <button type="button" class="btn btn-ghost" id="settingsCheckUpdatesBtn" hidden>procurar atualização</button>
           </div>
+
+          <h3 class="settings-subtitle">atividade</h3>
+          <div id="presenceSettings"></div>
         </section>
 
           <div class="field-error" id="settingsError"></div>
@@ -939,6 +967,6 @@
   <script src="/js/realtime.js?v=20"></script>
   <script src="/js/markdown.js?v=20"></script>
   <script src="/js/emoji.js?v=20"></script>
-  <script src="/js/app.js?v=24"></script>
+  <script src="/js/app.js?v=28"></script>
 </body>
 </html>
