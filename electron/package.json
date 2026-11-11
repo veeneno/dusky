@@ -1,7 +1,7 @@
 {
   "name": "didiscord-desktop",
   "productName": "didiscord",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "App desktop do didiscord (janela nativa que carrega o site hospedado)",
   "main": "main.js",
   "author": {

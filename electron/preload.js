@@ -8,6 +8,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 const pcmListeners = new Set();
 const screencastListeners = new Set();
 const presenceListeners = new Set();
+const statusListeners = new Set();
+
+ipcRenderer.on('status:set', (_event, status) => {
+  if (status !== 'online' && status !== 'idle') return;
+  for (const listener of statusListeners) {
+    try { listener(status); } catch (_) { /* idem */ }
+  }
+});
 
 ipcRenderer.on('presence:activity', (_event, activity) => {
   for (const listener of presenceListeners) {
@@ -37,6 +45,17 @@ contextBridge.exposeInMainWorld('didiscordDesktop', {
   // traz a janela pra frente (clique numa notificação)
   focusWindow: () => ipcRenderer.send('didiscord:focus'),
   checkForUpdates: () => ipcRenderer.invoke('didiscord:checkUpdates'),
+
+  // status ativo/inativo: o site avisa o atual (pra bandeja mostrar) e a bandeja pede pra trocar
+  status: {
+    report: (status) => ipcRenderer.send('status:report', String(status || '')),
+    // chamado com 'online' | 'idle' quando a pessoa troca pelo ícone da bandeja
+    onSetRequest: (callback) => {
+      if (typeof callback !== 'function') return () => {};
+      statusListeners.add(callback);
+      return () => statusListeners.delete(callback);
+    },
+  },
 
   // "jogando X": o app descobre o jogo aberto e avisa o site (ver electron/presence.js)
   presence: {

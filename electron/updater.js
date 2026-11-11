@@ -11,7 +11,8 @@ const { app, dialog } = require('electron');
 
 const CHECK_EVERY_MS = 3 * 60 * 60 * 1000;
 
-function createUpdater({ log, getWindow, getSiteUrl }) {
+// onQuitForUpdate: avisa o main.js que é pra fechar DE VERDADE (fechar a janela só esconde o app)
+function createUpdater({ log, getWindow, getSiteUrl, onQuitForUpdate }) {
   let autoUpdater = null;
   let timer = null;
   let downloadedVersion = null;
@@ -55,9 +56,12 @@ function createUpdater({ log, getWindow, getSiteUrl }) {
         cancelId: 1,
         title: 'didiscord',
         message: `A versão ${info.version} do didiscord está pronta.`,
-        detail: 'Reinicia agora pra usar, ou ela é instalada sozinha quando você fechar o app.',
+        detail: 'Reinicia agora pra usar, ou ela é instalada sozinha quando você sair do app (ícone da bandeja → Sair).',
       });
-      if (response === 0) setImmediate(() => autoUpdater.quitAndInstall(false, true));
+      if (response === 0) {
+        if (onQuitForUpdate) onQuitForUpdate();
+        setImmediate(() => autoUpdater.quitAndInstall(false, true));
+      }
     });
     return autoUpdater;
   }

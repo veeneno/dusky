@@ -7,8 +7,9 @@
 //   - áudio da tela compartilhada isolado por app, sem a voz da call voltando em eco (ver audio/)
 //   - permissões de mic/câmera/tela liberadas direto, só pro servidor escolhido
 //   - pergunta o endereço do servidor (túnel do Cloudflare ou IP) e guarda — ver "endereço do servidor"
+//   - fechar a janela só esconde: a call e os avisos continuam, com ícone na bandeja — ver "bandeja"
 
-const { app, BrowserWindow, Menu, ipcMain, session, desktopCapturer, shell, net, screen } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session, desktopCapturer, shell, net, screen, Tray, nativeImage, Notification, powerMonitor } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { createScreenAudio } = require('./audio');
@@ -155,8 +156,33 @@ function saveWindowState(win) {
   } catch (_) { /* não é crítico */ }
 }
 
+// ---------- preferências do app (prefs.json na pasta de dados) ----------
+//   closeToTray:   fechar a janela só esconde (padrão) — desligado, fechar sai do app como antes
+//   trayHintShown: o aviso "continua rodando" já apareceu uma vez
+
+const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
+const prefs = { closeToTray: true, trayHintShown: false };
+
+function loadPrefs() {
+  try {
+    const p = JSON.parse(fs.readFileSync(prefsFile(), 'utf8'));
+    if (typeof p.closeToTray === 'boolean') prefs.closeToTray = p.closeToTray;
+    if (typeof p.trayHintShown === 'boolean') prefs.trayHintShown = p.trayHintShown;
+  } catch (_) { /* primeira vez: fica no padrão */ }
+}
+
+function savePrefs() {
+  try {
+    fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
+    fs.writeFileSync(prefsFile(), JSON.stringify(prefs));
+  } catch (_) { /* não é crítico */ }
+}
+
 // ---------- janela principal ----------
 
+// true quando é pra fechar DE VERDADE (Sair na bandeja/menu, desligar o PC, instalar atualização).
+// Fora isso, fechar a janela só esconde o app.
+let isQuitting = false;
 let mainWindow = null;
 const screenAudio = createScreenAudio({ log });
 // compartilhamento de tela pela placa de vídeo (ver screencast.js) e o que ele baixa sozinho (deps.js)
@@ -169,7 +195,12 @@ const presence = createPresence({
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('presence:activity', activity);
   },
 });
-const updater = createUpdater({ log, getWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null), getSiteUrl: () => SITE_URL });
+const updater = createUpdater({
+  log,
+  getWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
+  getSiteUrl: () => SITE_URL,
+  onQuitForUpdate: () => { isQuitting = true; },
+});
 
 function createMainWindow() {
   const state = loadWindowState();
@@ -197,7 +228,16 @@ function createMainWindow() {
   win.once('ready-to-show', () => win.show());
 
   win.on('resize', () => { if (!win.isMaximized() && !win.isMinimized()) win._lastNormalBounds = win.getBounds(); });
-  win.on('close', () => saveWindowState(win));
+  // Windows desligando/saindo da conta: a janela tem que fechar de verdade, senão segura o desligamento
+  win.on('session-end', () => { isQuitting = true; });
+  win.on('close', (event) => {
+    saveWindowState(win);
+    if (isQuitting || !prefs.closeToTray) return; // sair de verdade
+    // só esconde: a página continua viva (call, mensagens, sons, notificações)
+    event.preventDefault();
+    win.hide();
+    showTrayHintOnce();
+  });
   win.on('closed', () => { screenAudio.stop(); presence.stop(); mainWindow = null; });
   win.on('focus', () => { try { win.flashFrame(false); } catch (_) { /* ok */ } });
 
@@ -572,6 +612,109 @@ ipcMain.handle('screencast:stop', (event) => {
   if (trustedSender(event)) screencast.stop();
 });
 
+// ---------- bandeja (ícone perto do relógio) ----------
+//
+// Com a janela escondida o app segue vivo: a call continua, as mensagens chegam e os sons tocam
+// (backgroundThrottling: false na janela). O ícone traz a janela de volta, troca o status
+// (ativo/inativo, o mesmo do menu do avatar no site) e tem o "Sair" de verdade.
+// Linux com GNOME: o ícone só aparece com a extensão "AppIndicator" — sem ela, abrir o didiscord de
+// novo (pelo menu de apps) traz a janela escondida de volta (ver second-instance).
+
+let tray = null;
+let currentStatus = 'online'; // o site avisa por 'status:report' (ver preload.js)
+let mentionCount = 0;
+const STATUS_LABELS = { online: 'Ativo', idle: 'Inativo' };
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function quitForReal() {
+  isQuitting = true;
+  app.quit();
+}
+
+function trayIcon() {
+  const img = nativeImage.createFromPath(ICON_PATH);
+  if (img.isEmpty()) return img;
+  // Windows/macOS desenham 16px na bandeja; o Linux (AppIndicator) costuma usar 22-24px
+  const size = process.platform === 'linux' ? 24 : 16;
+  return img.resize({ width: size, height: size, quality: 'best' });
+}
+
+function updateTrayTooltip() {
+  if (!tray) return;
+  const prefix = mentionCount ? `(${mentionCount > 99 ? '99+' : mentionCount}) ` : '';
+  tray.setToolTip(`${prefix}didiscord — ${STATUS_LABELS[currentStatus].toLowerCase()}`);
+}
+
+function buildTrayMenu() {
+  if (!tray) return;
+  const setStatus = (status) => {
+    currentStatus = status; // já mostra na bandeja; o site confirma com 'status:report'
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('status:set', status);
+    buildTrayMenu();
+  };
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Abrir didiscord', click: showMainWindow },
+    { type: 'separator' },
+    { label: '🟢  Ativo', type: 'radio', checked: currentStatus === 'online', click: () => setStatus('online') },
+    { label: '🌙  Inativo', type: 'radio', checked: currentStatus === 'idle', click: () => setStatus('idle') },
+    { type: 'separator' },
+    {
+      label: 'Continuar rodando ao fechar a janela',
+      type: 'checkbox',
+      checked: prefs.closeToTray,
+      click: (item) => { prefs.closeToTray = item.checked; savePrefs(); buildMenu(); },
+    },
+    { type: 'separator' },
+    { label: 'Sair do didiscord', click: quitForReal },
+  ]));
+  updateTrayTooltip();
+}
+
+function createTray() {
+  if (tray) return;
+  try {
+    tray = new Tray(trayIcon());
+  } catch (err) {
+    log('não deu pra criar o ícone da bandeja:', err && err.message);
+    tray = null;
+    return;
+  }
+  // Windows/macOS: clique no ícone abre (no Linux o clique abre o menu, que tem "Abrir didiscord")
+  tray.on('click', showMainWindow);
+  tray.on('double-click', showMainWindow);
+  buildTrayMenu();
+}
+
+// primeira vez que a janela some: avisa que o app não fechou (senão parece que a call caiu à toa)
+function showTrayHintOnce() {
+  if (prefs.trayHintShown) return;
+  prefs.trayHintShown = true;
+  savePrefs();
+  const body = tray
+    ? 'Ele continua rodando na bandeja (calls, mensagens e sons seguem funcionando). Pra fechar de vez: botão direito no ícone → Sair do didiscord.'
+    : 'Ele continua rodando em segundo plano. Abra o didiscord de novo pra ver a janela, ou use o menu didiscord → Sair.';
+  try {
+    if (Notification.isSupported()) new Notification({ title: 'didiscord continua aberto', body, icon: ICON_PATH, silent: true }).show();
+  } catch (_) { /* sem notificação do sistema: tudo bem */ }
+}
+
+// o site avisa o status atual (ao abrir e a cada troca, inclusive vinda de outro aparelho)
+ipcMain.on('status:report', (event, status) => {
+  if (!trustedSender(event) || !STATUS_LABELS[status]) return;
+  if (status === currentStatus) return;
+  currentStatus = status;
+  buildTrayMenu();
+});
+
 // ---------- avisos: contador de menções no ícone e trazer a janela pra frente ----------
 
 let lastBadge = 0;
@@ -584,13 +727,13 @@ ipcMain.on('didiscord:badge', (event, count) => {
     try { mainWindow.flashFrame(true); } catch (_) { /* ok */ }
   }
   lastBadge = n;
+  mentionCount = n;
+  updateTrayTooltip();
 });
 
 ipcMain.on('didiscord:focus', (event) => {
-  if (!trustedSender(event) || !mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+  if (!trustedSender(event)) return;
+  showMainWindow(); // funciona com a janela escondida na bandeja também
 });
 
 // ---------- "jogando X" (presence.js) ----------
@@ -611,6 +754,19 @@ ipcMain.handle('didiscord:checkUpdates', (event) => {
 
 function buildMenu() {
   const template = [
+    {
+      label: 'didiscord',
+      submenu: [
+        {
+          label: 'Continuar rodando ao fechar a janela',
+          type: 'checkbox',
+          checked: prefs.closeToTray,
+          click: (item) => { prefs.closeToTray = item.checked; savePrefs(); buildTrayMenu(); },
+        },
+        { type: 'separator' },
+        { label: 'Sair do didiscord', accelerator: 'CmdOrCtrl+Q', click: quitForReal },
+      ],
+    },
     {
       label: 'Ver',
       submenu: [
@@ -653,18 +809,21 @@ function buildMenu() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // abrir o didiscord de novo (atalho, menu de apps) com ele escondido: traz a janela de volta
   app.on('second-instance', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+    if (app.isReady()) showMainWindow();
   });
 
   app.whenReady().then(() => {
+    loadPrefs();
     buildMenu();
     setupPermissions();
     setupDisplayMedia();
     createMainWindow();
-    app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createMainWindow(); });
+    createTray();
+    // Linux/macOS desligando: idem ao session-end do Windows (ver createMainWindow)
+    try { powerMonitor.on('shutdown', () => { isQuitting = true; }); } catch (_) { /* sem suporte */ }
+    app.on('activate', showMainWindow); // macOS: clique no ícone do Dock
     // já descobre o melhor jeito de compartilhar a tela (e baixa o ffmpeg se precisar) em segundo
     // plano, pra estar pronto na primeira vez que a pessoa compartilhar
     if (!IS_WAYLAND) setTimeout(() => { screencast.probe().catch(() => {}); }, 3000);
@@ -672,5 +831,6 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-  app.on('before-quit', () => { screenAudio.stop(); screencast.stop(); });
+  // Sair (bandeja/menu/Ctrl+Q), desligar o PC ou instalar atualização: aí a janela fecha de verdade
+  app.on('before-quit', () => { isQuitting = true; screenAudio.stop(); screencast.stop(); });
 }
