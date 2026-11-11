@@ -353,8 +353,12 @@ async function joinVoiceCall(ch) {
     return;
   }
   if (voiceChannel && voiceChannel.id !== ch.id) {
-    leaveVoiceCall({ silent: true });
+    leaveVoiceCall({ silent: true, noSound: true }); // trocando de canal: só o som de entrar
   }
+
+  // som de entrar já no clique: antes ele só tocava depois de abrir o microfone e carregar a
+  // supressão de ruído (até alguns segundos), e às vezes nem chegava a tocar
+  playJoinSound();
 
   // cria/retoma o AudioContext o mais perto possível do clique do usuário (gesto real) —
   // isso maximiza a chance do navegador liberar o áudio sem bloqueio de autoplay depois
@@ -400,7 +404,6 @@ async function joinVoiceCall(ch) {
   updateNoiseSuppressionStatus();
   refreshVoiceSettings();
   updateSelfMonitor();
-  playJoinSound();
   await refreshIceServers(); // credencial TURN fresca pra essa call
   // servidor de mídia (se estiver ligado no servidor): conecta ANTES do voice_join, pra já estar na
   // sala quando a lista de quem está na call chegar. Se não estiver ligado, segue em malha.
@@ -433,7 +436,7 @@ function leaveVoiceCall(opts = {}) {
   speakingSentState = false;
   voiceSpeakingReady = false;
   if (!voiceChannel) return;
-  playLeaveSound();
+  if (!opts.noSound) playLeaveSound();
   if (!opts.silent) Realtime.send('voice_leave');
 
   closeAllPeers();

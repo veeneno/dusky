@@ -510,7 +510,7 @@ selfMonitorCheckbox.addEventListener('change', () => {
 
 notificationSoundsCheckbox.addEventListener('change', () => {
   saveNotificationSounds(notificationSoundsCheckbox.checked);
-  if (notificationSoundsCheckbox.checked) playMessageSound(); // feedback imediato ao ligar
+  if (notificationSoundsCheckbox.checked) playMessageSound({ force: true }); // feedback imediato ao ligar
 });
 
 function updateMicSensitivityLabel() {

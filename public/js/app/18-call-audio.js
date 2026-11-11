@@ -35,51 +35,103 @@ function getAudioCtx() {
 // ---------- sons de notificação (sintetizados via Web Audio, sem depender de nenhum arquivo
 // de áudio externo) — tocam localmente pros DOIS lados: quando eu entro/saio de uma call e
 // quando o outro participante entra/sai (ver wireRealtime), e quando chega mensagem de quem
-// não sou eu. Reusa o mesmo AudioContext da call (getAudioCtx) por simplicidade, mas funciona
-// mesmo fora de uma call (ex: som de mensagem enquanto só estou navegando o chat).
-function playChime(frequencies, opts = {}) {
-  if (!getSavedNotificationSounds()) return;
-  try {
-    const ctx = getAudioCtx();
-    const now = ctx.currentTime;
-    const stepDuration = opts.stepDuration != null ? opts.stepDuration : 0.09;
-    const noteDuration = opts.noteDuration != null ? opts.noteDuration : 0.15;
-    const volume = opts.volume != null ? opts.volume : 0.16;
-    frequencies.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = opts.type || 'sine';
-      osc.frequency.value = freq;
-      const startAt = now + i * stepDuration;
-      // envelope curto (ataque rápido, decaimento exponencial) pra soar como um "blip" limpo,
-      // sem clique/estalo no início nem corte abrupto no final
-      gain.gain.setValueAtTime(0, startAt);
-      gain.gain.linearRampToValueAtTime(volume, startAt + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + noteDuration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(startAt);
-      osc.stop(startAt + noteDuration + 0.02);
-    });
-  } catch (err) {
-    console.warn('[sound] não consegui tocar o som de notificação:', err);
+// não sou eu.
+//
+// Contexto de áudio SÓ dos sons (sfxCtx), separado do da call (audioCtx). Antes os sons
+// dividiam o contexto com a supressão de ruído (DeepFilterNet/RNNoise rodam em worklets nele):
+// quando o processamento atrasava, ou o contexto estava suspenso/sendo montado no meio da
+// entrada na call, o "blip" de entrar/sair se perdia ou saía picotado. Separado, o som nunca
+// espera a call. Ele também segue a saída de áudio escolhida (applyOutputDeviceToAudioCtx).
+let sfxCtx = null;
+function getSfxCtx() {
+  if (!sfxCtx) {
+    sfxCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    applyOutputDeviceToSfxCtx();
   }
+  return sfxCtx;
 }
+function applyOutputDeviceToSfxCtx() {
+  if (!sfxCtx || typeof sfxCtx.setSinkId !== 'function') return;
+  const id = getSavedDeviceId('speaker');
+  sfxCtx.setSinkId(id && id !== 'default' ? id : '').catch(() => { /* dispositivo sumiu — segue no padrão */ });
+}
+
+// o mesmo som pedido duas vezes quase juntas (ex: evento repetido ao reconectar) toca uma vez só
+const lastSoundAt = new Map();
+
+function playChime(name, frequencies, opts = {}) {
+  if (!getSavedNotificationSounds()) return;
+  const nowMs = performance.now();
+  if (nowMs - (lastSoundAt.get(name) || 0) < 150) return;
+  lastSoundAt.set(name, nowMs);
+  let ctx;
+  try { ctx = getSfxCtx(); } catch (err) { console.warn('[sound] sem Web Audio:', err); return; }
+
+  const schedule = () => {
+    try {
+      // começa um tiquinho no futuro: agendar exatamente em currentTime às vezes cai num bloco de
+      // áudio que já foi processado, e o começo da nota (ou ela inteira) some
+      const now = ctx.currentTime + 0.03;
+      const stepDuration = opts.stepDuration != null ? opts.stepDuration : 0.09;
+      const noteDuration = opts.noteDuration != null ? opts.noteDuration : 0.15;
+      const volume = opts.volume != null ? opts.volume : 0.16;
+      frequencies.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = opts.type || 'sine';
+        osc.frequency.value = freq;
+        const startAt = now + i * stepDuration;
+        // envelope curto (ataque rápido, decaimento exponencial) pra soar como um "blip" limpo,
+        // sem clique/estalo no início nem corte abrupto no final
+        gain.gain.setValueAtTime(0, startAt);
+        gain.gain.linearRampToValueAtTime(volume, startAt + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + noteDuration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startAt);
+        osc.stop(startAt + noteDuration + 0.02);
+      });
+    } catch (err) {
+      console.warn('[sound] não consegui tocar o som:', err);
+    }
+  };
+
+  // contexto suspenso (navegador antes do primeiro clique, ou o sistema pausou o áudio): espera
+  // ele voltar pra agendar — agendar antes faz as notas nascerem "no passado" quando ele retoma
+  if (ctx.state === 'running') schedule();
+  else ctx.resume().then(schedule).catch((err) => console.warn('[sound] áudio bloqueado pelo navegador:', err));
+}
+
+// o navegador só libera áudio depois de um gesto: destrava os sons no primeiro clique/tecla
+['pointerdown', 'keydown'].forEach((evt) => document.addEventListener(evt, () => {
+  try { const ctx = getSfxCtx(); if (ctx.state !== 'running') ctx.resume().catch(() => {}); } catch (_) { /* sem Web Audio */ }
+}, { capture: true, passive: true }));
+
+// sons de call (alguém entrou/saiu, eu entrei/saí) tocam em qualquer status. Os de mensagem só
+// com o status "ativo" (ver myPresenceStatus em 08-notifications.js).
 
 // duas notas subindo — mesmo som pra "eu entrei" e "o outro entrou"
 function playJoinSound() {
-  playChime([440, 660], { stepDuration: 0.09, noteDuration: 0.17 });
+  playChime('join', [440, 660], { stepDuration: 0.09, noteDuration: 0.17 });
 }
 
 // duas notas descendo — o inverso do som de entrada, pra ficar reconhecível de ouvido
 function playLeaveSound() {
-  playChime([560, 360], { stepDuration: 0.09, noteDuration: 0.19 });
+  playChime('leave', [560, 360], { stepDuration: 0.09, noteDuration: 0.19 });
 }
 
-// nota única, mais curta e discreta — não deve competir com quem está falando numa call
-function playMessageSound() {
-  playChime([740], { noteDuration: 0.11, volume: 0.13, type: 'triangle' });
+// nota única, mais curta e discreta — não deve competir com quem está falando numa call.
+// Só toca com o status "ativo" (force: teste nas configurações, que sempre toca).
+function playMessageSound(opts = {}) {
+  if (!opts.force && myPresenceStatus() !== 'online') return;
+  playChime('message', [740], { noteDuration: 0.11, volume: 0.13, type: 'triangle' });
 }
+
+// mutar/desmutar e ensurdecer: cliques curtos, graves pra "desligou" e agudos pra "ligou"
+function playMuteSound() { playChime('mute', [520, 390], { stepDuration: 0.05, noteDuration: 0.08, volume: 0.12, type: 'triangle' }); }
+function playUnmuteSound() { playChime('unmute', [390, 520], { stepDuration: 0.05, noteDuration: 0.08, volume: 0.12, type: 'triangle' }); }
+function playDeafenSound() { playChime('deafen', [440, 330, 247], { stepDuration: 0.05, noteDuration: 0.09, volume: 0.12, type: 'triangle' }); }
+function playUndeafenSound() { playChime('undeafen', [247, 330, 440], { stepDuration: 0.05, noteDuration: 0.09, volume: 0.12, type: 'triangle' }); }
 
 function getAnalyserLevel(analyser) {
   const data = new Uint8Array(analyser.frequencyBinCount);
@@ -154,6 +206,7 @@ function applyOutputDeviceToAudioCtx() {
 // troca a saída na hora, com a call aberta (antes só valia pra quem entrasse depois)
 function applyOutputDeviceEverywhere() {
   applyOutputDeviceToAudioCtx();
+  applyOutputDeviceToSfxCtx();
   const id = getSavedDeviceId('speaker');
   if (!SUPPORTS_SINK_ID || !id) return;
   const els = [...document.querySelectorAll('audio[data-peer-audio], #musicbotAudio, .call-screenshare-tile video')];
@@ -806,17 +859,22 @@ function applyLocalTrackState() {
   }
 }
 
-function setMuted(val) {
+// opts.quiet: sem som (ex: ensurdecer muta junto e já toca o som próprio dele)
+function setMuted(val, opts = {}) {
+  const changed = isMuted !== val;
   isMuted = val;
   applyLocalTrackState();
   if (isMuted) publishLocalSpeaking(false);
   muteBtn.classList.toggle('active', isMuted);
   callViewMuteBtn.classList.toggle('active', isMuted);
+  if (changed && !opts.quiet) (isMuted ? playMuteSound : playUnmuteSound)();
   syncLocalVoiceState();
 }
 
 function setDeafened(val) {
+  const changed = isDeafened !== val;
   isDeafened = val;
+  if (changed) (isDeafened ? playDeafenSound : playUndeafenSound)();
   for (const peer of peers.values()) {
     applyLocalOverridesToRemoteAudio(peer.userId);
     applyLocalOverrideToRemoteScreenAudio(peer.userId);
@@ -826,7 +884,7 @@ function setDeafened(val) {
   deafenBtn.classList.toggle('active', isDeafened);
   callViewDeafenBtn.classList.toggle('active', isDeafened);
   if (isDeafened && !isMuted) {
-    setMuted(true); // ensurdecer também muta o microfone, igual Discord
+    setMuted(true, { quiet: true }); // ensurdecer também muta o microfone, igual Discord
   } else {
     syncLocalVoiceState();
   }
