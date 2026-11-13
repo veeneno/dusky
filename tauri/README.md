@@ -40,28 +40,38 @@ site está em `public/js/app/21-call-sfu.js` (parte "app desktop no Linux") e
 
 ## Como rodar
 
-### Linux (Ubuntu/Debian)
+### Linux
+
+Arch:
+
+```bash
+sudo pacman -S --needed base-devel webkit2gtk-4.1 libayatana-appindicator librsvg xdotool openssl \
+  clang gst-plugin-pipewire gst-plugins-good pipewire ffmpeg rustup nodejs npm
+rustup default stable
+```
+
+Ubuntu/Debian:
 
 ```bash
 sudo apt install build-essential curl file libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
-  librsvg2-dev libxdo-dev libssl-dev \
-  gstreamer1.0-pipewire gstreamer1.0-plugins-good   # microfone e som dentro do WebKitGTK
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Rust
-
-# o SDK do LiveKit (call) precisa de clang 21 ou mais novo — o do Ubuntu 22.04/24.04 é velho:
+  librsvg2-dev libxdo-dev libssl-dev gstreamer1.0-pipewire gstreamer1.0-plugins-good
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# o clang do Ubuntu é velho pro SDK do LiveKit (precisa de 21+):
 wget https://apt.llvm.org/llvm.sh && sudo bash llvm.sh 21
+```
 
+Depois, nos dois:
+
+```bash
 cd tauri
 npm install
-npm run dev          # abre o app (compila em modo debug; a 1ª vez baixa o libwebrtc, ~100 MB)
+npm run dev          # abre o app (modo debug; a 1ª vez baixa o libwebrtc, ~100 MB)
 npm run build        # gera .deb e .AppImage em src-tauri/target/release/bundle/
 ```
 
-Os scripts `dev`/`build` já usam `clang-21`/`clang++-21` no Linux (troque com `CC`/`CXX` se a
-sua versão tiver outro nome).
-
-Pra compartilhar a tela: `ffmpeg` (X11) ou `gstreamer1.0-pipewire` (Wayland). Pro áudio da tela:
-`pipewire-bin` (pw-record, pw-link, pw-dump).
+Os scripts `dev`/`build` escolhem o clang sozinhos (`clang-21` se existir, senão `clang`); dá pra
+forçar com `CC`/`CXX`. Pra compartilhar a tela: `ffmpeg` (X11) ou o plugin do PipeWire do
+GStreamer (Wayland). Pro áudio da tela: as ferramentas do PipeWire (pw-record, pw-link, pw-dump).
 
 ### Windows
 
