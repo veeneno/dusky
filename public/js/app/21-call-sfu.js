@@ -484,6 +484,11 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
   sfuNativeDiag(ctx);
   entry.reset();
   ctx.videos.set(ev.sid, entry);
+  // garantia: se em 8 s nenhum quadro aparecer (decodificador que não dá erro mas também não
+  // entrega nada, quadro-chave que nunca chega…), vai pelo caminho em JPEG
+  setTimeout(() => {
+    if (ctx.videos.get(ev.sid) === entry && entry.frames === 0) sfuNativeFallBack(ctx, entry, 'nenhum quadro em 8 s');
+  }, 8000);
   const receiver = {
     // números da tela (resolução, fps, kbps) contados aqui mesmo
     // o fps mostrado é o de quadros que APARECERAM (não só decodificados)
@@ -602,19 +607,24 @@ function sfuNativeDecoderFailed(ctx, sid, entry, err) {
   entry.decoder = null;
   entry.needKey = true;
   if (sfu !== ctx || entry.fellBack) return;
-  ctx.api.log(`tela de ${entry.identity}: decodificador falhou (${entry.failures}x): ${entry.lastError}`);
-  if (entry.failures >= 2 && !entry.softwareOnly) {
+  ctx.api.log(`tela de ${entry.identity}: decodificador falhou${entry.softwareOnly ? ' (no processador)' : ''}: ${entry.lastError}`);
+  if (!entry.softwareOnly) {
+    // o 1º costuma ser o da placa de vídeo (ex: NVDEC dentro do WebKitGTK): tenta no processador
     entry.softwareOnly = true;
-    entry.failures = 0;
     ctx.api.log(`tela de ${entry.identity}: tentando decodificar só no processador`);
-  } else if (entry.failures >= 2) {
-    entry.fellBack = true;
-    ctx.api.log(`tela de ${entry.identity}: não deu pra decodificar aqui — indo pelo caminho em JPEG (até 30 fps)`);
-    const user = sfuUserId({ identity: entry.identity });
-    if (user != null) ctx.api.screenFallback(user);
+    ctx.api.keyframe(sid);
     return;
   }
-  ctx.api.keyframe(sid);
+  sfuNativeFallBack(ctx, entry, 'o decodificador falhou');
+}
+
+// essa tela passa a vir pelo caminho em JPEG (o libwebrtc decodifica no Rust) — sempre funciona
+function sfuNativeFallBack(ctx, entry, why) {
+  if (entry.fellBack || sfu !== ctx) return;
+  entry.fellBack = true;
+  ctx.api.log(`tela de ${entry.identity}: ${why} — indo pelo caminho em JPEG (até 30 fps)`);
+  const user = sfuUserId({ identity: entry.identity });
+  if (user != null) ctx.api.screenFallback(user);
 }
 
 // uma linha no terminal do app a cada 5 s por tela comprimida: o que chegou, o que foi decodificado,

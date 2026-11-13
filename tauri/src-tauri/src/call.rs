@@ -79,6 +79,9 @@ struct EncodedQueue {
     frames: VecDeque<Vec<u8>>, // cada um já no formato da página (ver call_pull_video)
     waiting_key: bool,
     dropped: u64,
+    /// último pedido de quadro-chave (quem envia pela tela do navegador só manda quando pedem, e o
+    /// servidor de mídia pode ignorar pedidos muito seguidos: pede de novo enquanto não chega)
+    last_pli: Option<Instant>,
 }
 
 #[derive(Default)]
@@ -387,7 +390,7 @@ fn start_watcher(app: &AppHandle, session_id: u64, url: &str, token: &str, me: &
                     match ev["ev"].as_str() {
                         Some("track") => {
                             let sid = ev["sid"].as_str().unwrap_or("").to_string();
-                            video.encoded.lock().unwrap().insert(sid.clone(), EncodedQueue { frames: VecDeque::new(), waiting_key: true, dropped: 0 });
+                            video.encoded.lock().unwrap().insert(sid.clone(), EncodedQueue { frames: VecDeque::new(), waiting_key: true, dropped: 0, last_pli: Some(Instant::now()) });
                             emit(&handle, json!({
                                 "ev": "track", "sid": sid, "identity": ev["identity"], "source": "screen_share",
                                 "kind": "video", "encoded": true, "codec": ev["codec"],
@@ -430,20 +433,25 @@ fn start_watcher(app: &AppHandle, session_id: u64, url: &str, token: &str, me: &
                         let mut enc = video.encoded.lock().unwrap();
                         let Some(q) = enc.get_mut(&sid) else { continue };
                         if q.waiting_key && !key {
+                            if q.last_pli.map(|t| t.elapsed() > Duration::from_millis(800)).unwrap_or(true) {
+                                q.last_pli = Some(Instant::now());
+                                need_key = true;
+                            }
                             q.dropped += 1;
                             if q.dropped % 300 == 0 {
                                 log::info(&format!("call (telas): {} quadros descartados esperando quadro-chave ({sid})", q.dropped));
                             }
-                            continue;
-                        }
-                        q.waiting_key = false;
-                        if q.frames.len() >= MAX_ENCODED_QUEUE {
-                            log::warn(&format!("call (telas): a página não deu conta ({} quadros na fila) — recomeçando do quadro-chave", q.frames.len()));
-                            q.frames.clear();
-                            q.waiting_key = true;
-                            need_key = true;
                         } else {
-                            q.frames.push_back(payload);
+                            q.waiting_key = false;
+                            if q.frames.len() >= MAX_ENCODED_QUEUE {
+                                log::warn(&format!("call (telas): a página não deu conta ({} quadros na fila) — recomeçando do quadro-chave", q.frames.len()));
+                                q.frames.clear();
+                                q.waiting_key = true;
+                                q.last_pli = Some(Instant::now());
+                                need_key = true;
+                            } else {
+                                q.frames.push_back(payload);
+                            }
                         }
                     }
                     if need_key {
@@ -983,6 +991,7 @@ pub fn call_keyframe(app: AppHandle, webview: Webview, sid: String) {
         if let Some(q) = st.call.video.encoded.lock().unwrap().get_mut(&sid) {
             q.frames.clear();
             q.waiting_key = true;
+            q.last_pli = Some(Instant::now());
         }
         st.call.send_watcher(json!({ "cmd": "keyframe", "sid": sid }));
     }
