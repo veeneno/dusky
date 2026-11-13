@@ -16,6 +16,10 @@ const COMMANDS: &[&str] = &[
     "call_push_mic",
     "call_pull",
     "call_set_subscribed",
+    "call_pull_video",
+    "call_push_camera",
+    "call_stop_camera",
+    "call_stats",
     // tela de "conectando…"
     "shell_get_status",
     "shell_set_server",

@@ -103,12 +103,20 @@ impl ScreenAudio {
                 *running = None;
             }
         });
+        // Linux com a call pelo Rust: o áudio da tela vai direto pra sala (faixa "som-da-tela"),
+        // sem passar pela página — o WebKitGTK nem tem como montar uma faixa com ele
+        let to_call = app.state::<AppState>().call.start_screen_audio();
         match platform::start(plan, app.clone(), on_end) {
             Ok(r) => {
                 *self.running.lock().unwrap() = Some((id, r));
-                pcm_plan()
+                if to_call {
+                    json!({ "mode": "none", "native": true })
+                } else {
+                    pcm_plan()
+                }
             }
             Err(err) => {
+                app.state::<AppState>().call.stop_screen_audio();
                 crate::server::log::warn(&format!("falha ao iniciar a captura de áudio da tela: {err}"));
                 json!({ "mode": "none" })
             }
@@ -117,6 +125,9 @@ impl ScreenAudio {
 
     pub fn stop(&self) {
         *self.pending.lock().unwrap() = None;
+        if let Some(app) = self.app.lock().unwrap().clone() {
+            app.state::<AppState>().call.stop_screen_audio();
+        }
         let running = self.running.lock().unwrap().take();
         if let Some((_, r)) = running {
             (r.stop)();
@@ -132,6 +143,9 @@ impl ScreenAudio {
 pub fn send_pcm(app: &AppHandle, bytes: &[u8]) {
     if bytes.is_empty() {
         return;
+    }
+    if app.state::<AppState>().call.push_screen_audio(bytes) {
+        return; // foi pra call nativa
     }
     let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
     app::emit_to_main(app, "pcm", &b64);

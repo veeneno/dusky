@@ -24,7 +24,11 @@ pub const BRIDGE_JS: &str = include_str!("bridge.js");
 /// a ponte + se a call vai pelo Rust (Linux: o WebKitGTK não tem WebRTC)
 pub fn bridge_script() -> String {
     #[allow(unused_mut)]
-    let mut s = format!("window.__DIDISCORD_NATIVE_CALL__ = {};\n{BRIDGE_JS}", cfg!(target_os = "linux"));
+    let mut s = format!(
+        "window.__DIDISCORD_NATIVE_CALL__ = {};\nwindow.__DIDISCORD_LOCAL_ORIGIN__ = {};\n{BRIDGE_JS}",
+        cfg!(target_os = "linux"),
+        serde_json::to_string(&local_base().origin().ascii_serialization()).unwrap()
+    );
     // só no modo debug: DIDISCORD_INJECT_JS=arquivo.js roda um script extra em toda página (testes)
     #[cfg(debug_assertions)]
     if let Some(extra) = std::env::var_os("DIDISCORD_INJECT_JS").and_then(|p| std::fs::read_to_string(p).ok()) {
@@ -85,13 +89,44 @@ fn now_ms() -> u64 {
 }
 
 /// páginas do próprio app (pasta ui/): tauri://localhost no Linux, http://tauri.localhost no Windows
+/// Endereço das páginas locais. No app instalado é tauri://localhost (Linux) ou
+/// http://tauri.localhost (Windows); no `npm run dev` o CLI do Tauri serve a pasta ui/ num servidor
+/// próprio (devUrl) e as páginas locais vêm de lá.
+static LOCAL_BASE: std::sync::OnceLock<Url> = std::sync::OnceLock::new();
+
+fn local_base() -> &'static Url {
+    LOCAL_BASE.get_or_init(|| Url::parse(if cfg!(windows) { "http://tauri.localhost/" } else { "tauri://localhost/" }).unwrap())
+}
+
+fn init_local_base(app: &AppHandle) {
+    #[allow(unused_mut)]
+    let mut base = Url::parse(if cfg!(windows) { "http://tauri.localhost/" } else { "tauri://localhost/" }).unwrap();
+    #[cfg(dev)]
+    if let Some(dev) = app.config().build.dev_url.clone() {
+        base = dev;
+    }
+    let _ = app;
+    let _ = LOCAL_BASE.set(base);
+}
+
 pub fn is_local(url: &Url) -> bool {
-    url.scheme() == "tauri" || url.host_str() == Some("tauri.localhost")
+    url.scheme() == "tauri"
+        || url.host_str() == Some("tauri.localhost")
+        || url.origin().ascii_serialization() == local_base().origin().ascii_serialization()
 }
 
 pub fn local_url(path: &str) -> Url {
-    let base = if cfg!(windows) { "http://tauri.localhost/" } else { "tauri://localhost/" };
-    Url::parse(base).unwrap().join(path).unwrap()
+    local_base().join(path).unwrap()
+}
+
+/// a mesma página local, do jeito que o construtor de janelas quer
+pub fn local_webview_url(path: &str) -> WebviewUrl {
+    let url = local_url(path);
+    if url.scheme() == "http" || url.scheme() == "https" {
+        WebviewUrl::External(url)
+    } else {
+        WebviewUrl::CustomProtocol(url)
+    }
 }
 
 /// manda um evento pra página (cai no window.__didiscordEmit do bridge.js)
@@ -151,6 +186,10 @@ fn grant_site(app: &AppHandle, origin: &str) {
         "allow-call-push-mic",
         "allow-call-pull",
         "allow-call-set-subscribed",
+        "allow-call-pull-video",
+        "allow-call-push-camera",
+        "allow-call-stop-camera",
+        "allow-call-stats",
         // window.Notification da página (o plugin de notificação troca pela notificação do sistema)
         "notification:default",
     ] {
@@ -465,6 +504,7 @@ pub fn run() {
                 tray: Mutex::new(None),
             });
             let handle = app.handle().clone();
+            init_local_base(&handle);
             app.state::<AppState>().audio.set_app(&handle);
             create_main_window(&handle)?;
             if let Err(err) = tray::create(&handle) {
@@ -523,6 +563,10 @@ pub fn run() {
             call::call_push_mic,
             call::call_pull,
             call::call_set_subscribed,
+            call::call_pull_video,
+            call::call_push_camera,
+            call::call_stop_camera,
+            call::call_stats,
             picker::picker_get_sources,
             picker::picker_choose,
             picker::picker_get_audio_apps,

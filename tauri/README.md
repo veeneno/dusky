@@ -17,7 +17,9 @@ hospedado e adiciona o que o navegador não faz. O site não precisa mudar nada:
 | Áudio da tela (só o app escolhido ou tudo menos o didiscord) | ✅ PipeWire | ✅ audiocap |
 | Call: voz (falar, ouvir, mudo/surdo, volume por pessoa, "falando") | ✅ pelo Rust (ver abaixo) | ✅ |
 | Call: supressão de ruído, gate, nivelador, limitador | ✅ | ✅ |
-| Call: assistir tela/câmera dos outros, mandar câmera | ainda não | ✅ |
+| Call: assistir tela/câmera dos outros, mandar câmera | ✅ pelo Rust | ✅ |
+| Call: áudio da tela compartilhada indo pra call | ✅ pelo Rust | ✅ |
+| Call: números de qualidade (perda, jitter, ping) | ✅ pelo Rust | ✅ |
 | "Jogando X" (presence) e atualização automática | ainda não | ainda não |
 
 ### Call no Linux
@@ -27,11 +29,19 @@ existe. Então no Linux só o **transporte** da call sai da página e vai pro Ru
 (`src-tauri/src/call.rs`, com o SDK do LiveKit):
 
 ```
-microfone → getUserMedia → supressão de ruído / gate / nivelador / limitador (os do site)
-          → worklet didiscord-pcm-tap → call_push_mic → LiveKit
-quem fala → LiveKit → call_pull (a página busca em laço) → worklet didiscord-pcm-player
-          → MediaStream → o caminho de sempre do site (<audio>, volume, reforço, áudio espacial)
+microfone   → getUserMedia → supressão de ruído / gate / nivelador / limitador (os do site)
+            → worklet didiscord-pcm-tap → call_push_mic → LiveKit
+quem fala   → LiveKit → call_pull (a página busca em laço) → worklet didiscord-pcm-player
+            → MediaStream → o caminho de sempre do site (<audio>, volume, reforço, áudio espacial)
+vídeo deles → LiveKit → JPEG no Rust (até 1080p, 30 fps) → call_pull_video → <canvas>
+            → canvas.captureStream() → o <video> de sempre do site
+minha câmera → <canvas> → JPEG → call_push_camera → LiveKit
+som da tela → captador do PipeWire → direto pro LiveKit (faixa "som-da-tela"), sem passar pela página
+qualidade   → call_stats → números do libwebrtc no formato do getStats() do navegador
 ```
+
+Testado de ponta a ponta (app + Chromium na mesma sala): voz nos dois sentidos, câmera nos dois
+sentidos, a tela pela placa de vídeo + o som dela chegando no Chromium, e os números de qualidade.
 
 O servidor não muda (o ingresso vem do mesmo `GET /api/rtc/sfu`), mas **precisa estar com
 `SFU=livekit`** — a call em malha (sem servidor de mídia) não funciona no app do Linux. O lado do

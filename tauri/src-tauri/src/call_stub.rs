@@ -8,6 +8,13 @@ pub struct Call;
 
 impl Call {
     pub fn leave(&self) {}
+    pub fn start_screen_audio(&self) -> bool {
+        false
+    }
+    pub fn push_screen_audio(&self, _bytes: &[u8]) -> bool {
+        false
+    }
+    pub fn stop_screen_audio(&self) {}
 }
 
 #[tauri::command]
@@ -28,3 +35,21 @@ pub async fn call_pull() -> Response {
 
 #[tauri::command]
 pub fn call_set_subscribed(_user_id: u64, _screen: bool, _on: bool) {}
+
+#[tauri::command]
+pub async fn call_pull_video() -> Response {
+    Response::new(Vec::<u8>::new())
+}
+
+#[tauri::command]
+pub async fn call_push_camera(_request: Request<'_>) -> Result<bool, String> {
+    Ok(false)
+}
+
+#[tauri::command]
+pub fn call_stop_camera() {}
+
+#[tauri::command]
+pub async fn call_stats(_sid: String) -> Vec<serde_json::Value> {
+    Vec::new()
+}

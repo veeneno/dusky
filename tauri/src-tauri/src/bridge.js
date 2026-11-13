@@ -35,7 +35,10 @@
     configurable: false,
   });
 
-  const isLocal = location.protocol === 'tauri:' || location.hostname === 'tauri.localhost';
+  // páginas do próprio app (ui/): tauri://localhost, http://tauri.localhost ou, no npm run dev, o
+  // servidor de desenvolvimento do Tauri (o Rust diz qual em __DIDISCORD_LOCAL_ORIGIN__)
+  const isLocal = location.protocol === 'tauri:' || location.hostname === 'tauri.localhost'
+    || (!!window.__DIDISCORD_LOCAL_ORIGIN__ && location.origin === window.__DIDISCORD_LOCAL_ORIGIN__);
   const platform = navigator.userAgent.includes('Windows') ? 'win32' : 'linux';
 
   if (isLocal && location.pathname.endsWith('/picker.html')) {
@@ -123,6 +126,13 @@
       // ArrayBuffer com o áudio de cada faixa (formato em src/call.rs, call_pull)
       pull: () => invoke('call_pull'),
       setSubscribed: (userId, screen, on) => { fire('call_set_subscribed', { userId: Number(userId), screen: !!screen, on: !!on }); },
+      // ArrayBuffer com os quadros novos de vídeo (JPEG) de cada faixa (formato em call_pull_video)
+      pullVideo: () => invoke('call_pull_video'),
+      // um quadro da minha câmera (Uint8Array com um JPEG) -> true se foi
+      pushCamera: (jpeg) => T.invoke('call_push_camera', jpeg),
+      stopCamera: () => { fire('call_stop_camera'); },
+      // números de qualidade de uma faixa (lista no formato do getStats() do navegador)
+      stats: (sid) => invoke('call_stats', { sid: String(sid) }),
       // eventos: participant, participantLeft, track, trackEnded, reconnecting, reconnected, disconnected, error
       onEvent: (cb) => on('call:event', cb),
     };

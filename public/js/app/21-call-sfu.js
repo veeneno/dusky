@@ -276,7 +276,11 @@ function sfuDisconnect() {
 //   quem fala: sala → app → call.pull() em laço → worklet didiscord-pcm-player → MediaStream →
 //              sfuTrackSubscribed, como se tivesse vindo do LiveKit do navegador (<audio>, volume
 //              por pessoa, reforço acima de 100%, áudio espacial, indicador de fala)
-// Assistir tela/câmera de alguém e mandar a própria câmera ainda não vão por aqui.
+//   tela/câmera dos outros: sala → app (vira JPEG) → call.pullVideo() em laço → <canvas> →
+//              canvas.captureStream() → sfuTrackSubscribed (o <video> de sempre)
+//   minha câmera: <video> escondido → <canvas> → JPEG → call.pushCamera() → sala
+//   áudio da minha tela: o app manda direto pra sala (nem passa por aqui)
+//   qualidade: um "receiver" de mentira com getStats() que pergunta pro app (call.stats)
 const nativeCallApi = () => (window.didiscordDesktop && window.didiscordDesktop.call) || null;
 const PCM_BRIDGE_URL = '/js/worklets/pcm-bridge.js?v=1';
 
@@ -300,7 +304,8 @@ async function sfuConnectNative(info, api) {
   const ctx = {
     native: true, api, room: null, lib: null, pubs: new Map(), queue: new Map(), reconnecting: false,
     players: new Map(), // sid da faixa -> { identity, source, node, track, pending }
-    mic: null, unsubscribe: null, videoNoticeShown: false,
+    videos: new Map(), // sid -> { identity, source, canvas, g, track, drawing }
+    videoLoop: false, camera: null, mic: null, unsubscribe: null,
   };
   const mine = (fn) => (...args) => { if (sfu === ctx) fn(...args); };
   ctx.unsubscribe = api.onEvent(mine((ev) => sfuNativeEvent(ctx, ev)));
@@ -326,12 +331,10 @@ async function sfuConnectNative(info, api) {
 function sfuNativeEvent(ctx, ev) {
   if (ev.ev === 'track') {
     if (ev.kind === 'audio') sfuNativeAddAudio(ctx, ev);
-    else if (!ctx.videoNoticeShown) {
-      ctx.videoNoticeShown = true;
-      toast('assistir tela e câmera ainda não funciona no app do Linux — por enquanto só a voz');
-    }
+    else sfuNativeAddVideo(ctx, ev);
   } else if (ev.ev === 'trackEnded') {
     sfuNativeRemoveAudio(ctx, ev.sid);
+    sfuNativeRemoveVideo(ctx, ev.sid);
   } else if (ev.ev === 'reconnecting') {
     ctx.reconnecting = true;
     sfuMarkPeers(false);
@@ -373,7 +376,86 @@ async function sfuNativeAddAudio(ctx, ev) {
   entry.dest = dest;
   entry.track = dest.stream.getAudioTracks()[0];
   for (const chunk of entry.pending.splice(0)) node.port.postMessage(chunk, [chunk.buffer]);
-  sfuTrackSubscribed({ mediaStreamTrack: entry.track, kind: 'audio', receiver: null }, { source: ev.source }, { identity: ev.identity });
+  sfuTrackSubscribed({ mediaStreamTrack: entry.track, kind: 'audio', receiver: sfuNativeStatsReceiver(ctx, ev.sid) }, { source: ev.source }, { identity: ev.identity });
+}
+
+// o site lê a qualidade de receiver.getStats() — aqui quem responde é o app
+function sfuNativeStatsReceiver(ctx, sid) {
+  return {
+    getStats: async () => {
+      const list = sfu === ctx ? await ctx.api.stats(sid) : [];
+      return new Map((list || []).map((r) => [r.id, r]));
+    },
+  };
+}
+
+// tela/câmera de alguém: o app manda JPEG, a gente desenha num canvas e o canvas vira a faixa
+function sfuNativeAddVideo(ctx, ev) {
+  sfuNativeRemoveVideo(ctx, ev.sid);
+  const canvas = document.createElement('canvas');
+  canvas.width = 16;
+  canvas.height = 9;
+  const g = canvas.getContext('2d');
+  const track = canvas.captureStream(30).getVideoTracks()[0];
+  if (!track) {
+    console.warn('[sfu] (app) este motor não consegue transformar canvas em vídeo');
+    return;
+  }
+  const entry = { identity: ev.identity, source: ev.source, canvas, g, track, drawing: false };
+  ctx.videos.set(ev.sid, entry);
+  sfuTrackSubscribed({ mediaStreamTrack: track, kind: 'video', receiver: sfuNativeStatsReceiver(ctx, ev.sid) }, { source: ev.source }, { identity: ev.identity });
+  if (!ctx.videoLoop) sfuNativeVideoLoop(ctx);
+}
+
+function sfuNativeRemoveVideo(ctx, sid) {
+  const entry = ctx.videos.get(sid);
+  if (!entry) return;
+  ctx.videos.delete(sid);
+  sfuTrackUnsubscribed({ mediaStreamTrack: entry.track }, { source: entry.source }, { identity: entry.identity });
+  entry.track.stop();
+}
+
+// busca os quadros novos (só quando tem alguém mandando vídeo)
+async function sfuNativeVideoLoop(ctx) {
+  ctx.videoLoop = true;
+  const decoder = new TextDecoder();
+  while (sfu === ctx && ctx.videos.size) {
+    let buf;
+    try {
+      buf = await ctx.api.pullVideo();
+    } catch (_) {
+      await new Promise((r) => setTimeout(r, 300));
+      continue;
+    }
+    if (!(buf instanceof ArrayBuffer) || !buf.byteLength) continue;
+    // repetido: [u16 tamanho do sid][sid][u32 largura][u32 altura][u32 bytes][JPEG]
+    const view = new DataView(buf);
+    let off = 0;
+    while (off + 14 <= buf.byteLength) {
+      const sidLen = view.getUint16(off, true);
+      off += 2;
+      const sid = decoder.decode(new Uint8Array(buf, off, sidLen));
+      off += sidLen;
+      const w = view.getUint32(off, true);
+      const h = view.getUint32(off + 4, true);
+      const len = view.getUint32(off + 8, true);
+      off += 12;
+      const jpeg = new Blob([new Uint8Array(buf, off, len)], { type: 'image/jpeg' });
+      off += len;
+      const entry = ctx.videos.get(sid);
+      if (!entry || entry.drawing) continue; // ainda desenhando o anterior: pula esse
+      entry.drawing = true;
+      createImageBitmap(jpeg).then((bmp) => {
+        if (entry.canvas.width !== w || entry.canvas.height !== h) {
+          entry.canvas.width = w;
+          entry.canvas.height = h;
+        }
+        entry.g.drawImage(bmp, 0, 0, w, h);
+        bmp.close();
+      }).catch(() => { /* quadro estragado: vem outro */ }).finally(() => { entry.drawing = false; });
+    }
+  }
+  ctx.videoLoop = false;
 }
 
 function sfuNativeRemoveAudio(ctx, sid) {
@@ -424,15 +506,14 @@ async function sfuNativePullLoop(ctx) {
 }
 
 function sfuNativeSetTrack(ctx, kind, track) {
-  if (kind !== 'mic') {
-    // câmera / tela pelo navegador ainda não vão pelo app no Linux (a tela pela placa de vídeo vai
-    // pelo auxiliar, que publica sozinho — ver publishNativeToSfu)
-    if (track) console.warn('[sfu] (app) ainda não dá pra mandar', kind, 'pela call nativa');
+  if (kind !== 'mic' && kind !== 'camera') {
+    // tela pelo navegador não existe no app do Linux (a tela vai pelo auxiliar, que publica sozinho
+    // — ver publishNativeToSfu — e o som dela vai pelo próprio app)
     return Promise.resolve();
   }
   const next = (ctx.queue.get(kind) || Promise.resolve())
-    .then(() => sfuNativeSetMic(ctx, track))
-    .catch((err) => console.warn('[sfu] (app) não consegui ligar o microfone na call:', err));
+    .then(() => (kind === 'mic' ? sfuNativeSetMic(ctx, track) : sfuNativeSetCamera(ctx, track)))
+    .catch((err) => console.warn('[sfu] (app) não consegui ligar', kind, 'na call:', err));
   ctx.queue.set(kind, next);
   return next;
 }
@@ -469,6 +550,51 @@ async function sfuNativeSetMic(ctx, track) {
   };
 }
 
+// minha câmera: desenha o <video> num canvas ~30x por segundo e manda cada quadro em JPEG pro app
+async function sfuNativeSetCamera(ctx, track) {
+  if (ctx.camera && ctx.camera.track === track) return;
+  sfuNativeStopCamera(ctx);
+  if (!track || sfu !== ctx) return;
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = new MediaStream([track]);
+  await video.play().catch(() => { /* toca sozinho quando chegar o 1º quadro */ });
+  const canvas = document.createElement('canvas');
+  const g = canvas.getContext('2d');
+  const cam = { track, video, canvas, timer: null, busy: false };
+  ctx.camera = cam;
+  const tick = () => {
+    if (sfu !== ctx || ctx.camera !== cam) return;
+    cam.timer = setTimeout(tick, 1000 / 30);
+    if (cam.busy || !video.videoWidth || track.readyState !== 'live' || !track.enabled) return;
+    const k = Math.min(1, 1280 / video.videoWidth, 720 / video.videoHeight);
+    const w = Math.max(2, Math.round(video.videoWidth * k) & ~1);
+    const h = Math.max(2, Math.round(video.videoHeight * k) & ~1);
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    g.drawImage(video, 0, 0, w, h);
+    cam.busy = true;
+    canvas.toBlob(async (blob) => {
+      try {
+        if (blob && sfu === ctx && ctx.camera === cam) await ctx.api.pushCamera(new Uint8Array(await blob.arrayBuffer()));
+      } catch (_) { /* fora da call */ } finally {
+        cam.busy = false;
+      }
+    }, 'image/jpeg', 0.85);
+  };
+  tick();
+}
+
+function sfuNativeStopCamera(ctx) {
+  const cam = ctx.camera;
+  ctx.camera = null;
+  if (!cam) return;
+  clearTimeout(cam.timer);
+  cam.video.srcObject = null;
+  ctx.api.stopCamera();
+}
+
 function sfuNativeStopMic(ctx) {
   const mic = ctx.mic;
   ctx.mic = null;
@@ -480,5 +606,7 @@ function sfuNativeStopMic(ctx) {
 function sfuNativeTeardown(ctx) {
   if (ctx.unsubscribe) { ctx.unsubscribe(); ctx.unsubscribe = null; }
   sfuNativeStopMic(ctx);
+  sfuNativeStopCamera(ctx);
   for (const sid of [...ctx.players.keys()]) sfuNativeRemoveAudio(ctx, sid);
+  for (const sid of [...ctx.videos.keys()]) sfuNativeRemoveVideo(ctx, sid);
 }

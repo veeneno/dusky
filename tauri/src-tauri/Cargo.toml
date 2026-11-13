@@ -33,6 +33,7 @@ x11rb = { version = "0.13", features = ["randr"] }
 # pra compilar (o libwebrtc vem pronto, mas com a libc++ do Chromium) — ver README.
 livekit = { version = "0.10", default-features = false, features = ["native", "native-tls"] }
 futures-util = "0.3"
+jpeg-encoder = { version = "0.7", features = ["simd"] }
 
 # Windows: listar telas/janelas (com miniatura)
 [target.'cfg(windows)'.dependencies]

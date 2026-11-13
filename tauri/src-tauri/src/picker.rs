@@ -10,7 +10,7 @@ use crate::sources::{self, Source, SourceView};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, Webview, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, Webview, WebviewWindowBuilder, WindowEvent};
 use tokio::sync::oneshot;
 
 pub const LABEL: &str = "picker";
@@ -63,8 +63,7 @@ pub async fn pick(app: &AppHandle, mode: &str) -> Option<Picked> {
     let gen = st.picker.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     *st.picker.0.lock().unwrap() = Some(Active { gen, tx, sources: HashMap::new() });
 
-    let url = app::local_url(&format!("picker.html?mode={mode}"));
-    let url = if cfg!(windows) { WebviewUrl::External(url) } else { WebviewUrl::CustomProtocol(url) };
+    let url = app::local_webview_url(&format!("picker.html?mode={mode}"));
     let audio_mode = mode == "audio";
     let make = || {
         WebviewWindowBuilder::new(app, LABEL, url.clone())
