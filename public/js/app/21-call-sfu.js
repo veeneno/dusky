@@ -444,7 +444,8 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
   if (!track) return;
   track.didiscordCanvas = canvas; // 19-call-ui.js mostra o canvas direto no lugar do <video>
   const entry = {
-    identity: ev.identity, source: 'screen_share', canvas, g, gl, track, encoded: true, codec, decoder: null, needKey: true,
+    identity: ev.identity, source: 'screen_share', canvas, g, gl, track, encoded: true, codec, codecId: ev.codec,
+    decoder: null, needKey: true, configured: '', // configurado pra que tamanho (só no 1º quadro-chave)
     bytes: 0, frames: 0, shown: 0, statFrames: 0, statShown: 0, statAt: performance.now(),
     queue: [], // quadros já decodificados esperando a vez de aparecer (ver sfuNativePresent)
     received: 0, waitingKey: 0, failures: 0, softwareOnly: false, lastError: '',
@@ -466,15 +467,8 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
       },
       error: (err) => sfuNativeDecoderFailed(ctx, ev.sid, entry, err),
     });
-    // 1ª tentativa: o decodificador que o sistema achar melhor (placa de vídeo); se falhar, só no
-    // processador; se falhar de novo, essa tela volta pro caminho em JPEG
-    const cfg = { codec, optimizeForLatency: true };
-    if (entry.softwareOnly) cfg.hardwareAcceleration = 'prefer-software';
-    try {
-      entry.decoder.configure(cfg);
-    } catch (err) {
-      sfuNativeDecoderFailed(ctx, ev.sid, entry, err);
-    }
+    // a configuração espera o 1º quadro-chave (sfuNativeConfigure): precisa do tamanho do vídeo
+    entry.configured = '';
   };
   // diz no terminal se o sistema tem decodificador pra esse codec (faltando plugin do GStreamer, não tem)
   Promise.all([
@@ -599,6 +593,101 @@ function sfuNativePresent(ctx) {
   requestAnimationFrame(tick);
 }
 
+// tamanho do vídeo lido do quadro-chave. Vai junto na configuração do decodificador: sem ele o
+// da NVIDIA no WebKitGTK (nvvp8dec/nvh264dec) recusa o vídeo ("caps not accepted" -> Decode error)
+function sfuNativeFrameSize(codecId, b) {
+  try {
+    if (codecId === 2) { // VP8: código de início 9d 01 2a e depois largura/altura (14 bits cada)
+      if (b.length < 10 || b[3] !== 0x9d || b[4] !== 0x01 || b[5] !== 0x2a) return null;
+      return { w: (b[6] | (b[7] << 8)) & 0x3fff, h: (b[8] | (b[9] << 8)) & 0x3fff };
+    }
+    let pos = 0;
+    let data = b;
+    const bit = () => { const v = (data[pos >> 3] >> (7 - (pos & 7))) & 1; pos++; return v; };
+    const bits = (n) => { let v = 0; for (let i = 0; i < n; i++) v = (v << 1) | bit(); return v; };
+    if (codecId === 3) { // VP9: cabeçalho descompactado
+      const marker = bits(2);
+      if (marker !== 2) return null;
+      const profile = bit() | (bit() << 1);
+      if (profile === 3) bit();
+      if (bit()) return null; // show_existing_frame
+      if (bit() !== 0) return null; // não é quadro-chave
+      bits(2); // show_frame, error_resilient
+      if (bits(24) !== 0x498342) return null;
+      if (profile >= 2) bit();
+      const cs = bits(3);
+      if (cs !== 7) { bit(); if (profile === 1 || profile === 3) bits(3); } else if (profile === 1 || profile === 3) bit();
+      return { w: bits(16) + 1, h: bits(16) + 1 };
+    }
+    if (codecId === 1) { // H.264: procura o SPS (NAL 7) e lê o tamanho dele
+      for (let i = 0; i + 4 < b.length; i++) {
+        if (!(b[i] === 0 && b[i + 1] === 0 && b[i + 2] === 1)) continue;
+        if ((b[i + 3] & 0x1f) !== 7) continue;
+        const raw = [];
+        for (let j = i + 4; j < b.length; j++) {
+          if (j + 2 < b.length && b[j] === 0 && b[j + 1] === 0 && b[j + 2] <= 1) break; // próxima NAL
+          if (j >= i + 6 && b[j] === 3 && b[j - 1] === 0 && b[j - 2] === 0) continue; // byte de prevenção
+          raw.push(b[j]);
+        }
+        data = raw; pos = 0;
+        const ue = () => { let z = 0; while (bit() === 0 && z < 32) z++; return (1 << z) - 1 + bits(z); };
+        const se = () => { const v = ue(); return v & 1 ? (v + 1) >> 1 : -(v >> 1); };
+        const profile = bits(8); bits(16); ue();
+        let chroma = 1;
+        if ([100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135].includes(profile)) {
+          chroma = ue();
+          if (chroma === 3) bit();
+          ue(); ue(); bit();
+          if (bit()) { // matrizes de escala
+            for (let k = 0; k < (chroma === 3 ? 12 : 8); k++) {
+              if (!bit()) continue;
+              let last = 8; let next = 8;
+              for (let m = 0; m < (k < 6 ? 16 : 64); m++) { if (next !== 0) next = (last + se() + 256) % 256; last = next === 0 ? last : next; }
+            }
+          }
+        }
+        ue(); // log2_max_frame_num
+        const poc = ue();
+        if (poc === 0) ue(); else if (poc === 1) { bit(); se(); se(); const n = ue(); for (let k = 0; k < n; k++) se(); }
+        ue(); bit();
+        const wMbs = ue() + 1; const hMaps = ue() + 1;
+        const frameOnly = bit();
+        if (!frameOnly) bit();
+        bit();
+        let cl = 0, cr = 0, ct = 0, cb = 0;
+        if (bit()) { cl = ue(); cr = ue(); ct = ue(); cb = ue(); }
+        const cx = chroma === 0 || chroma === 3 ? 1 : 2;
+        const cy = (chroma === 1 ? 2 : 1) * (2 - frameOnly);
+        return { w: wMbs * 16 - cx * (cl + cr), h: (2 - frameOnly) * hMaps * 16 - cy * (ct + cb) };
+      }
+      return null;
+    }
+  } catch (_) { /* cabeçalho estranho: usa o tamanho padrão */ }
+  return null;
+}
+
+// configura o decodificador no 1º quadro-chave (e de novo se o tamanho mudar)
+// 1ª tentativa: o decodificador que o sistema achar melhor (placa de vídeo); se falhar, só no
+// processador; se falhar de novo, essa tela volta pro caminho em JPEG
+function sfuNativeConfigure(ctx, sid, entry, data) {
+  let size = sfuNativeFrameSize(entry.codecId, data);
+  if (!size || size.w < 16 || size.h < 16 || size.w > 8192 || size.h > 8192) size = entry.size || { w: 1920, h: 1080 };
+  entry.size = size;
+  const tag = `${size.w}x${size.h}`;
+  if (entry.configured === tag) return true;
+  const cfg = { codec: entry.codec, optimizeForLatency: true, codedWidth: size.w, codedHeight: size.h };
+  if (entry.softwareOnly) cfg.hardwareAcceleration = 'prefer-software';
+  try {
+    entry.decoder.configure(cfg);
+    if (!entry.configured) ctx.api.log(`tela de ${entry.identity}: ${entry.codec} ${tag}`);
+    entry.configured = tag;
+    return true;
+  } catch (err) {
+    sfuNativeDecoderFailed(ctx, sid, entry, err);
+    return false;
+  }
+}
+
 // o decodificador da página falhou com essa tela: tenta só no processador e, se falhar de novo,
 // pede pro app mandar essa tela pelo caminho em JPEG (o libwebrtc decodifica no Rust)
 function sfuNativeDecoderFailed(ctx, sid, entry, err) {
@@ -663,6 +752,8 @@ function sfuNativeDecode(ctx, sid, key, ts, data) {
   if (!entry.decoder || entry.decoder.state === 'closed') entry.reset();
   if (!entry.decoder) return;
   if (entry.needKey && !key) { entry.waitingKey++; return; } // começou no meio: espera o quadro-chave
+  if (key && !sfuNativeConfigure(ctx, sid, entry, data)) return;
+  if (!entry.configured) return;
   // a página engasgou e acumulou: recomeça do próximo quadro-chave em vez de mostrar atrasado
   if (entry.decoder.decodeQueueSize > 30) {
     entry.reset();

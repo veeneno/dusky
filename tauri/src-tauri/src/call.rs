@@ -962,13 +962,18 @@ pub async fn call_set_subscribed(app: AppHandle, webview: Webview, user_id: u64,
         return;
     }
     let st = app.state::<AppState>();
-    if screen {
+    // tela que já caiu pro JPEG continua vindo por aqui (senão voltava pro auxiliar, falhava de
+    // novo e ficava num ciclo, com a tela sumindo)
+    let jpeg = screen
+        && st.call.session.lock().unwrap().as_ref()
+            .is_some_and(|s| s.jpeg_users.lock().unwrap().contains(&user_id.to_string()));
+    if screen && !jpeg {
         st.call.send_watcher(json!({ "cmd": "watch", "user": user_id.to_string(), "on": on }));
     }
     let guard = st.call.session.lock().unwrap();
     let Some(s) = guard.as_ref() else { return };
     // com o auxiliar assistindo, as telas não vêm por aqui
-    if screen && s.watcher.lock().unwrap().is_some() {
+    if screen && !jpeg && s.watcher.lock().unwrap().is_some() {
         return;
     }
     let ids = [user_id.to_string(), format!("tela-{user_id}")];
