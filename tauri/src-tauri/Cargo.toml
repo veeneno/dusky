@@ -1,0 +1,46 @@
+[package]
+name = "didiscord"
+version = "0.6.0"
+description = "App desktop do didiscord (Tauri / Rust)"
+authors = ["veneno"]
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros", "rt-multi-thread"] }
+base64 = "0.22"
+sha2 = "0.10"
+url = "2"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# TLS do sistema (OpenSSL no Linux, SChannel no Windows) — não precisa de compilador C extra
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "http2", "charset", "system-proxy"] }
+
+# Linux: configurar o WebKitGTK (mic/câmera/autoplay) e listar telas/janelas do X11
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0"
+x11rb = { version = "0.13", features = ["randr"] }
+# call pelo servidor de mídia feita no Rust (o WebKitGTK não tem WebRTC). Precisa de clang++ 21+
+# pra compilar (o libwebrtc vem pronto, mas com a libc++ do Chromium) — ver README.
+livekit = { version = "0.10", default-features = false, features = ["native", "native-tls"] }
+futures-util = "0.3"
+
+# Windows: listar telas/janelas (com miniatura)
+[target.'cfg(windows)'.dependencies]
+xcap = "0.9"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

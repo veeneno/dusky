@@ -1,0 +1,14 @@
+{
+  "name": "didiscord-tauri",
+  "private": true,
+  "version": "0.6.0",
+  "description": "App desktop do didiscord em Rust (Tauri 2)",
+  "scripts": {
+    "dev": "node scripts/tauri.js dev",
+    "build": "node scripts/tauri.js build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

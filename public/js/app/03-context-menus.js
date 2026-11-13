@@ -188,8 +188,13 @@ function micConstraints(micId) {
 // lado, mesmo aparecendo local (medidor/borda verde continuam funcionando, pois não passam pelo
 // peer connection). Detectamos esse ambiente pra pular esse processamento só na track que é
 // realmente enviada, e mandar o áudio cru do mic direto — no navegador normal nada muda.
+// app ANTIGO em Tauri (call pelo WebRTC do próprio WebKit, que não aceitava o áudio processado).
+// O app novo (pasta tauri/) se identifica com didiscordDesktop.shell === 'tauri' e leva a call pro
+// Rust — aí o microfone passa pelo processamento normal (supressão de ruído, gate, nivelador…).
 function isTauriApp() {
-  return typeof window !== 'undefined' && (window.__TAURI__ !== undefined || window.__TAURI_INTERNALS__ !== undefined);
+  if (typeof window === 'undefined') return false;
+  if (window.didiscordDesktop && window.didiscordDesktop.shell === 'tauri') return false;
+  return window.__TAURI__ !== undefined || window.__TAURI_INTERNALS__ !== undefined;
 }
 
 const BADGE_MIC_OFF = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="3" y1="3" x2="21" y2="21"/></svg>';

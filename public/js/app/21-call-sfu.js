@@ -121,6 +121,7 @@ function sfuTrackUnsubscribed(track, publication, participant) {
 // "parar de assistir" a tela de alguém: no SFU é só deixar de assinar as faixas da tela dela
 function sfuSetScreenSubscribed(userId, on) {
   if (!sfu) return;
+  if (sfu.native) { sfu.api.setSubscribed(userId, true, on); return; }
   // a tela pode vir da própria pessoa (navegador) ou do auxiliar dela (app desktop, "tela-<id>")
   for (const identity of [String(userId), `tela-${userId}`]) {
     const participant = sfu.room.remoteParticipants.get(identity);
@@ -152,6 +153,7 @@ function sfuPublishOptions(kind, LK) {
 function sfuSetTrack(kind, track) {
   const ctx = sfu;
   if (!ctx) return Promise.resolve();
+  if (ctx.native) return sfuNativeSetTrack(ctx, kind, track);
   const run = async () => {
     if (sfu !== ctx) return;
     const local = ctx.room.localParticipant;
@@ -196,6 +198,9 @@ async function sfuConnect(ch) {
   const info = res.ok ? await res.json() : null;
   if (!info || !info.enabled) return false;
   sfuRequired = true;
+  // app desktop no Linux: o WebKitGTK não tem WebRTC, a conexão com a sala fica no Rust
+  const nativeCall = nativeCallApi();
+  if (nativeCall) return sfuConnectNative(info, nativeCall);
   const LK = await loadSfuLib();
   try { LK.setLogLevel('warn'); } catch (_) { /* só deixa o console mais limpo */ }
   const room = new LK.Room({ adaptiveStream: false, dynacast: false });
@@ -256,6 +261,224 @@ function sfuDisconnect() {
   sfuRequired = false;
   const ctx = sfu;
   sfu = null;
+  if (ctx && ctx.native) { sfuNativeTeardown(ctx); ctx.api.leave(); return; }
   // false: não para as minhas faixas — quem cuida delas é o resto do código da call
   if (ctx) { try { ctx.room.disconnect(false); } catch (_) { /* já fechada */ } }
+}
+
+// ===================================================================
+// app desktop no Linux: a call pelo servidor de mídia vai pelo Rust
+// ===================================================================
+// O WebKitGTK (motor do app no Linux) não tem WebRTC. Então só o TRANSPORTE sai daqui — a conexão
+// com a sala do LiveKit roda no app (tauri/src-tauri/src/call.rs). Todo o resto continua igual:
+//   microfone: getUserMedia → supressão de ruído, gate, nivelador, limitador (o grafo de sempre)
+//              → worklet didiscord-pcm-tap → blocos de 20 ms pro app → sala
+//   quem fala: sala → app → call.pull() em laço → worklet didiscord-pcm-player → MediaStream →
+//              sfuTrackSubscribed, como se tivesse vindo do LiveKit do navegador (<audio>, volume
+//              por pessoa, reforço acima de 100%, áudio espacial, indicador de fala)
+// Assistir tela/câmera de alguém e mandar a própria câmera ainda não vão por aqui.
+const nativeCallApi = () => (window.didiscordDesktop && window.didiscordDesktop.call) || null;
+const PCM_BRIDGE_URL = '/js/worklets/pcm-bridge.js?v=1';
+
+// como o createMicWorklet, mas com mais paciência pra carregar o módulo: sem ele a call fica muda
+// (o createMicWorklet desiste em 1 s, o que no WebKitGTK às vezes não dá na primeira vez)
+async function createPcmBridgeNode(audioCtx, name, options) {
+  if (!audioCtx.audioWorklet || typeof AudioWorkletNode === 'undefined') return null;
+  try {
+    await Promise.race([
+      loadMicWorkletModule(audioCtx, PCM_BRIDGE_URL),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('tempo de carga excedido')), 15000)),
+    ]);
+    return new AudioWorkletNode(audioCtx, name, options);
+  } catch (err) {
+    console.warn('[sfu] (app) ponte de áudio indisponível:', name, err);
+    return null;
+  }
+}
+
+async function sfuConnectNative(info, api) {
+  const ctx = {
+    native: true, api, room: null, lib: null, pubs: new Map(), queue: new Map(), reconnecting: false,
+    players: new Map(), // sid da faixa -> { identity, source, node, track, pending }
+    mic: null, unsubscribe: null, videoNoticeShown: false,
+  };
+  const mine = (fn) => (...args) => { if (sfu === ctx) fn(...args); };
+  ctx.unsubscribe = api.onEvent(mine((ev) => sfuNativeEvent(ctx, ev)));
+  sfu = ctx;
+  // já carrega a ponte de áudio enquanto conecta
+  if (getAudioCtx().audioWorklet) loadMicWorkletModule(getAudioCtx(), PCM_BRIDGE_URL).catch(() => {});
+  let res;
+  try {
+    res = await api.join({ path: info.path, token: info.token, micBitrate: AUDIO_MAX_BITRATE.mic });
+  } catch (err) {
+    res = { ok: false, reason: String((err && err.message) || err) };
+  }
+  if (!res || !res.ok) {
+    if (sfu === ctx) sfu = null;
+    ctx.unsubscribe();
+    throw new Error((res && res.reason) || 'não consegui entrar na sala do servidor de mídia');
+  }
+  if (sfu !== ctx) { api.leave(); return false; }
+  sfuNativePullLoop(ctx);
+  return true;
+}
+
+function sfuNativeEvent(ctx, ev) {
+  if (ev.ev === 'track') {
+    if (ev.kind === 'audio') sfuNativeAddAudio(ctx, ev);
+    else if (!ctx.videoNoticeShown) {
+      ctx.videoNoticeShown = true;
+      toast('assistir tela e câmera ainda não funciona no app do Linux — por enquanto só a voz');
+    }
+  } else if (ev.ev === 'trackEnded') {
+    sfuNativeRemoveAudio(ctx, ev.sid);
+  } else if (ev.ev === 'reconnecting') {
+    ctx.reconnecting = true;
+    sfuMarkPeers(false);
+  } else if (ev.ev === 'reconnected') {
+    ctx.reconnecting = false;
+    sfuMarkPeers(true);
+  } else if (ev.ev === 'disconnected') {
+    // caiu de vez: tenta voltar sozinho, igual ao LiveKit do navegador
+    console.warn('[sfu] (app) conexão com o servidor de mídia caiu:', ev.reason);
+    sfuNativeTeardown(ctx);
+    sfu = null;
+    sfuScheduleRetry();
+  } else if (ev.ev === 'error') {
+    console.warn('[sfu] (app)', ev.message);
+  }
+}
+
+// uma faixa de áudio nova de alguém: tocador → MediaStream → o caminho de sempre
+async function sfuNativeAddAudio(ctx, ev) {
+  sfuNativeRemoveAudio(ctx, ev.sid);
+  const channels = ev.channels === 2 ? 2 : 1;
+  const entry = { identity: ev.identity, source: ev.source, node: null, track: null, pending: [] };
+  ctx.players.set(ev.sid, entry);
+  const audioCtx = getAudioCtx();
+  const node = await createPcmBridgeNode(audioCtx, 'didiscord-pcm-player', {
+    numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [channels], processorOptions: { channels },
+  });
+  if (sfu !== ctx || ctx.players.get(ev.sid) !== entry) {
+    if (node) node.port.postMessage('stop');
+    return;
+  }
+  if (!node) {
+    console.warn('[sfu] (app) não consegui montar o tocador de áudio de', ev.identity);
+    return;
+  }
+  const dest = audioCtx.createMediaStreamDestination();
+  node.connect(dest);
+  entry.node = node;
+  entry.dest = dest;
+  entry.track = dest.stream.getAudioTracks()[0];
+  for (const chunk of entry.pending.splice(0)) node.port.postMessage(chunk, [chunk.buffer]);
+  sfuTrackSubscribed({ mediaStreamTrack: entry.track, kind: 'audio', receiver: null }, { source: ev.source }, { identity: ev.identity });
+}
+
+function sfuNativeRemoveAudio(ctx, sid) {
+  const entry = ctx.players.get(sid);
+  if (!entry) return;
+  ctx.players.delete(sid);
+  if (entry.track) {
+    sfuTrackUnsubscribed({ mediaStreamTrack: entry.track }, { source: entry.source }, { identity: entry.identity });
+    entry.track.stop();
+  }
+  if (entry.node) {
+    entry.node.port.postMessage('stop');
+    try { entry.node.disconnect(); } catch (_) { /* já desligado */ }
+  }
+}
+
+// busca o áudio de quem fala sem parar (o app segura a resposta até ter novidade, ~100 ms no máximo)
+async function sfuNativePullLoop(ctx) {
+  const decoder = new TextDecoder();
+  while (sfu === ctx) {
+    let buf;
+    try {
+      buf = await ctx.api.pull();
+    } catch (_) {
+      await new Promise((r) => setTimeout(r, 200));
+      continue;
+    }
+    if (sfu !== ctx) break;
+    if (!(buf instanceof ArrayBuffer) || !buf.byteLength) continue;
+    // repetido: [u16 tamanho do sid][sid][u8 canais][u32 nº de amostras][f32 × amostras]
+    const view = new DataView(buf);
+    let off = 0;
+    while (off + 7 <= buf.byteLength) {
+      const sidLen = view.getUint16(off, true);
+      off += 2;
+      const sid = decoder.decode(new Uint8Array(buf, off, sidLen));
+      off += sidLen + 1;
+      const count = view.getUint32(off, true);
+      off += 4;
+      const samples = new Float32Array(buf.slice(off, off + count * 4));
+      off += count * 4;
+      const entry = ctx.players.get(sid);
+      if (!entry) continue;
+      if (entry.node) entry.node.port.postMessage(samples, [samples.buffer]);
+      else if (entry.pending.length < 50) entry.pending.push(samples); // tocador ainda carregando
+    }
+  }
+}
+
+function sfuNativeSetTrack(ctx, kind, track) {
+  if (kind !== 'mic') {
+    // câmera / tela pelo navegador ainda não vão pelo app no Linux (a tela pela placa de vídeo vai
+    // pelo auxiliar, que publica sozinho — ver publishNativeToSfu)
+    if (track) console.warn('[sfu] (app) ainda não dá pra mandar', kind, 'pela call nativa');
+    return Promise.resolve();
+  }
+  const next = (ctx.queue.get(kind) || Promise.resolve())
+    .then(() => sfuNativeSetMic(ctx, track))
+    .catch((err) => console.warn('[sfu] (app) não consegui ligar o microfone na call:', err));
+  ctx.queue.set(kind, next);
+  return next;
+}
+
+// o microfone já tratado (ou o cru, sem processamento) → blocos de 20 ms pro app
+async function sfuNativeSetMic(ctx, track) {
+  if (ctx.mic && ctx.mic.track === track) return;
+  sfuNativeStopMic(ctx);
+  if (!track || sfu !== ctx) return;
+  const mic = { track, src: null, node: null, sink: null };
+  ctx.mic = mic;
+  const audioCtx = getAudioCtx();
+  const node = await createPcmBridgeNode(audioCtx, 'didiscord-pcm-tap', {
+    numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit', outputChannelCount: [1],
+  });
+  if (sfu !== ctx || ctx.mic !== mic) {
+    if (node) node.port.postMessage('stop');
+    return;
+  }
+  if (!node) {
+    toast('não consegui ligar o microfone na call', 'error');
+    return;
+  }
+  mic.node = node;
+  mic.src = audioCtx.createMediaStreamSource(new MediaStream([track]));
+  // o tap não toca nada: sai num ganho zero só pra o navegador manter ele rodando
+  mic.sink = audioCtx.createGain();
+  mic.sink.gain.value = 0;
+  mic.src.connect(node);
+  node.connect(mic.sink);
+  mic.sink.connect(audioCtx.destination);
+  node.port.onmessage = ({ data }) => {
+    if (sfu === ctx && ctx.mic === mic) ctx.api.pushMic(data);
+  };
+}
+
+function sfuNativeStopMic(ctx) {
+  const mic = ctx.mic;
+  ctx.mic = null;
+  if (!mic) return;
+  if (mic.node) { mic.node.port.postMessage('stop'); mic.node.port.onmessage = null; }
+  for (const n of [mic.src, mic.node, mic.sink]) { if (n) { try { n.disconnect(); } catch (_) { /* já desligado */ } } }
+}
+
+function sfuNativeTeardown(ctx) {
+  if (ctx.unsubscribe) { ctx.unsubscribe(); ctx.unsubscribe = null; }
+  sfuNativeStopMic(ctx);
+  for (const sid of [...ctx.players.keys()]) sfuNativeRemoveAudio(ctx, sid);
 }

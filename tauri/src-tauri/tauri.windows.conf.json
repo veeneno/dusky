@@ -1,0 +1,13 @@
+{
+  "bundle": {
+    "targets": ["nsis"],
+    "resources": {
+      "../../electron/native/bin/didiscord-screencast.exe": "native/didiscord-screencast.exe",
+      "../../electron/native/bin/didiscord-audiocap.exe": "native/didiscord-audiocap.exe"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": { "installMode": "currentUser" }
+    }
+  }
+}

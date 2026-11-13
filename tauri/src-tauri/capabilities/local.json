@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "local",
+  "description": "Telas locais do app: a de conectando/escolher servidor (janela principal) e o seletor de tela. O site remoto ganha a dele em tempo de execução (src/lib.rs), porque o endereço do servidor é configurável.",
+  "local": true,
+  "windows": ["main", "picker"],
+  "permissions": [
+    "allow-shell-get-status",
+    "allow-shell-set-server",
+    "allow-shell-cancel-change",
+    "allow-picker-get-sources",
+    "allow-picker-choose",
+    "allow-picker-get-audio-apps",
+    "allow-picker-choose-audio",
+    "allow-picker-cancel"
+  ]
+}
