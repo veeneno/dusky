@@ -66,8 +66,11 @@ pub fn native_bin(app: &AppHandle, name: &str) -> Option<PathBuf> {
             return Some(p);
         }
     }
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../electron/native/bin").join(&exe);
-    dev.exists().then_some(dev)
+    // rodando do código-fonte: helpers do Electron e o ffmpeg baixado pro instalador (vendor/)
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    [src.join("../../electron/native/bin").join(&exe), src.join("vendor").join(name).join(&exe)]
+        .into_iter()
+        .find(|p| p.exists())
 }
 
 struct RunOut {
@@ -317,6 +320,11 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
     if let Ok(p) = std::env::var("FFMPEG_PATH") {
         candidates.push(p);
     }
+    // o que vem dentro do instalador (Windows) — testado e com todos os codificadores
+    let bundled = native_bin(app, "ffmpeg");
+    if let Some(b) = &bundled {
+        candidates.push(b.to_string_lossy().into_owned());
+    }
     candidates.push(if IS_WIN { "ffmpeg.exe".into() } else { "ffmpeg".into() });
     let managed = st.deps.managed_ffmpeg();
     if let Some(m) = &managed {
@@ -336,7 +344,7 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
 
     // nenhum com placa de vídeo: o ffmpeg do app (baixado) pode ter o que falta — baixa em segundo
     // plano e detecta de novo depois
-    if managed.is_none() {
+    if managed.is_none() && bundled.is_none() {
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
             let st = handle.state::<AppState>();

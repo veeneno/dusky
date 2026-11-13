@@ -114,6 +114,11 @@ tauri/
 Os binários `didiscord-screencast` e `didiscord-audiocap.exe` vêm de `../electron/native/bin` e
 vão junto no instalador (ver `tauri.linux.conf.json` / `tauri.windows.conf.json`).
 
+No Windows o **ffmpeg vai dentro do instalador** (+~27 MB comprimido): o `npm run dev`/`build`
+baixa uma vez o ffmpeg 8.1.2 "essentials" do gyan.dev (versão fixa, conferida por SHA-256 — ver
+`scripts/fetch-ffmpeg.js`) pra `src-tauri/vendor/ffmpeg/`, que fica fora do git. Assim compartilhar
+tela pela placa de vídeo funciona sem a pessoa instalar nada. No Linux usa o ffmpeg do sistema.
+
 ## Testes
 
 ```bash
