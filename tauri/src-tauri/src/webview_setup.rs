@@ -23,6 +23,10 @@ pub fn configure(win: &WebviewWindow) {
             s.set_enable_webaudio(true);
             s.set_enable_encrypted_media(true);
             s.set_media_playback_requires_user_gesture(false);
+            // composição e canvas na placa de vídeo sempre (a tela dos outros é desenhada com WebGL;
+            // no modo "sob demanda" o WebKitGTK às vezes compõe a página no processador)
+            s.set_hardware_acceleration_policy(webkit2gtk::HardwareAccelerationPolicy::Always);
+            s.set_enable_webgl(true);
             // Ctrl+Shift+I / botão direito → Inspecionar, igual às "ferramentas do desenvolvedor" do Electron
             s.set_enable_developer_extras(true);
         }

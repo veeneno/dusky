@@ -135,6 +135,8 @@
       stats: (sid) => invoke('call_stats', { sid: String(sid) }),
       // o decodificador perdeu o fio: pede um quadro-chave da tela
       keyframe: (sid) => { fire('call_keyframe', { sid: String(sid) }); },
+      // uma linha de diagnóstico no terminal do app
+      log: (text) => { fire('call_log', { text: String(text) }); },
       // eventos: participant, participantLeft, track, trackEnded, reconnecting, reconnected, disconnected, error
       onEvent: (cb) => on('call:event', cb),
     };

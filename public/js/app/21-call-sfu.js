@@ -433,26 +433,31 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
   const canvas = document.createElement('canvas');
   canvas.width = 16;
   canvas.height = 9;
-  const g = canvas.getContext('2d');
+  // WebGL: o quadro vai pra placa como textura e é desenhado lá. O canvas 2D do WebKitGTK copia a
+  // imagem inteira pela memória a cada quadro, o que derrubava o ritmo da página em 1080p/60
+  const gl = createNativeVideoGl(canvas);
+  const g = gl ? null : canvas.getContext('2d');
   const track = canvas.captureStream().getVideoTracks()[0];
   if (!track) return;
   track.didiscordCanvas = canvas; // 19-call-ui.js mostra o canvas direto no lugar do <video>
   const entry = {
-    identity: ev.identity, source: 'screen_share', canvas, g, track, encoded: true, codec, decoder: null, needKey: true,
-    bytes: 0, frames: 0, statFrames: 0, statAt: performance.now(),
+    identity: ev.identity, source: 'screen_share', canvas, g, gl, track, encoded: true, codec, decoder: null, needKey: true,
+    bytes: 0, frames: 0, shown: 0, statFrames: 0, statShown: 0, statAt: performance.now(),
+    queue: [], // quadros já decodificados esperando a vez de aparecer (ver sfuNativePresent)
+    clock: null, // { ts, wall }: que marca de tempo de quem envia corresponde a que instante aqui
   };
   entry.reset = () => {
     if (entry.decoder && entry.decoder.state !== 'closed') { try { entry.decoder.close(); } catch (_) { /* já fechado */ } }
     entry.needKey = true;
     entry.decoder = new VideoDecoder({
       output: (frame) => {
-        if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
-          canvas.width = frame.displayWidth;
-          canvas.height = frame.displayHeight;
-        }
-        g.drawImage(frame, 0, 0);
-        frame.close();
         entry.frames++;
+        // não desenha aqui: os quadros saem do decodificador em rajadas e, desenhando na hora, só o
+        // último de cada rajada chegava a aparecer. Vão pra fila e aparecem um por atualização da
+        // tela, no ritmo de quem manda (sfuNativePresent)
+        entry.queue.push(frame);
+        while (entry.queue.length > 12) entry.queue.shift().close(); // aba parada: não acumula memória
+        if (!ctx.presenting) sfuNativePresent(ctx);
       },
       error: (err) => {
         console.warn('[sfu] (app) decodificador da tela de', ev.identity, 'falhou:', err && err.message);
@@ -467,19 +472,131 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
   ctx.videos.set(ev.sid, entry);
   const receiver = {
     // números da tela (resolução, fps, kbps) contados aqui mesmo
+    // o fps mostrado é o de quadros que APARECERAM (não só decodificados)
     getStats: async () => {
       const now = performance.now();
-      const fps = (entry.frames - entry.statFrames) / Math.max(0.001, (now - entry.statAt) / 1000);
+      const secs = Math.max(0.001, (now - entry.statAt) / 1000);
+      const shownFps = (entry.shown - entry.statShown) / secs;
+      const decodedFps = (entry.frames - entry.statFrames) / secs;
       entry.statFrames = entry.frames;
+      entry.statShown = entry.shown;
       entry.statAt = now;
       return new Map([['tela', {
         id: 'tela', type: 'inbound-rtp', kind: 'video', timestamp: now, bytesReceived: entry.bytes,
-        frameWidth: canvas.width, frameHeight: canvas.height, framesPerSecond: fps,
+        frameWidth: canvas.width, frameHeight: canvas.height, framesPerSecond: shownFps, framesDecodedPerSecond: decodedFps,
       }]]);
     },
   };
   sfuTrackSubscribed({ mediaStreamTrack: track, kind: 'video', receiver }, { source: 'screen_share' }, { identity: ev.identity });
   if (!ctx.videoLoop) sfuNativeVideoLoop(ctx);
+}
+
+// desenhar um VideoFrame com WebGL: um retângulo do tamanho do canvas com o quadro de textura
+function createNativeVideoGl(canvas) {
+  const gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: true, desynchronized: true });
+  if (!gl) return null;
+  // WebGL "de mentira" (sem placa de vídeo, desenhado no processador): aí o canvas 2D é mais leve
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  const renderer = String((info && gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || '');
+  if (/llvmpipe|softpipe|swiftshader|software/i.test(renderer)) return null;
+  gl.didiscordRenderer = renderer;
+  const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); return x; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec2 p; varying vec2 t; void main(){ t = vec2((p.x + 1.0) / 2.0, (1.0 - p.y) / 2.0); gl_Position = vec4(p, 0.0, 1.0); }'));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec2 t; uniform sampler2D s; void main(){ gl_FragColor = texture2D(s, t); }'));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return gl;
+}
+
+function drawNativeVideoGl(gl, frame, w, h) {
+  gl.viewport(0, 0, w, h);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// Mostra os quadros decodificados no ritmo certo, como um player: um relógio liga a marca de tempo
+// de quem envia ao relógio daqui, com ~40 ms de folga pra absorver as rajadas, e a cada atualização
+// da tela aparece o quadro mais novo cuja hora já chegou. Assim 60 fps de origem viram 60 quadros
+// distintos na tela (num monitor de 60 Hz ou mais), sem pular e repetir.
+const NATIVE_PLAYOUT_DELAY_MS = 40;
+
+function sfuNativePresent(ctx) {
+  ctx.presenting = true;
+  // diagnóstico no terminal do app, a cada 5 s enquanto tem tela chegando: quantos quadros chegaram,
+  // quantos apareceram e quantas vezes a página conseguiu se redesenhar (o teto de tudo)
+  let ticks = 0;
+  let diagAt = performance.now();
+  const diag = new Map(); // entrada -> [decodificados, mostrados] da última medição
+  const tick = () => {
+    if (sfu !== ctx) { ctx.presenting = false; return; }
+    const now = performance.now();
+    ticks++;
+    if (now - diagAt >= 5000) {
+      const secs = (now - diagAt) / 1000;
+      for (const e of ctx.videos.values()) {
+        if (!e.encoded) continue;
+        const [d0, s0] = diag.get(e) || [e.frames, e.shown];
+        diag.set(e, [e.frames, e.shown]);
+        ctx.api.log(`tela de ${e.identity}: ${Math.round((e.frames - d0) / secs)} quadros/s decodificados, ` +
+          `${Math.round((e.shown - s0) / secs)} mostrados, página redesenhando ${Math.round(ticks / secs)}x/s, ` +
+          `${e.canvas.width}x${e.canvas.height}, ${e.gl ? `WebGL (${e.gl.didiscordRenderer || '?'})` : 'canvas 2D'}`);
+      }
+      ticks = 0;
+      diagAt = now;
+    }
+    let any = false;
+    for (const entry of ctx.videos.values()) {
+      if (!entry.encoded) continue;
+      any = true;
+      const q = entry.queue;
+      if (!q.length) continue;
+      if (!entry.clock) entry.clock = { ts: q[0].timestamp, wall: now + NATIVE_PLAYOUT_DELAY_MS };
+      let playout = entry.clock.ts + (now - entry.clock.wall) * 1000; // em µs, na escala de quem envia
+      // muito atrasado (aba parada, travou) ou muito adiantado (quem envia pulou): realinha
+      if (q[q.length - 1].timestamp < playout - 300000 || q[0].timestamp > playout + 200000) {
+        entry.clock = { ts: q[q.length - 1].timestamp, wall: now };
+        playout = entry.clock.ts;
+      }
+      // a fila cresceu além da folga (relógio de quem envia mais rápido que o daqui): adianta um pouco
+      if (q.length > 4) entry.clock.wall -= 2;
+      let pick = -1;
+      for (let i = 0; i < q.length; i++) if (q[i].timestamp <= playout) pick = i;
+      if (pick < 0) continue;
+      const frame = q[pick];
+      for (let i = 0; i < pick; i++) q[i].close(); // os que perderam a vez
+      q.splice(0, pick + 1);
+      const { canvas, g, gl } = entry;
+      if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+        canvas.width = frame.displayWidth;
+        canvas.height = frame.displayHeight;
+      }
+      try {
+        if (gl) drawNativeVideoGl(gl, frame, canvas.width, canvas.height);
+        else g.drawImage(frame, 0, 0);
+      } catch (err) {
+        console.warn('[sfu] (app) não consegui desenhar o quadro da tela:', err && err.message);
+      }
+      frame.close();
+      entry.shown++;
+    }
+    if (any) requestAnimationFrame(tick);
+    else ctx.presenting = false;
+  };
+  requestAnimationFrame(tick);
 }
 
 function sfuNativeDecode(ctx, sid, key, ts, data) {
@@ -509,6 +626,7 @@ function sfuNativeRemoveVideo(ctx, sid) {
   if (!entry) return;
   ctx.videos.delete(sid);
   if (entry.decoder && entry.decoder.state !== 'closed') { try { entry.decoder.close(); } catch (_) { /* já fechado */ } }
+  if (entry.queue) { for (const f of entry.queue) f.close(); entry.queue = []; }
   sfuTrackUnsubscribed({ mediaStreamTrack: entry.track }, { source: entry.source }, { identity: entry.identity });
   entry.track.stop();
 }

@@ -53,6 +53,9 @@ pub fn call_stop_camera() {}
 pub fn call_keyframe(_sid: String) {}
 
 #[tauri::command]
+pub fn call_log(_text: String) {}
+
+#[tauri::command]
 pub async fn call_stats(_sid: String) -> Vec<serde_json::Value> {
     Vec::new()
 }

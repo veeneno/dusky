@@ -969,3 +969,11 @@ pub fn call_keyframe(app: AppHandle, webview: Webview, sid: String) {
         st.call.send_watcher(json!({ "cmd": "keyframe", "sid": sid }));
     }
 }
+
+/// linha de diagnóstico da página (ex: ritmo da tela dos outros) no terminal do app
+#[tauri::command]
+pub fn call_log(app: AppHandle, webview: Webview, text: String) {
+    if app::require_site(&app, &webview).is_ok() {
+        log::info(&format!("call: {}", text.chars().take(300).collect::<String>()));
+    }
+}

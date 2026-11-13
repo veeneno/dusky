@@ -59,6 +59,28 @@ pub fn child_command(bin: impl AsRef<std::ffi::OsStr>) -> Command {
 /// arquivo que vem junto com o app (pasta native/ dos recursos) — ou, rodando do código-fonte, o
 /// de electron/native/bin
 pub fn native_bin(app: &AppHandle, name: &str) -> Option<PathBuf> {
+    let found = find_native_bin(app, name)?;
+    ensure_executable(&found);
+    Some(found)
+}
+
+/// arquivo copiado sem a permissão de executar (acontece com a cópia que o `npm run dev` faz pra
+/// target/): dá a permissão antes de usar, senão o processo nem abre ("Permission denied")
+fn ensure_executable(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(path) {
+            let mode = meta.permissions().mode();
+            if mode & 0o111 == 0 {
+                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode | 0o755));
+            }
+        }
+    }
+    let _ = path;
+}
+
+fn find_native_bin(app: &AppHandle, name: &str) -> Option<PathBuf> {
     let exe = if IS_WIN { format!("{name}.exe") } else { name.to_string() };
     if let Ok(dir) = app.path().resource_dir() {
         let p = dir.join("native").join(&exe);
