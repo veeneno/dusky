@@ -91,12 +91,21 @@ router.get('/sfu', requireAuth, (req, res) => {
   const channelId = Number(req.query.channelId);
   const ch = channelId ? access.canConnectChannel(channelId, req.user.id) : null;
   if (!ch) return res.status(403).json({ error: 'você não pode entrar nessa call' });
+  const room = sfu.roomForChannel(ch.id);
+  // viewer=1: o app do Linux assiste as telas por um participante oculto à parte (o Pion entrega o
+  // vídeo sem decodificar e a página decodifica no fps original — ver tauri/ e native/screencast/watch.go)
+  if (req.query.viewer === '1') {
+    return res.json({
+      enabled: true, viewer: true, path: sfu.PREFIX,
+      token: sfu.createToken({ room, identity: `ver-${req.user.id}`, name: `${req.user.username} (assistindo)`, watchOnly: true }),
+    });
+  }
   res.json({
     enabled: true,
     path: sfu.PREFIX,
     token: req.query.screen === '1'
-      ? sfu.createToken({ room: sfu.roomForChannel(ch.id), identity: `tela-${req.user.id}`, name: `${req.user.username} (tela)`, publishOnly: true })
-      : sfu.createToken({ room: sfu.roomForChannel(ch.id), identity: req.user.id, name: req.user.username }),
+      ? sfu.createToken({ room, identity: `tela-${req.user.id}`, name: `${req.user.username} (tela)`, publishOnly: true })
+      : sfu.createToken({ room, identity: req.user.id, name: req.user.username }),
   });
 });
 

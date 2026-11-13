@@ -50,6 +50,9 @@ pub async fn call_push_camera(_request: Request<'_>) -> Result<bool, String> {
 pub fn call_stop_camera() {}
 
 #[tauri::command]
+pub fn call_keyframe(_sid: String) {}
+
+#[tauri::command]
 pub async fn call_stats(_sid: String) -> Vec<serde_json::Value> {
     Vec::new()
 }

@@ -190,6 +190,7 @@ fn grant_site(app: &AppHandle, origin: &str) {
         "allow-call-push-camera",
         "allow-call-stop-camera",
         "allow-call-stats",
+        "allow-call-keyframe",
         // window.Notification da página (o plugin de notificação troca pela notificação do sistema)
         "notification:default",
     ] {
@@ -567,6 +568,7 @@ pub fn run() {
             call::call_push_camera,
             call::call_stop_camera,
             call::call_stats,
+            call::call_keyframe,
             picker::picker_get_sources,
             picker::picker_choose,
             picker::picker_get_audio_apps,

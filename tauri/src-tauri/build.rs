@@ -20,6 +20,7 @@ const COMMANDS: &[&str] = &[
     "call_push_camera",
     "call_stop_camera",
     "call_stats",
+    "call_keyframe",
     // tela de "conectando…"
     "shell_get_status",
     "shell_set_server",

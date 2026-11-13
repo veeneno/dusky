@@ -200,7 +200,7 @@ async function sfuConnect(ch) {
   sfuRequired = true;
   // app desktop no Linux: o WebKitGTK não tem WebRTC, a conexão com a sala fica no Rust
   const nativeCall = nativeCallApi();
-  if (nativeCall) return sfuConnectNative(info, nativeCall);
+  if (nativeCall) return sfuConnectNative(ch, info, nativeCall);
   const LK = await loadSfuLib();
   try { LK.setLogLevel('warn'); } catch (_) { /* só deixa o console mais limpo */ }
   const room = new LK.Room({ adaptiveStream: false, dynacast: false });
@@ -276,8 +276,11 @@ function sfuDisconnect() {
 //   quem fala: sala → app → call.pull() em laço → worklet didiscord-pcm-player → MediaStream →
 //              sfuTrackSubscribed, como se tivesse vindo do LiveKit do navegador (<audio>, volume
 //              por pessoa, reforço acima de 100%, áudio espacial, indicador de fala)
-//   tela/câmera dos outros: sala → app (vira JPEG) → call.pullVideo() em laço → <canvas> →
-//              canvas.captureStream() → sfuTrackSubscribed (o <video> de sempre)
+//   tela dos outros: o app recebe o vídeo AINDA COMPRIMIDO (um assistente oculto "ver-<id>", ver
+//              tauri/ e native/screencast/watch.go) → call.pullVideo() em laço → VideoDecoder
+//              (WebCodecs, na placa de vídeo quando dá) → <canvas> → canvas.captureStream() →
+//              sfuTrackSubscribed (o <video> de sempre), no fps que a pessoa manda
+//   câmera dos outros (e a tela, com servidor antigo): o app manda JPEG (até 30 fps) → <canvas>
 //   minha câmera: <video> escondido → <canvas> → JPEG → call.pushCamera() → sala
 //   áudio da minha tela: o app manda direto pra sala (nem passa por aqui)
 //   qualidade: um "receiver" de mentira com getStats() que pergunta pro app (call.stats)
@@ -300,7 +303,7 @@ async function createPcmBridgeNode(audioCtx, name, options) {
   }
 }
 
-async function sfuConnectNative(info, api) {
+async function sfuConnectNative(ch, info, api) {
   const ctx = {
     native: true, api, room: null, lib: null, pubs: new Map(), queue: new Map(), reconnecting: false,
     players: new Map(), // sid da faixa -> { identity, source, node, track, pending }
@@ -312,9 +315,17 @@ async function sfuConnectNative(info, api) {
   sfu = ctx;
   // já carrega a ponte de áudio enquanto conecta
   if (getAudioCtx().audioWorklet) loadMicWorkletModule(getAudioCtx(), PCM_BRIDGE_URL).catch(() => {});
+  // ingresso do assistente oculto das telas (servidor novo responde viewer: true; o antigo não
+  // conhece o parâmetro e devolveria o MEU ingresso — aí não usa, senão derrubaria a minha conexão)
+  let viewerToken = null;
+  try {
+    const r = await fetch(`/api/rtc/sfu?channelId=${ch.id}&viewer=1`);
+    const v = r.ok ? await r.json() : null;
+    if (v && v.viewer === true && v.token) viewerToken = v.token;
+  } catch (_) { /* sem: as telas vêm em JPEG */ }
   let res;
   try {
-    res = await api.join({ path: info.path, token: info.token, micBitrate: AUDIO_MAX_BITRATE.mic });
+    res = await api.join({ path: info.path, token: info.token, micBitrate: AUDIO_MAX_BITRATE.mic, viewerToken });
   } catch (err) {
     res = { ok: false, reason: String((err && err.message) || err) };
   }
@@ -331,6 +342,7 @@ async function sfuConnectNative(info, api) {
 function sfuNativeEvent(ctx, ev) {
   if (ev.ev === 'track') {
     if (ev.kind === 'audio') sfuNativeAddAudio(ctx, ev);
+    else if (ev.encoded) sfuNativeAddEncodedVideo(ctx, ev);
     else sfuNativeAddVideo(ctx, ev);
   } else if (ev.ev === 'trackEnded') {
     sfuNativeRemoveAudio(ctx, ev.sid);
@@ -407,10 +419,96 @@ function sfuNativeAddVideo(ctx, ev) {
   if (!ctx.videoLoop) sfuNativeVideoLoop(ctx);
 }
 
+// tela de alguém, comprimida: decodifica aqui e desenha cada quadro assim que sai (o fps é o de
+// quem manda — o canvas sem fps fixo vira um quadro de vídeo a cada desenho)
+const NATIVE_VIDEO_CODECS = { 1: 'avc1.640034', 2: 'vp8', 3: 'vp09.00.10.08', 4: 'av01.0.08M.08' };
+
+function sfuNativeAddEncodedVideo(ctx, ev) {
+  sfuNativeRemoveVideo(ctx, ev.sid);
+  const codec = NATIVE_VIDEO_CODECS[ev.codec];
+  if (typeof VideoDecoder === 'undefined' || !codec) {
+    console.warn('[sfu] (app) sem decodificador pra tela de', ev.identity, codec);
+    return;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = 16;
+  canvas.height = 9;
+  const g = canvas.getContext('2d');
+  const track = canvas.captureStream().getVideoTracks()[0];
+  if (!track) return;
+  track.didiscordCanvas = canvas; // 19-call-ui.js mostra o canvas direto no lugar do <video>
+  const entry = {
+    identity: ev.identity, source: 'screen_share', canvas, g, track, encoded: true, codec, decoder: null, needKey: true,
+    bytes: 0, frames: 0, statFrames: 0, statAt: performance.now(),
+  };
+  entry.reset = () => {
+    if (entry.decoder && entry.decoder.state !== 'closed') { try { entry.decoder.close(); } catch (_) { /* já fechado */ } }
+    entry.needKey = true;
+    entry.decoder = new VideoDecoder({
+      output: (frame) => {
+        if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+          canvas.width = frame.displayWidth;
+          canvas.height = frame.displayHeight;
+        }
+        g.drawImage(frame, 0, 0);
+        frame.close();
+        entry.frames++;
+      },
+      error: (err) => {
+        console.warn('[sfu] (app) decodificador da tela de', ev.identity, 'falhou:', err && err.message);
+        entry.decoder = null; // remonta no próximo quadro-chave
+        entry.needKey = true;
+        if (sfu === ctx) ctx.api.keyframe(ev.sid);
+      },
+    });
+    entry.decoder.configure({ codec, optimizeForLatency: true });
+  };
+  entry.reset();
+  ctx.videos.set(ev.sid, entry);
+  const receiver = {
+    // números da tela (resolução, fps, kbps) contados aqui mesmo
+    getStats: async () => {
+      const now = performance.now();
+      const fps = (entry.frames - entry.statFrames) / Math.max(0.001, (now - entry.statAt) / 1000);
+      entry.statFrames = entry.frames;
+      entry.statAt = now;
+      return new Map([['tela', {
+        id: 'tela', type: 'inbound-rtp', kind: 'video', timestamp: now, bytesReceived: entry.bytes,
+        frameWidth: canvas.width, frameHeight: canvas.height, framesPerSecond: fps,
+      }]]);
+    },
+  };
+  sfuTrackSubscribed({ mediaStreamTrack: track, kind: 'video', receiver }, { source: 'screen_share' }, { identity: ev.identity });
+  if (!ctx.videoLoop) sfuNativeVideoLoop(ctx);
+}
+
+function sfuNativeDecode(ctx, sid, key, ts, data) {
+  const entry = ctx.videos.get(sid);
+  if (!entry || !entry.encoded) return;
+  if (!entry.decoder || entry.decoder.state === 'closed') entry.reset();
+  if (entry.needKey && !key) return; // começou no meio: espera o quadro-chave
+  // a página engasgou e acumulou: recomeça do próximo quadro-chave em vez de mostrar atrasado
+  if (entry.decoder.decodeQueueSize > 30) {
+    entry.reset();
+    ctx.api.keyframe(sid);
+    return;
+  }
+  try {
+    entry.decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: ts, data }));
+    entry.needKey = false;
+    entry.bytes += data.byteLength;
+  } catch (err) {
+    console.warn('[sfu] (app) quadro da tela recusado:', err && err.message);
+    entry.reset();
+    ctx.api.keyframe(sid);
+  }
+}
+
 function sfuNativeRemoveVideo(ctx, sid) {
   const entry = ctx.videos.get(sid);
   if (!entry) return;
   ctx.videos.delete(sid);
+  if (entry.decoder && entry.decoder.state !== 'closed') { try { entry.decoder.close(); } catch (_) { /* já fechado */ } }
   sfuTrackUnsubscribed({ mediaStreamTrack: entry.track }, { source: entry.source }, { identity: entry.identity });
   entry.track.stop();
 }
@@ -428,10 +526,26 @@ async function sfuNativeVideoLoop(ctx) {
       continue;
     }
     if (!(buf instanceof ArrayBuffer) || !buf.byteLength) continue;
-    // repetido: [u16 tamanho do sid][sid][u32 largura][u32 altura][u32 bytes][JPEG]
+    // repetido, cada um começando com o tipo (formato em tauri/src-tauri/src/call.rs, call_pull_video):
+    //   0: [u16 tamanho do sid][sid][u32 largura][u32 altura][u32 bytes][JPEG]
+    //   1: [u32 tamanho][u16 tamanho do sid][sid][u8 flags][u8 codec][u64 µs][dados comprimidos]
     const view = new DataView(buf);
     let off = 0;
-    while (off + 14 <= buf.byteLength) {
+    while (off + 5 <= buf.byteLength) {
+      const type = view.getUint8(off);
+      off += 1;
+      if (type === 1) {
+        const len = view.getUint32(off, true);
+        const start = off + 4;
+        off = start + len;
+        const sidLen = view.getUint16(start, true);
+        const sid = decoder.decode(new Uint8Array(buf, start + 2, sidLen));
+        const p = start + 2 + sidLen;
+        const key = (view.getUint8(p) & 1) === 1;
+        const ts = view.getUint32(p + 2, true) + view.getUint32(p + 6, true) * 4294967296;
+        sfuNativeDecode(ctx, sid, key, ts, new Uint8Array(buf.slice(p + 10, off)));
+        continue;
+      }
       const sidLen = view.getUint16(off, true);
       off += 2;
       const sid = decoder.decode(new Uint8Array(buf, off, sidLen));

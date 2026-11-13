@@ -33,7 +33,11 @@ microfone   → getUserMedia → supressão de ruído / gate / nivelador / limit
             → worklet didiscord-pcm-tap → call_push_mic → LiveKit
 quem fala   → LiveKit → call_pull (a página busca em laço) → worklet didiscord-pcm-player
             → MediaStream → o caminho de sempre do site (<audio>, volume, reforço, áudio espacial)
-vídeo deles → LiveKit → JPEG no Rust (até 1080p, 30 fps) → call_pull_video → <canvas>
+tela deles  → o didiscord-screencast em modo "watch" (Pion, Go) entra oculto ("ver-<id>") e
+            entrega o vídeo AINDA COMPRIMIDO → call_pull_video → VideoDecoder (WebCodecs, na
+            placa de vídeo quando dá) → <canvas> mostrado direto no lugar do <video>.
+            Sem limite de fps: 15 → 15, 60 → 60, 120 → 120 (o monitor ainda manda no que aparece)
+câmera deles → LiveKit → JPEG no Rust (até 1080p, 30 fps) → call_pull_video → <canvas>
             → canvas.captureStream() → o <video> de sempre do site
 minha câmera → <canvas> → JPEG → call_push_camera → LiveKit
 som da tela → captador do PipeWire → direto pro LiveKit (faixa "som-da-tela"), sem passar pela página
@@ -41,7 +45,12 @@ qualidade   → call_stats → números do libwebrtc no formato do getStats() do
 ```
 
 Testado de ponta a ponta (app + Chromium na mesma sala): voz nos dois sentidos, câmera nos dois
-sentidos, a tela pela placa de vídeo + o som dela chegando no Chromium, e os números de qualidade.
+sentidos, a tela pela placa de vídeo + o som dela chegando no Chromium, os números de qualidade, e
+a tela dos outros chegando a 15 e a 60 fps exatos (120 fps chegou inteiro no app; a página só não
+deu conta de decodificar tudo porque o PC de teste não tinha placa de vídeo).
+
+A tela dos outros pelo auxiliar precisa do servidor atualizado (`GET /api/rtc/sfu?viewer=1`, que dá
+o ingresso do participante oculto). Com servidor antigo, ou sem o auxiliar, as telas vêm em JPEG.
 
 O servidor não muda (o ingresso vem do mesmo `GET /api/rtc/sfu`), mas **precisa estar com
 `SFU=livekit`** — a call em malha (sem servidor de mídia) não funciona no app do Linux. O lado do

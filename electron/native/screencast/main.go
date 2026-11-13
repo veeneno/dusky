@@ -409,6 +409,11 @@ func (c *caster) pump(r io.Reader) error {
 // ---------------------------------------------------------------- comandos do app
 
 func main() {
+	// app Tauri no Linux: assistir a tela dos outros sem decodificar (ver watch.go)
+	if len(os.Args) > 1 && os.Args[1] == "watch" {
+		runWatch()
+		return
+	}
 	c, err := newCaster()
 	if err != nil {
 		emit(map[string]any{"ev": "error", "message": err.Error()})

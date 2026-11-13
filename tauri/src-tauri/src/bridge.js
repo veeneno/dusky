@@ -133,6 +133,8 @@
       stopCamera: () => { fire('call_stop_camera'); },
       // números de qualidade de uma faixa (lista no formato do getStats() do navegador)
       stats: (sid) => invoke('call_stats', { sid: String(sid) }),
+      // o decodificador perdeu o fio: pede um quadro-chave da tela
+      keyframe: (sid) => { fire('call_keyframe', { sid: String(sid) }); },
       // eventos: participant, participantLeft, track, trackEnded, reconnecting, reconnected, disconnected, error
       onEvent: (cb) => on('call:event', cb),
     };

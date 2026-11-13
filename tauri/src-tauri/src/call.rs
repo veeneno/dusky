@@ -9,8 +9,13 @@
 //!   quem fala:  LiveKit → NativeAudioStream (por faixa) → fila aqui → call_pull (a página busca em laço)
 //!               → worklet "didiscord-pcm-player" → MediaStream → o MESMO caminho de sempre do site
 //!               (<audio>, volume por pessoa, reforço >100%, áudio espacial, indicador de fala)
-//!   tela/câmera dos outros: LiveKit → NativeVideoStream → JPEG (no máx. 30 fps, 1080p) →
-//!               call_pull_video → <canvas>.captureStream() → o <video> de sempre do site
+//!   tela dos outros: o auxiliar didiscord-screencast em modo "watch" (Pion, em Go) entra na sala
+//!               como participante oculto "ver-<id>" e entrega o vídeo AINDA COMPRIMIDO
+//!               (H.264/VP8/VP9/AV1) → call_pull_video → a página decodifica com o WebCodecs
+//!               (VideoDecoder, na placa de vídeo quando dá) → <canvas>.captureStream() → o <video>
+//!               de sempre, no fps que a pessoa manda (15, 30, 60, 120…)
+//!   câmera dos outros (e a tela, se o auxiliar não estiver disponível): LiveKit →
+//!               NativeVideoStream → JPEG (até 30 fps, 1080p) → mesmo caminho até o <video>
 //!   minha câmera: getUserMedia → <canvas> → JPEG → call_push_camera → NativeVideoSource → LiveKit
 //!   áudio da minha tela: o captador do PipeWire (audio/linux.rs) manda direto pra cá
 //!               (push_screen_audio) → faixa "som-da-tela" → LiveKit, sem passar pela página
@@ -67,10 +72,28 @@ struct VideoSlot {
     jpeg: Arc<Vec<u8>>,
 }
 
+/// quadros comprimidos de uma tela (vindos do auxiliar), na ordem — não dá pra pular quadro
+/// sem esperar o próximo quadro-chave
+#[derive(Default)]
+struct EncodedQueue {
+    frames: VecDeque<Vec<u8>>, // cada um já no formato da página (ver call_pull_video)
+    waiting_key: bool,
+}
+
 #[derive(Default)]
 struct VideoHub {
     slots: Mutex<HashMap<String, VideoSlot>>,
+    encoded: Mutex<HashMap<String, EncodedQueue>>,
     notify: Notify,
+}
+
+/// passou disso sem a página buscar (aba travada, PC engasgou): joga fora e pede quadro-chave
+const MAX_ENCODED_QUEUE: usize = 90;
+
+/// o auxiliar em Go que assiste as telas sem decodificar
+struct Watcher {
+    tx: mpsc::UnboundedSender<String>,
+    _kill: tokio::sync::oneshot::Sender<()>,
 }
 
 /// uma faixa que eu publico a partir de dados que chegam aos pedaços
@@ -92,6 +115,8 @@ struct Session {
     mic_tx: mpsc::UnboundedSender<Vec<i16>>,
     /// faixas remotas assinadas agora (pros números de qualidade)
     tracks: Arc<Mutex<HashMap<String, RemoteTrack>>>,
+    /// telas vêm pelo auxiliar (vídeo comprimido) em vez do libwebrtc
+    watcher: Arc<Mutex<Option<Watcher>>>,
 }
 
 #[derive(Default)]
@@ -121,10 +146,20 @@ impl Call {
         self.hub.queues.lock().unwrap().clear();
         self.hub.notify.notify_waiters();
         self.video.slots.lock().unwrap().clear();
+        self.video.encoded.lock().unwrap().clear();
         self.video.notify.notify_waiters();
+        s.watcher.lock().unwrap().take(); // fecha o stdin e mata o auxiliar
         tauri::async_runtime::spawn(async move {
             let _ = s.room.close().await;
         });
+    }
+
+    fn send_watcher(&self, cmd: Value) {
+        if let Some(s) = self.session.lock().unwrap().as_ref() {
+            if let Some(w) = s.watcher.lock().unwrap().as_ref() {
+                let _ = w.tx.send(cmd.to_string());
+            }
+        }
     }
 
     // ---------- áudio da minha tela (vem do captador do PipeWire, não da página) ----------
@@ -280,6 +315,166 @@ fn spawn_video_reader(track: RemoteVideoTrack, sid: String, video: Arc<VideoHub>
     })
 }
 
+// ---------- telas pelo auxiliar (vídeo comprimido) ----------
+
+/// Sobe o didiscord-screencast em modo "watch". Se ele não existir ou cair, as telas voltam a vir
+/// pelo libwebrtc (JPEG, até 30 fps) — a call continua funcionando.
+fn start_watcher(app: &AppHandle, session_id: u64, url: &str, token: &str, me: &str, slot: Arc<Mutex<Option<Watcher>>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Some(helper) = crate::screencast::native_bin(app, "didiscord-screencast") else {
+        log::info("call: auxiliar de tela não encontrado — telas vão pelo caminho em JPEG");
+        return;
+    };
+    let mut cmd = crate::screencast::child_command(&helper);
+    cmd.arg("watch").stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::inherit());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(err) => {
+            log::warn(&format!("call: não consegui abrir o assistente de telas: {err}"));
+            return;
+        }
+    };
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+    let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+    let _ = tx.send(json!({ "cmd": "join", "url": url, "token": token, "me": me }).to_string());
+    *slot.lock().unwrap() = Some(Watcher { tx, _kill: kill_tx });
+
+    // stdin
+    tauri::async_runtime::spawn(async move {
+        while let Some(line) = rx.recv().await {
+            if stdin.write_all(format!("{line}\n").as_bytes()).await.is_err() {
+                break;
+            }
+        }
+    });
+    // vida do processo: termina junto com a sessão (o Watcher solto derruba o kill_tx)
+    tauri::async_runtime::spawn(async move {
+        tokio::select! {
+            _ = child.wait() => {}
+            _ = kill_rx => { let _ = child.kill().await; }
+        }
+    });
+
+    // stdout: [u8 tipo][u32 tamanho][conteúdo]
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let video = handle.state::<AppState>().call.video.clone();
+        let mut head = [0u8; 5];
+        loop {
+            if stdout.read_exact(&mut head).await.is_err() {
+                break;
+            }
+            let len = u32::from_le_bytes([head[1], head[2], head[3], head[4]]) as usize;
+            if len > 64 * 1024 * 1024 {
+                break;
+            }
+            let mut payload = vec![0u8; len];
+            if stdout.read_exact(&mut payload).await.is_err() {
+                break;
+            }
+            if handle.state::<AppState>().call.current_id() != Some(session_id) {
+                break;
+            }
+            match head[0] {
+                1 => {
+                    let Ok(ev) = serde_json::from_slice::<Value>(&payload) else { continue };
+                    match ev["ev"].as_str() {
+                        Some("track") => {
+                            let sid = ev["sid"].as_str().unwrap_or("").to_string();
+                            video.encoded.lock().unwrap().insert(sid.clone(), EncodedQueue { frames: VecDeque::new(), waiting_key: true });
+                            emit(&handle, json!({
+                                "ev": "track", "sid": sid, "identity": ev["identity"], "source": "screen_share",
+                                "kind": "video", "encoded": true, "codec": ev["codec"],
+                            }));
+                        }
+                        Some("trackEnded") => {
+                            let sid = ev["sid"].as_str().unwrap_or("").to_string();
+                            video.encoded.lock().unwrap().remove(&sid);
+                            emit(&handle, json!({ "ev": "trackEnded", "sid": sid, "identity": ev["identity"], "source": "screen_share" }));
+                        }
+                        Some("error") => log::warn(&format!("call (telas): {}", ev["message"].as_str().unwrap_or("?"))),
+                        Some("state") => log::info(&format!("call (telas): {}", ev["state"].as_str().unwrap_or("?"))),
+                        _ => {}
+                    }
+                }
+                2 => {
+                    // [u16 sid][sid][u8 flags][u8 codec][u64 µs][dados] — a página recebe igual, com o tamanho dos dados
+                    if payload.len() < 2 {
+                        continue;
+                    }
+                    let sid_len = u16::from_le_bytes([payload[0], payload[1]]) as usize;
+                    if payload.len() < 2 + sid_len + 10 {
+                        continue;
+                    }
+                    let sid = String::from_utf8_lossy(&payload[2..2 + sid_len]).into_owned();
+                    let key = payload[2 + sid_len] & 1 == 1;
+                    #[cfg(debug_assertions)]
+                    {
+                        static N: AtomicU64 = AtomicU64::new(0);
+                        static T: Mutex<Option<Instant>> = Mutex::new(None);
+                        let n = N.fetch_add(1, Ordering::Relaxed) + 1;
+                        let mut t = T.lock().unwrap();
+                        let start = *t.get_or_insert_with(Instant::now);
+                        if n % 240 == 0 {
+                            log::info(&format!("call (telas): {n} quadros, {:.1}/s", n as f64 / start.elapsed().as_secs_f64()));
+                        }
+                    }
+                    let mut need_key = false;
+                    {
+                        let mut enc = video.encoded.lock().unwrap();
+                        let Some(q) = enc.get_mut(&sid) else { continue };
+                        if q.waiting_key && !key {
+                            continue;
+                        }
+                        q.waiting_key = false;
+                        if q.frames.len() >= MAX_ENCODED_QUEUE {
+                            log::warn(&format!("call (telas): a página não deu conta ({} quadros na fila) — recomeçando do quadro-chave", q.frames.len()));
+                            q.frames.clear();
+                            q.waiting_key = true;
+                            need_key = true;
+                        } else {
+                            q.frames.push_back(payload);
+                        }
+                    }
+                    if need_key {
+                        handle.state::<AppState>().call.send_watcher(json!({ "cmd": "keyframe", "sid": sid }));
+                    }
+                    video.notify.notify_waiters();
+                }
+                _ => {}
+            }
+        }
+        // o auxiliar caiu: as telas voltam a vir pelo libwebrtc
+        let st = handle.state::<AppState>();
+        let room = {
+            let guard = st.call.session.lock().unwrap();
+            match guard.as_ref() {
+                Some(s) if s.id == session_id => {
+                    s.watcher.lock().unwrap().take();
+                    Some(s.room.clone())
+                }
+                _ => None,
+            }
+        };
+        if let Some(room) = room {
+            log::warn("call: o assistente de telas parou — telas voltam pelo caminho em JPEG");
+            let sids: Vec<String> = video.encoded.lock().unwrap().drain().map(|(k, _)| k).collect();
+            for sid in sids {
+                emit(&handle, json!({ "ev": "trackEnded", "sid": sid, "source": "screen_share" }));
+            }
+            for (_, p) in room.remote_participants() {
+                for (_, publication) in p.track_publications() {
+                    if publication.source() == TrackSource::Screenshare {
+                        publication.set_subscribed(true);
+                    }
+                }
+            }
+        }
+    });
+}
+
 // ---------- números de qualidade ----------
 
 /// relatório do libwebrtc -> objetos no formato do getStats() do navegador (só o que o site lê)
@@ -331,6 +526,8 @@ pub struct JoinOpts {
     path: String,
     token: String,
     mic_bitrate: Option<u64>,
+    /// ingresso do participante oculto que assiste as telas (servidor novo; sem ele, vai por JPEG)
+    viewer_token: Option<String>,
 }
 
 /// Entra na sala do canal. O endereço é sempre o do servidor em que o app está conectado
@@ -408,7 +605,13 @@ pub async fn call_join(app: AppHandle, webview: Webview, opts: JoinOpts) -> Valu
     });
 
     let tracks: Arc<Mutex<HashMap<String, RemoteTrack>>> = Arc::default();
-    *st.call.session.lock().unwrap() = Some(Session { id, room: room.clone(), mic_tx, tracks: tracks.clone() });
+    let watcher: Arc<Mutex<Option<Watcher>>> = Arc::default();
+    *st.call.session.lock().unwrap() =
+        Some(Session { id, room: room.clone(), mic_tx, tracks: tracks.clone(), watcher: watcher.clone() });
+    if let Some(vt) = opts.viewer_token.filter(|t| !t.is_empty() && t.len() <= 4096) {
+        let me = room.local_participant().identity().to_string();
+        start_watcher(&app, id, &url, &vt, &me, watcher.clone());
+    }
 
     // ---------- eventos da sala ----------
     let handle = app.clone();
@@ -430,6 +633,11 @@ pub async fn call_join(app: AppHandle, webview: Webview, opts: JoinOpts) -> Valu
                     // a minha própria tela (o auxiliar entra como "tela-<meu id>"): não assina —
                     // seria decodificar e converter o próprio vídeo à toa
                     if identity == format!("tela-{}", room.local_participant().identity()) {
+                        publication.set_subscribed(false);
+                        continue;
+                    }
+                    // telas vão pelo auxiliar (comprimidas, fps original): aqui não decodifica
+                    if publication.source() == TrackSource::Screenshare && watcher.lock().unwrap().is_some() {
                         publication.set_subscribed(false);
                         continue;
                     }
@@ -481,7 +689,11 @@ pub async fn call_join(app: AppHandle, webview: Webview, opts: JoinOpts) -> Valu
                     if let Some(r) = readers.remove(&sid) {
                         r.abort();
                     }
-                    tracks.lock().unwrap().remove(&sid);
+                    // faixa que eu nem cheguei a usar (a minha própria tela, ou uma tela que vem pelo
+                    // auxiliar): não avisa a página — senão ela apagaria a tela que veio pelo auxiliar
+                    if tracks.lock().unwrap().remove(&sid).is_none() {
+                        continue;
+                    }
                     hub.queues.lock().unwrap().remove(&sid);
                     video.slots.lock().unwrap().remove(&sid);
                     emit(&handle, json!({ "ev": "trackEnded", "sid": sid, "identity": participant.identity().to_string(), "source": source_name(publication.source()) }));
@@ -581,24 +793,37 @@ pub async fn call_pull(app: AppHandle, webview: Webview) -> Response {
 }
 
 /// Quadros novos de vídeo (tela/câmera dos outros), em laço como o áudio. Espera até ~250 ms.
-///   repetido: [u16 tamanho do sid][sid][u32 largura][u32 altura][u32 bytes][JPEG]
+///   repetido, cada um começando com o tipo:
+///   0 (JPEG):        [u8 0][u16 tamanho do sid][sid][u32 largura][u32 altura][u32 bytes][JPEG]
+///   1 (comprimido):  [u8 1][u32 tamanho do resto][u16 sid][sid][u8 flags][u8 codec][u64 µs][dados]
 #[tauri::command]
 pub async fn call_pull_video(app: AppHandle, webview: Webview) -> Response {
     if app::require_site(&app, &webview).is_err() {
         return Response::new(Vec::<u8>::new());
     }
     let video = app.state::<AppState>().call.video.clone();
-    let has_new = || video.slots.lock().unwrap().values().any(|s| s.seq > s.sent);
+    let has_new = || {
+        video.slots.lock().unwrap().values().any(|s| s.seq > s.sent)
+            || video.encoded.lock().unwrap().values().any(|q| !q.frames.is_empty())
+    };
     if !has_new() {
         let _ = tokio::time::timeout(Duration::from_millis(250), video.notify.notified()).await;
     }
     let mut out: Vec<u8> = Vec::new();
+    for q in video.encoded.lock().unwrap().values_mut() {
+        for f in q.frames.drain(..) {
+            out.push(1);
+            out.extend((f.len() as u32).to_le_bytes());
+            out.extend(f);
+        }
+    }
     let mut slots = video.slots.lock().unwrap();
     for (sid, slot) in slots.iter_mut() {
         if slot.seq <= slot.sent || slot.jpeg.is_empty() {
             continue;
         }
         slot.sent = slot.seq;
+        out.push(0);
         let sid_bytes = sid.as_bytes();
         out.extend((sid_bytes.len() as u16).to_le_bytes());
         out.extend(sid_bytes);
@@ -709,8 +934,15 @@ pub fn call_set_subscribed(app: AppHandle, webview: Webview, user_id: u64, scree
         return;
     }
     let st = app.state::<AppState>();
+    if screen {
+        st.call.send_watcher(json!({ "cmd": "watch", "user": user_id.to_string(), "on": on }));
+    }
     let guard = st.call.session.lock().unwrap();
     let Some(s) = guard.as_ref() else { return };
+    // com o auxiliar assistindo, as telas não vêm por aqui
+    if screen && s.watcher.lock().unwrap().is_some() {
+        return;
+    }
     let ids = [user_id.to_string(), format!("tela-{user_id}")];
     for (identity, p) in s.room.remote_participants() {
         if !ids.contains(&identity.to_string()) {
@@ -722,5 +954,18 @@ pub fn call_set_subscribed(app: AppHandle, webview: Webview, user_id: u64, scree
                 publication.set_subscribed(on);
             }
         }
+    }
+}
+
+/// o decodificador da página perdeu o fio (erro, começou no meio): pede um quadro-chave
+#[tauri::command]
+pub fn call_keyframe(app: AppHandle, webview: Webview, sid: String) {
+    if app::require_site(&app, &webview).is_ok() {
+        let st = app.state::<AppState>();
+        if let Some(q) = st.call.video.encoded.lock().unwrap().get_mut(&sid) {
+            q.frames.clear();
+            q.waiting_key = true;
+        }
+        st.call.send_watcher(json!({ "cmd": "keyframe", "sid": sid }));
     }
 }

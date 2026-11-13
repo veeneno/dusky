@@ -459,12 +459,21 @@ function renderScreenShareArea() {
     video.playsInline = true;
     // sua própria tela fica sempre muda; a dos outros toca o som da tela junto com a imagem
     video.muted = t.kind === 'local' ? true : isDeafened;
-    video.srcObject = t.stream;
+    // app do Linux: a tela já vem desenhada num canvas (21-call-sfu.js, sfuNativeAddEncodedVideo) —
+    // mostra o próprio canvas, sem passar pelo <video> (menos processador e um quadro a menos de
+    // atraso); o <video> fica escondido, só tocando o som da tela
+    const nativeCanvas = t.kind === 'remote' ? (t.stream.getVideoTracks()[0] || {}).didiscordCanvas : null;
+    video.srcObject = nativeCanvas ? new MediaStream(t.stream.getAudioTracks()) : t.stream;
+    if (nativeCanvas) {
+      video.style.display = 'none';
+      nativeCanvas.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;display:block';
+    }
     video.play().catch((err) => {
       if (t.kind === 'remote') console.warn('[call] autoplay da tela remota bloqueado pelo navegador:', err);
     });
     if (t.kind === 'remote') applyLocalOverrideToRemoteScreenAudio(t.userId, video);
     tile.appendChild(video);
+    if (nativeCanvas) tile.appendChild(nativeCanvas);
 
     const label = document.createElement('span');
     label.className = 'call-screenshare-label';

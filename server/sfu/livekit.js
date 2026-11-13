@@ -202,7 +202,9 @@ const b64url = (input) => Buffer.from(input).toString('base64url');
 
 // JWT HS256 no formato que o LiveKit espera. Vale pra UMA sala e identifica a pessoa pelo id da conta.
 // `publishOnly`: participante que só envia (o auxiliar de tela do app desktop) — não recebe nada da sala.
-function createToken({ room, identity, name, publishOnly }) {
+// publishOnly: o auxiliar de tela ("tela-<id>") só manda. watchOnly: o assistente do app do Linux
+// ("ver-<id>") só recebe e fica oculto — ninguém vê ele na sala.
+function createToken({ room, identity, name, publishOnly, watchOnly }) {
   const { apiKey, apiSecret } = loadKeys();
   const now = Math.floor(Date.now() / 1000);
   const payload = {
@@ -211,7 +213,10 @@ function createToken({ room, identity, name, publishOnly }) {
     name: name || String(identity),
     nbf: now - 10,
     exp: now + 24 * 60 * 60, // 24 h: cobre reconexões numa call longa
-    video: { room, roomJoin: true, canPublish: true, canSubscribe: !publishOnly, canPublishData: false },
+    video: {
+      room, roomJoin: true, canPublish: !watchOnly, canSubscribe: !publishOnly, canPublishData: false,
+      ...(watchOnly ? { hidden: true } : {}),
+    },
   };
   const head = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const body = b64url(JSON.stringify(payload));
