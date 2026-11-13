@@ -78,6 +78,7 @@ struct VideoSlot {
 struct EncodedQueue {
     frames: VecDeque<Vec<u8>>, // cada um já no formato da página (ver call_pull_video)
     waiting_key: bool,
+    dropped: u64,
 }
 
 #[derive(Default)]
@@ -117,6 +118,9 @@ struct Session {
     tracks: Arc<Mutex<HashMap<String, RemoteTrack>>>,
     /// telas vêm pelo auxiliar (vídeo comprimido) em vez do libwebrtc
     watcher: Arc<Mutex<Option<Watcher>>>,
+    /// ids de quem tem a tela vindo pelo libwebrtc (JPEG) mesmo com o auxiliar: a página não
+    /// conseguiu decodificar o vídeo comprimido dessa pessoa
+    jpeg_users: Arc<Mutex<std::collections::HashSet<String>>>,
 }
 
 #[derive(Default)]
@@ -383,7 +387,7 @@ fn start_watcher(app: &AppHandle, session_id: u64, url: &str, token: &str, me: &
                     match ev["ev"].as_str() {
                         Some("track") => {
                             let sid = ev["sid"].as_str().unwrap_or("").to_string();
-                            video.encoded.lock().unwrap().insert(sid.clone(), EncodedQueue { frames: VecDeque::new(), waiting_key: true });
+                            video.encoded.lock().unwrap().insert(sid.clone(), EncodedQueue { frames: VecDeque::new(), waiting_key: true, dropped: 0 });
                             emit(&handle, json!({
                                 "ev": "track", "sid": sid, "identity": ev["identity"], "source": "screen_share",
                                 "kind": "video", "encoded": true, "codec": ev["codec"],
@@ -426,6 +430,10 @@ fn start_watcher(app: &AppHandle, session_id: u64, url: &str, token: &str, me: &
                         let mut enc = video.encoded.lock().unwrap();
                         let Some(q) = enc.get_mut(&sid) else { continue };
                         if q.waiting_key && !key {
+                            q.dropped += 1;
+                            if q.dropped % 300 == 0 {
+                                log::info(&format!("call (telas): {} quadros descartados esperando quadro-chave ({sid})", q.dropped));
+                            }
                             continue;
                         }
                         q.waiting_key = false;
@@ -606,8 +614,15 @@ pub async fn call_join(app: AppHandle, webview: Webview, opts: JoinOpts) -> Valu
 
     let tracks: Arc<Mutex<HashMap<String, RemoteTrack>>> = Arc::default();
     let watcher: Arc<Mutex<Option<Watcher>>> = Arc::default();
-    *st.call.session.lock().unwrap() =
-        Some(Session { id, room: room.clone(), mic_tx, tracks: tracks.clone(), watcher: watcher.clone() });
+    let jpeg_users: Arc<Mutex<std::collections::HashSet<String>>> = Arc::default();
+    *st.call.session.lock().unwrap() = Some(Session {
+        id,
+        room: room.clone(),
+        mic_tx,
+        tracks: tracks.clone(),
+        watcher: watcher.clone(),
+        jpeg_users: jpeg_users.clone(),
+    });
     if let Some(vt) = opts.viewer_token.filter(|t| !t.is_empty() && t.len() <= 4096) {
         let me = room.local_participant().identity().to_string();
         start_watcher(&app, id, &url, &vt, &me, watcher.clone());
@@ -637,7 +652,10 @@ pub async fn call_join(app: AppHandle, webview: Webview, opts: JoinOpts) -> Valu
                         continue;
                     }
                     // telas vão pelo auxiliar (comprimidas, fps original): aqui não decodifica
-                    if publication.source() == TrackSource::Screenshare && watcher.lock().unwrap().is_some() {
+                    if publication.source() == TrackSource::Screenshare
+                        && watcher.lock().unwrap().is_some()
+                        && !jpeg_users.lock().unwrap().contains(identity.trim_start_matches("tela-"))
+                    {
                         publication.set_subscribed(false);
                         continue;
                     }
@@ -975,5 +993,31 @@ pub fn call_keyframe(app: AppHandle, webview: Webview, sid: String) {
 pub fn call_log(app: AppHandle, webview: Webview, text: String) {
     if app::require_site(&app, &webview).is_ok() {
         log::info(&format!("call: {}", text.chars().take(300).collect::<String>()));
+    }
+}
+
+/// a página não conseguiu decodificar a tela comprimida dessa pessoa: ela passa a vir pelo
+/// libwebrtc (JPEG, até 30 fps) — o auxiliar para de assistir e a sala assina a tela aqui
+#[tauri::command]
+pub fn call_screen_fallback(app: AppHandle, webview: Webview, user_id: u64) {
+    if app::require_site(&app, &webview).is_err() {
+        return;
+    }
+    let st = app.state::<AppState>();
+    let user = user_id.to_string();
+    st.call.send_watcher(json!({ "cmd": "watch", "user": user, "on": false }));
+    let guard = st.call.session.lock().unwrap();
+    let Some(s) = guard.as_ref() else { return };
+    s.jpeg_users.lock().unwrap().insert(user.clone());
+    log::info(&format!("call: a tela de {user} passa a vir em JPEG"));
+    for (identity, p) in s.room.remote_participants() {
+        if identity.to_string().trim_start_matches("tela-") != user {
+            continue;
+        }
+        for (_, publication) in p.track_publications() {
+            if publication.source() == TrackSource::Screenshare {
+                publication.set_subscribed(true);
+            }
+        }
     }
 }

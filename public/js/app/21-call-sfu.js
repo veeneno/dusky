@@ -435,7 +435,10 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
   canvas.height = 9;
   // WebGL: o quadro vai pra placa como textura e é desenhado lá. O canvas 2D do WebKitGTK copia a
   // imagem inteira pela memória a cada quadro, o que derrubava o ritmo da página em 1080p/60
-  const gl = createNativeVideoGl(canvas);
+  // (dá pra forçar o canvas 2D com localStorage 'didiscord:nativeVideo2d' = '1', pra comparar)
+  let force2d = false;
+  try { force2d = localStorage.getItem('didiscord:nativeVideo2d') === '1'; } catch (_) { /* sem armazenamento */ }
+  const gl = force2d ? null : createNativeVideoGl(canvas);
   const g = gl ? null : canvas.getContext('2d');
   const track = canvas.captureStream().getVideoTracks()[0];
   if (!track) return;
@@ -444,11 +447,13 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
     identity: ev.identity, source: 'screen_share', canvas, g, gl, track, encoded: true, codec, decoder: null, needKey: true,
     bytes: 0, frames: 0, shown: 0, statFrames: 0, statShown: 0, statAt: performance.now(),
     queue: [], // quadros já decodificados esperando a vez de aparecer (ver sfuNativePresent)
+    received: 0, waitingKey: 0, failures: 0, softwareOnly: false, lastError: '',
     clock: null, // { ts, wall }: que marca de tempo de quem envia corresponde a que instante aqui
   };
   entry.reset = () => {
     if (entry.decoder && entry.decoder.state !== 'closed') { try { entry.decoder.close(); } catch (_) { /* já fechado */ } }
     entry.needKey = true;
+    if (entry.fellBack) return;
     entry.decoder = new VideoDecoder({
       output: (frame) => {
         entry.frames++;
@@ -459,15 +464,24 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
         while (entry.queue.length > 12) entry.queue.shift().close(); // aba parada: não acumula memória
         if (!ctx.presenting) sfuNativePresent(ctx);
       },
-      error: (err) => {
-        console.warn('[sfu] (app) decodificador da tela de', ev.identity, 'falhou:', err && err.message);
-        entry.decoder = null; // remonta no próximo quadro-chave
-        entry.needKey = true;
-        if (sfu === ctx) ctx.api.keyframe(ev.sid);
-      },
+      error: (err) => sfuNativeDecoderFailed(ctx, ev.sid, entry, err),
     });
-    entry.decoder.configure({ codec, optimizeForLatency: true });
+    // 1ª tentativa: o decodificador que o sistema achar melhor (placa de vídeo); se falhar, só no
+    // processador; se falhar de novo, essa tela volta pro caminho em JPEG
+    const cfg = { codec, optimizeForLatency: true };
+    if (entry.softwareOnly) cfg.hardwareAcceleration = 'prefer-software';
+    try {
+      entry.decoder.configure(cfg);
+    } catch (err) {
+      sfuNativeDecoderFailed(ctx, ev.sid, entry, err);
+    }
   };
+  // diz no terminal se o sistema tem decodificador pra esse codec (faltando plugin do GStreamer, não tem)
+  Promise.all([
+    VideoDecoder.isConfigSupported({ codec }).then((r) => r.supported).catch(() => false),
+    VideoDecoder.isConfigSupported({ codec, hardwareAcceleration: 'prefer-software' }).then((r) => r.supported).catch(() => false),
+  ]).then(([hw, sw]) => ctx.api.log(`tela de ${ev.identity}: ${codec} — decodificador ${hw ? 'disponível' : 'NÃO disponível'}${sw ? '' : ' (nem no processador)'}`));
+  sfuNativeDiag(ctx);
   entry.reset();
   ctx.videos.set(ev.sid, entry);
   const receiver = {
@@ -495,11 +509,11 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
 function createNativeVideoGl(canvas) {
   const gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: true, desynchronized: true });
   if (!gl) return null;
-  // WebGL "de mentira" (sem placa de vídeo, desenhado no processador): aí o canvas 2D é mais leve
+  // WebGL "de mentira" (sem placa de vídeo, desenhado no processador): aí o canvas 2D é mais leve.
+  // (o WebKit costuma esconder o nome da placa — aí não dá pra saber e fica no WebGL)
   const info = gl.getExtension('WEBGL_debug_renderer_info');
   const renderer = String((info && gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || '');
   if (/llvmpipe|softpipe|swiftshader|software/i.test(renderer)) return null;
-  gl.didiscordRenderer = renderer;
   const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); return x; };
   const prog = gl.createProgram();
   gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec2 p; varying vec2 t; void main(){ t = vec2((p.x + 1.0) / 2.0, (1.0 - p.y) / 2.0); gl_Position = vec4(p, 0.0, 1.0); }'));
@@ -536,28 +550,9 @@ const NATIVE_PLAYOUT_DELAY_MS = 40;
 
 function sfuNativePresent(ctx) {
   ctx.presenting = true;
-  // diagnóstico no terminal do app, a cada 5 s enquanto tem tela chegando: quantos quadros chegaram,
-  // quantos apareceram e quantas vezes a página conseguiu se redesenhar (o teto de tudo)
-  let ticks = 0;
-  let diagAt = performance.now();
-  const diag = new Map(); // entrada -> [decodificados, mostrados] da última medição
   const tick = () => {
     if (sfu !== ctx) { ctx.presenting = false; return; }
     const now = performance.now();
-    ticks++;
-    if (now - diagAt >= 5000) {
-      const secs = (now - diagAt) / 1000;
-      for (const e of ctx.videos.values()) {
-        if (!e.encoded) continue;
-        const [d0, s0] = diag.get(e) || [e.frames, e.shown];
-        diag.set(e, [e.frames, e.shown]);
-        ctx.api.log(`tela de ${e.identity}: ${Math.round((e.frames - d0) / secs)} quadros/s decodificados, ` +
-          `${Math.round((e.shown - s0) / secs)} mostrados, página redesenhando ${Math.round(ticks / secs)}x/s, ` +
-          `${e.canvas.width}x${e.canvas.height}, ${e.gl ? `WebGL (${e.gl.didiscordRenderer || '?'})` : 'canvas 2D'}`);
-      }
-      ticks = 0;
-      diagAt = now;
-    }
     let any = false;
     for (const entry of ctx.videos.values()) {
       if (!entry.encoded) continue;
@@ -599,11 +594,65 @@ function sfuNativePresent(ctx) {
   requestAnimationFrame(tick);
 }
 
+// o decodificador da página falhou com essa tela: tenta só no processador e, se falhar de novo,
+// pede pro app mandar essa tela pelo caminho em JPEG (o libwebrtc decodifica no Rust)
+function sfuNativeDecoderFailed(ctx, sid, entry, err) {
+  entry.failures++;
+  entry.lastError = String((err && (err.message || err.name)) || err);
+  entry.decoder = null;
+  entry.needKey = true;
+  if (sfu !== ctx || entry.fellBack) return;
+  ctx.api.log(`tela de ${entry.identity}: decodificador falhou (${entry.failures}x): ${entry.lastError}`);
+  if (entry.failures >= 2 && !entry.softwareOnly) {
+    entry.softwareOnly = true;
+    entry.failures = 0;
+    ctx.api.log(`tela de ${entry.identity}: tentando decodificar só no processador`);
+  } else if (entry.failures >= 2) {
+    entry.fellBack = true;
+    ctx.api.log(`tela de ${entry.identity}: não deu pra decodificar aqui — indo pelo caminho em JPEG (até 30 fps)`);
+    const user = sfuUserId({ identity: entry.identity });
+    if (user != null) ctx.api.screenFallback(user);
+    return;
+  }
+  ctx.api.keyframe(sid);
+}
+
+// uma linha no terminal do app a cada 5 s por tela comprimida: o que chegou, o que foi decodificado,
+// o que apareceu e quantas vezes a página conseguiu se redesenhar (o teto de tudo)
+function sfuNativeDiag(ctx) {
+  if (ctx.diagTimer) return;
+  let ticks = 0;
+  const raf = () => { if (ctx.diagTimer) { ticks++; requestAnimationFrame(raf); } };
+  let at = performance.now();
+  const prev = new Map();
+  ctx.diagTimer = setInterval(() => {
+    const list = [...ctx.videos.values()].filter((e) => e.encoded);
+    if (sfu !== ctx || !list.length) { clearInterval(ctx.diagTimer); ctx.diagTimer = null; return; }
+    const now = performance.now();
+    const secs = (now - at) / 1000;
+    for (const e of list) {
+      const p = prev.get(e) || { received: 0, frames: 0, shown: 0, waitingKey: 0 };
+      prev.set(e, { received: e.received, frames: e.frames, shown: e.shown, waitingKey: e.waitingKey });
+      const r = (k) => Math.round((e[k] - p[k]) / secs);
+      ctx.api.log(`tela de ${e.identity}: ${r('received')} quadros/s chegando, ${r('frames')} decodificados, ${r('shown')} mostrados` +
+        `${e.waitingKey - p.waitingKey ? `, ${e.waitingKey - p.waitingKey} descartados esperando quadro-chave` : ''}` +
+        `, página redesenhando ${Math.round(ticks / secs)}x/s, ${e.canvas.width}x${e.canvas.height}, ` +
+        `${e.gl ? 'WebGL' : 'canvas 2D'}${e.softwareOnly ? ', decod. no processador' : ''}` +
+        `${e.lastError ? `, último erro: ${e.lastError}` : ''}`);
+    }
+    ticks = 0;
+    at = now;
+  }, 5000);
+  requestAnimationFrame(raf);
+}
+
 function sfuNativeDecode(ctx, sid, key, ts, data) {
   const entry = ctx.videos.get(sid);
-  if (!entry || !entry.encoded) return;
+  if (!entry || !entry.encoded || entry.fellBack) return;
+  entry.received++;
   if (!entry.decoder || entry.decoder.state === 'closed') entry.reset();
-  if (entry.needKey && !key) return; // começou no meio: espera o quadro-chave
+  if (!entry.decoder) return;
+  if (entry.needKey && !key) { entry.waitingKey++; return; } // começou no meio: espera o quadro-chave
   // a página engasgou e acumulou: recomeça do próximo quadro-chave em vez de mostrar atrasado
   if (entry.decoder.decodeQueueSize > 30) {
     entry.reset();

@@ -56,6 +56,9 @@ pub fn call_keyframe(_sid: String) {}
 pub fn call_log(_text: String) {}
 
 #[tauri::command]
+pub fn call_screen_fallback(_user_id: u64) {}
+
+#[tauri::command]
 pub async fn call_stats(_sid: String) -> Vec<serde_json::Value> {
     Vec::new()
 }

@@ -192,6 +192,7 @@ fn grant_site(app: &AppHandle, origin: &str) {
         "allow-call-stats",
         "allow-call-keyframe",
         "allow-call-log",
+        "allow-call-screen-fallback",
         // window.Notification da página (o plugin de notificação troca pela notificação do sistema)
         "notification:default",
     ] {
@@ -571,6 +572,7 @@ pub fn run() {
             call::call_stats,
             call::call_keyframe,
             call::call_log,
+            call::call_screen_fallback,
             picker::picker_get_sources,
             picker::picker_choose,
             picker::picker_get_audio_apps,

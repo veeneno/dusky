@@ -137,6 +137,8 @@
       keyframe: (sid) => { fire('call_keyframe', { sid: String(sid) }); },
       // uma linha de diagnóstico no terminal do app
       log: (text) => { fire('call_log', { text: String(text) }); },
+      // a página não consegue decodificar a tela dessa pessoa: o app passa a mandar em JPEG
+      screenFallback: (userId) => { fire('call_screen_fallback', { userId: Number(userId) }); },
       // eventos: participant, participantLeft, track, trackEnded, reconnecting, reconnected, disconnected, error
       onEvent: (cb) => on('call:event', cb),
     };
