@@ -954,8 +954,10 @@ pub async fn call_stats(app: AppHandle, webview: Webview, sid: String) -> Vec<Va
 }
 
 /// parar de assistir / voltar a assistir a tela de alguém (identidade "<id>" ou "tela-<id>")
+// async: assinar/desassinar no LiveKit precisa rodar dentro do runtime do tokio (na thread
+// principal ele derrubava o app: "there is no reactor running")
 #[tauri::command]
-pub fn call_set_subscribed(app: AppHandle, webview: Webview, user_id: u64, screen: bool, on: bool) {
+pub async fn call_set_subscribed(app: AppHandle, webview: Webview, user_id: u64, screen: bool, on: bool) {
     if app::require_site(&app, &webview).is_err() {
         return;
     }
@@ -1007,8 +1009,10 @@ pub fn call_log(app: AppHandle, webview: Webview, text: String) {
 
 /// a página não conseguiu decodificar a tela comprimida dessa pessoa: ela passa a vir pelo
 /// libwebrtc (JPEG, até 30 fps) — o auxiliar para de assistir e a sala assina a tela aqui
+// async: assinar/desassinar no LiveKit precisa rodar dentro do runtime do tokio (na thread
+// principal ele derrubava o app: "there is no reactor running")
 #[tauri::command]
-pub fn call_screen_fallback(app: AppHandle, webview: Webview, user_id: u64) {
+pub async fn call_screen_fallback(app: AppHandle, webview: Webview, user_id: u64) {
     if app::require_site(&app, &webview).is_err() {
         return;
     }

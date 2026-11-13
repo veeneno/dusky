@@ -34,7 +34,7 @@ pub async fn call_pull() -> Response {
 }
 
 #[tauri::command]
-pub fn call_set_subscribed(_user_id: u64, _screen: bool, _on: bool) {}
+pub async fn call_set_subscribed(_user_id: u64, _screen: bool, _on: bool) {}
 
 #[tauri::command]
 pub async fn call_pull_video() -> Response {
@@ -56,7 +56,7 @@ pub fn call_keyframe(_sid: String) {}
 pub fn call_log(_text: String) {}
 
 #[tauri::command]
-pub fn call_screen_fallback(_user_id: u64) {}
+pub async fn call_screen_fallback(_user_id: u64) {}
 
 #[tauri::command]
 pub async fn call_stats(_sid: String) -> Vec<serde_json::Value> {
