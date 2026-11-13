@@ -1,5 +1,5 @@
 // didiscord — Eventos em tempo real e partida do app
-// Parte 25 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 28 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -168,7 +168,10 @@ function wireRealtime() {
   Realtime.on('presence_offline', ({ userId }) => setPresence(userId, false));
 
   Realtime.on('server_joined', ({ server }) => upsertServer(server));
-  Realtime.on('server_updated', ({ server }) => upsertServer(server));
+  Realtime.on('server_updated', ({ server }) => {
+    upsertServer(server);
+    if (server.id === currentServerId) refreshServerSettingsView();
+  });
 
   Realtime.on('server_deleted', ({ serverId }) => {
     const s = servers.find((x) => x.id === serverId);
@@ -177,7 +180,8 @@ function wireRealtime() {
 
   Realtime.on('server_removed', ({ serverId, reason }) => {
     const s = servers.find((x) => x.id === serverId);
-    if (s) removeServerLocally(serverId, reason === 'kicked' ? `você foi removido de ${s.name}` : null);
+    const text = reason === 'kicked' ? `você foi removido de ${s && s.name}` : reason === 'banned' ? `você foi banido de ${s && s.name}` : null;
+    if (s) removeServerLocally(serverId, text);
   });
 
   Realtime.on('member_joined', ({ serverId, member }) => {
@@ -213,7 +217,7 @@ function wireRealtime() {
 
   // ---------- eventos de chamada de voz ----------
 
-  Realtime.on('voice_channel_state', async ({ channelId, participants }) => {
+  Realtime.on('voice_channel_state', async ({ channelId, participants, self }) => {
     // atualiza a pré-visualização da sidebar independente de eu estar nesse canal
     const map = getChannelVoiceMap(channelId);
     map.clear();
@@ -224,6 +228,7 @@ function wireRealtime() {
     renderVoicePreviews();
 
     if (!voiceChannel || voiceChannel.id !== channelId) return;
+    worldOnChannelState(participants, self); // mundinho: posições de todo mundo (27-world.js)
     for (const p of participants) {
       callParticipantsState.set(p.userId, { muted: p.muted, deafened: p.deafened, cameraOn: !!p.cameraOn, screenOn: !!p.screenOn });
       // o bot nunca é uma RTCPeerConnection de verdade (ver comentário no topo do arquivo, perto
@@ -234,12 +239,13 @@ function wireRealtime() {
     renderCallParticipants();
   });
 
-  Realtime.on('voice_user_joined', ({ channelId, userId, muted, deafened, cameraOn: uCameraOn, screenOn: uScreenOn }) => {
+  Realtime.on('voice_user_joined', ({ channelId, userId, muted, deafened, cameraOn: uCameraOn, screenOn: uScreenOn, world }) => {
     getChannelVoiceMap(channelId).set(userId, { muted, deafened, cameraOn: !!uCameraOn, screenOn: !!uScreenOn });
     renderVoicePreviews();
 
     if (!voiceChannel || voiceChannel.id !== channelId) return;
     callParticipantsState.set(userId, { muted, deafened, cameraOn: !!uCameraOn, screenOn: !!uScreenOn });
+    if (world) worldOnRemoteState(userId, world);
     if (userId === BOT_USER_ID) {
       // o bot "entrando" não é uma call de verdade — só liga o stream HTTP de áudio dele, sem
       // tocar o som de entrada de humano nem mexer em remoteUserId (que é só pro outro humano,
@@ -275,6 +281,7 @@ function wireRealtime() {
       return;
     }
     callParticipantsState.delete(userId);
+    worldOnUserLeft(userId);
     if (userId === BOT_USER_ID) {
       stopBotAudio();
     } else {
@@ -337,11 +344,12 @@ function wireRealtime() {
     else toast(by ? `${by} te desconectou da call` : 'você foi desconectado da call');
   });
 
-  Realtime.on('voice_move', async ({ channel, by }) => {
+  Realtime.on('voice_move', async ({ channel, by, reason }) => {
     if (!channel) return;
     const wasViewingCall = !!(voiceChannel && currentChannel && currentChannel.id === voiceChannel.id);
     const known = channels.find((c) => c.id === channel.id) || channel;
-    toast(by ? `${by} te levou pra ${known.name}` : `você foi levado pra ${known.name}`);
+    if (reason === 'afk') toast(`você ficou um tempo sem falar e foi levado pro canal AFK (${known.name})`);
+    else toast(by ? `${by} te levou pra ${known.name}` : `você foi levado pra ${known.name}`);
     await joinVoiceCall(known);
     if (wasViewingCall && currentServerId === known.server_id) selectChannel(known);
   });
@@ -369,6 +377,29 @@ function wireRealtime() {
     window.location.replace('/login.html');
   });
   Realtime.on('channels_updated', ({ serverId }) => refreshServerData(serverId));
+
+  // mundinho 3D (27-world.js): alguém da call andou/sentou, ou o servidor corrigiu a minha posição
+  Realtime.on('world_state', (ev) => { if (voiceChannel && ev.channelId === voiceChannel.id) worldOnRemoteState(ev.userId, ev); });
+  Realtime.on('world_correction', ({ world }) => worldOnCorrection(world));
+  Realtime.on('world_tv_state', ({ channelId, tv, now }) => { if (voiceChannel && voiceChannel.id === channelId) worldOnTvState(tv, now); });
+  Realtime.on('game_state', ({ channelId, state, now }) => { if (voiceChannel && voiceChannel.id === channelId) worldOnGameState(state, now); });
+  Realtime.on('game_denied', ({ error }) => toast(error || 'jogada não permitida', 'error'));
+  Realtime.on('piano_note', (ev) => { if (voiceChannel && voiceChannel.id === ev.channelId) worldOnPianoNote(ev); });
+  Realtime.on('world_tv_denied', ({ error }) => toast(error || 'não deu pra mexer na TV', 'error'));
+
+  // banimentos mudaram: a aba de banimentos aberta se atualiza
+  Realtime.on('bans_updated', ({ serverId }) => {
+    if (serverId === currentServerId && !serverSettingsBackdrop.hidden && ssTab === 'bans') loadSsBans();
+  });
+
+  // soundboard (26-soundboard.js): alguém tocou um som na minha call, o servidor recusou o meu,
+  // ou os sons de algum servidor mudaram
+  Realtime.on('soundboard_play', (ev) => handleSoundboardPlay(ev));
+  Realtime.on('soundboard_denied', ({ error, cooldown }) => toast(error || 'não deu pra tocar esse som', cooldown ? undefined : 'error'));
+  Realtime.on('soundboard_updated', ({ serverId }) => {
+    invalidateSoundboard();
+    if (serverId === currentServerId && !serverSettingsBackdrop.hidden && ssTab === 'soundboard') loadSsSounds();
+  });
 
   Realtime.connect();
 

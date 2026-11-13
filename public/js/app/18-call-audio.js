@@ -1,5 +1,5 @@
 // didiscord — Áudio da call: microfone, supressão de ruído, sons e bot de música
-// Parte 18 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 18 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -655,7 +655,17 @@ function ensurePeerBoostGraph(peer) {
     peer.boostGain = ctx.createGain();
     peer.boostGain.gain.value = 0;
     src.connect(peer.boostGain);
-    peer.boostGain.connect(boostOutput(ctx));
+    // call-mundo (27-world.js): o som inteiro passa por aqui e por um PannerNode — vem da direção
+    // e da distância do boneco da pessoa. Fora do mundo, o caminho continua igual a antes.
+    if (worldCallActive()) {
+      peer.spatialPanner = createWorldPanner(ctx);
+      peer.boostGain.connect(peer.spatialPanner);
+      peer.spatialPanner.connect(boostOutput(ctx));
+      updateSpatialFor(peer.userId);
+    } else {
+      peer.spatialPanner = null;
+      peer.boostGain.connect(boostOutput(ctx));
+    }
     peer.boostSource = peer.audioStream;
   } catch (err) {
     console.warn('[call] não consegui montar o reforço de volume acima de 100%:', err);
@@ -670,8 +680,9 @@ function applyLocalOverridesToRemoteAudio(userId) {
   const override = getLocalOverride(userId);
   const vol = getSavedVolume(userId); // 0–200
   const factor = override.mutedLocal ? 0 : vol / 100;
-  // acima de 100%: o elemento fica mudo e o reforço leva o som inteiro (um caminho só — ver boostOutput)
-  const boosted = factor > 1 && !!peer.boostGain;
+  // acima de 100%: o elemento fica mudo e o reforço leva o som inteiro (um caminho só — ver boostOutput).
+  // Na call-mundo é sempre assim: o som tem que passar pelo PannerNode (áudio espacial).
+  const boosted = !!peer.boostGain && (factor > 1 || !!peer.spatialPanner);
   peer.audioEl.volume = boosted ? 1 : Math.min(1, Math.max(0, factor));
   peer.audioEl.muted = isDeafened || boosted;
   if (peer.boostGain) {
@@ -837,7 +848,8 @@ function applyLocalOverrideToRemoteScreenAudio(userId, videoEl) {
   const peer = peers.get(userId);
   if (!peer) return;
   const el = videoEl || callScreenShareArea.querySelector(`.call-screenshare-tile[data-kind="remote"][data-user-id="${userId}"] video`);
-  const factor = getSavedScreenVolume(userId) / 100; // 0–200%
+  // 0–200%; na call-mundo, a TV pode estar mutada/mais baixa só pra mim (27-world.js)
+  const factor = (getSavedScreenVolume(userId) / 100) * worldScreenAudioFactor(userId);
   // acima de 100%: o <video> fica mudo e o reforço leva o som inteiro (um caminho só)
   const boosted = factor > 1 && !!peer.screenBoostGain && !!el;
   if (el) {

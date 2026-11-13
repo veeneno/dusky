@@ -17,8 +17,14 @@ O site fica em **https://didiscord.veneno.space**, por um túnel do Cloudflare. 
 - Cargos com permissões independentes: gerenciar canais/categorias, apagar mensagens de outros, expulsar membros e moderar calls. Administrador mantém acesso completo.
 - Restrições por canal e cargo: ver, entrar na call, enviar mensagens, anexar/GIFs, reagir e fixar. Sem restrição, mantém o comportamento anterior.
 - Categorias com nome, posição e recolhimento lembrado no aparelho. Texto e voz podem ficar juntos; apagar categoria conserva canais e histórico.
-- Configurações do servidor em abas: visão geral, cargos e permissões, categorias.
-- Moderação: expulsar membro, apagar mensagem de qualquer um, desconectar ou mover alguém de call.
+- **Configurações do servidor em tela cheia, no estilo do Discord** (cada aba só aparece pra quem tem a permissão dela):
+  - **perfil do servidor**: nome, ícone, banner (aparece no topo da lista de canais) e descrição, com prévia ao vivo;
+  - **visão geral**: canal de mensagens do sistema (com frases de boas-vindas aleatórias quando alguém entra) e canal AFK (quem fica sem falar por 1 min a 1 h é levado pra lá);
+  - **cargos**: lista + editor (exibição, permissões, membros), permissões do **@everyone** e **cargo de entrada** (todo mundo que entra pelo convite ganha; dá pra aplicar em quem já está);
+  - **categorias**, **soundboard**, **membros**, **convites** (ver e revogar), **banimentos** e **registro de auditoria** (90 dias, com filtro por pessoa e ação);
+  - alterações no perfil/visão geral ficam numa barra "não salvas", igual ao Discord.
+- Permissões de cargo: gerenciar servidor, gerenciar canais, ver auditoria, expulsar, banir, gerenciar mensagens, moderar calls, usar soundboard, usar sons externos e gerenciar soundboard.
+- Moderação: expulsar, **banir** (não volta por convite até ser desbanido), apagar mensagem de qualquer um, desconectar ou mover alguém de call.
 
 **Chat**
 - Canais de texto e DMs (só entre quem divide algum servidor).
@@ -51,6 +57,17 @@ O site fica em **https://didiscord.veneno.space**, por um túnel do Cloudflare. 
 - Processamento da voz: caixa de som (cancela eco), fone de ouvido (voz mais natural) ou estúdio (nada).
 - Ganho do microfone, sensibilidade (corta o mic abaixo de um volume) e "ouvir a si mesmo".
 - Compartilhamento de tela com som, com volume próprio, e opção de "parar de assistir" a tela de alguém.
+
+**Soundboard** (igual ao do Discord)
+- Cada servidor tem até 48 sons de até ~5 s. No envio, um editor mostra a onda do arquivo (áudio ou vídeo) pra cortar o trecho; o servidor corta e converte pra mp3 com o ffmpeg.
+- Na call, o botão de nota musical (ou "sons" na barra da call) abre o seletor com os sons de **todos os seus servidores**: um som de um servidor pode ser tocado na call de outro, se esse outro deixar ("usar sons externos").
+- Cada um ouve com o próprio volume (configurações → som → volume do soundboard); botão direito no som = ouvir só você. Ensurdecido não ouve, e silenciar alguém só pra você silencia os sons dele também.
+
+**Mundinho 3D** (canal do tipo "mundinho")
+- Uma call que vira uma **cobertura de luxo em 3D com 2 andares** (sala com pé-direito duplo e vista da cidade à noite, cozinha, jantar, mezanino): cada pessoa é um ursinho que anda (WASD ou clique), sobe a escada, senta nos sofás/pufes/banquetas, acena e dança. Câmera em 1ª ou 3ª pessoa (tecla V).
+- **TV da sala**: mostra a tela que alguém compartilhou ou um **vídeo do YouTube sincronizado** pra todo mundo. Cada um pode mutar a TV só pra si, mudar o volume ou pôr em tela cheia.
+- A **call é espacial**: você ouve cada um vindo da direção e da distância do boneco (melhor com fone).
+- Não pesa pra ninguém: o Three.js e o código 3D só são baixados quando a pessoa abre um mundinho, e ele só desenha enquanto está na tela. Plano completo, protocolo e próximos passos (jogos nas mesas, TV com a tela compartilhada): [`docs/MUNDINHO.md`](docs/MUNDINHO.md).
 
 **Bot de música** (um por servidor, toca na call de quem pediu)
 
@@ -148,7 +165,10 @@ didiscord/
 │   ├── index.js            # liga o Express, a sessão, as rotas, o HTTP e o WebSocket
 │   ├── config.js           # chaves de serviços externos lidas do .env
 │   ├── access.js           # TODAS as regras de "quem pode ver/fazer o quê" (servidor, canal, DM, cargos)
-│   ├── realtime.js         # WebSocket: chat ao vivo, presença, estado de voz, sinalização WebRTC
+│   ├── realtime.js         # WebSocket: chat ao vivo, presença, estado de voz, sinalização WebRTC, AFK, soundboard
+│   ├── audit.js            # registro de auditoria (quem fez o quê em cada servidor)
+│   ├── soundboard.js       # regras do soundboard e corte/conversão do som com ffmpeg
+│   ├── world.js            # mundinho 3D: spawn, limites e assentos (lê public/world/scenes/*.json)
 │   ├── upload.js           # multer: avatar, banner, ícone, anexos
 │   ├── wsTickets.js        # ticket de uso único pra autenticar o WebSocket
 │   ├── middleware/auth.js  # requireAuth: exige login (e derruba conta suspensa / sessão antiga)
@@ -156,7 +176,8 @@ didiscord/
 │   ├── bots/musicBot/      # bot de música: comandos, fila, yt-dlp → ffmpeg → mp3, Spotify
 │   └── routes/
 │       ├── auth.js         # cadastro, login, logout, /me
-│       ├── servers.js      # servidores, membros, canais, convites, cargos, moderação de voz
+│       ├── servers.js      # servidores, configurações, membros, banimentos, convites, cargos, auditoria, moderação de voz
+│       ├── soundboard.js   # sons do soundboard (lista de todos os servidores + enviar/editar/apagar)
 │       ├── channels.js     # editar/apagar canal, quem está em qual call
 │       ├── messages.js     # histórico, enviar (texto, anexo, gif), editar, apagar
 │       ├── dms.js          # conversas diretas
@@ -185,7 +206,8 @@ didiscord/
 │   ├── js/emoji.js         # seletor de emoji e busca por :atalho:
 │   ├── baixar.html         # página de instalação do app desktop
 │   ├── js/auth.js          # tela de login/cadastro
-│   ├── vendor/             # DeepFilterNet3 e RNNoise (supressão de ruído, em WebAssembly)
+│   ├── world/              # mundinho 3D (módulos ES, carregados sob demanda): world.js, avatar.js, props.js, tv.js, scenes/
+│   ├── vendor/             # DeepFilterNet3 e RNNoise (supressão de ruído, em WebAssembly) e Three.js
 │   └── uploads/            # arquivos enviados pelo pessoal (fora do git)
 ├── electron/               # app desktop (ver abaixo)
 ├── scripts/start.js        # npm start: servidor + túnel
@@ -201,6 +223,7 @@ didiscord/
 - **`roles`**, **`member_roles`**, **`channel_role_access`**: cargos, quem tem cada um, e quais cargos veem/entram em cada canal restrito.
 - **`channel_reads`**: até qual mensagem cada pessoa leu cada canal (as não lidas).
 - **`message_mentions`**, **`message_reactions`**: quem cada mensagem menciona (`user_id` 0 = @everyone) e as reações. Fixada é `messages.pinned_at`.
+- **`server_bans`**, **`audit_log`**, **`soundboard_sounds`**: banimentos, registro de auditoria e sons do soundboard. As configurações novas do servidor (banner, descrição, canal do sistema, AFK, cargo de entrada, permissões do @everyone) são colunas de **`servers`**; mensagens do sistema usam `messages.system_type`.
 - **`messages_fts`**: índice de busca (FTS5), mantido em dia por gatilhos.
 - **`voice_state`**: quem está em qual call (sobrevive a um reinício; enquanto o servidor está de pé, quem manda é a memória do `realtime.js`).
 - **`server_settings`**: resto do modelo antigo de um servidor só (migrado pra `servers` automaticamente).
@@ -331,5 +354,4 @@ electron/native/build-cross.sh
 
 Pra depois:
 - Status "jogando X" automático.
-- Soundboard na call.
 - Um servidor de mídia (SFU) se o grupo passar de umas 6 pessoas por call: hoje cada um envia o próprio vídeo separado pra cada outro, e a internet de quem envia não aguenta muito mais que isso.

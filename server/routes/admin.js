@@ -138,8 +138,9 @@ router.delete('/servers/:id', (req, res) => {
     SELECT m.attachment_url FROM messages m JOIN channels c ON c.id = m.channel_id
     WHERE c.server_id = ? AND m.attachment_url LIKE '/uploads/%'
   `).all(server.id).map((r) => r.attachment_url);
+  const sounds = db.prepare('SELECT file_url FROM soundboard_sounds WHERE server_id = ?').all(server.id).map((r) => r.file_url);
   db.prepare('DELETE FROM servers WHERE id = ?').run(server.id);
-  for (const url of [server.icon_url, ...attachments]) {
+  for (const url of [server.icon_url, server.banner_url, ...attachments, ...sounds]) {
     if (url && url.startsWith('/uploads/')) fs.unlink(path.join(__dirname, '..', '..', 'public', url), () => {});
   }
   realtime.sendToUsers(memberIds, { type: 'server_deleted', serverId: server.id });

@@ -1,5 +1,5 @@
 // didiscord — Cargos, permissões de canal e moderação de voz
-// Parte 14 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 14 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -7,7 +7,6 @@
 // Neste arquivo:
 //   - cargos e permissões
 //   - cargos no cartão de perfil
-//   - lista de cargos (configurações do servidor)
 //   - editar canal (nome, privado, quem entra na call)
 //   - moderação de voz: desconectar e mover
 
@@ -122,10 +121,7 @@ async function refreshServerData(serverId) {
   renderSidebarHeader();
   renderCategorySettings();
   renderMembers();
-  if (!serverSettingsBackdrop.hidden) {
-    if (isAdminOfCurrentServer()) renderRolesList();
-    else serverSettingsBackdrop.hidden = true;
-  }
+  if (!serverSettingsBackdrop.hidden) refreshServerSettingsView();
 }
 
 // ---------- cargos no cartão de perfil ----------
@@ -209,134 +205,7 @@ function fillProfileRoles(wrap, cfg) {
   }
 }
 
-// ---------- lista de cargos (configurações do servidor) ----------
-
-const rolesList = document.getElementById('rolesList');
-const roleCreateBtn = document.getElementById('roleCreateBtn');
-const serverDangerZone = document.getElementById('serverDangerZone');
-
-async function roleRequest(method, path, body) {
-  const s = currentServer();
-  if (!s) return null;
-  const res = await fetch(`/api/servers/${s.id}/roles${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { toast(data.error || 'não deu pra salvar o cargo', 'error'); return null; }
-  return data;
-}
-
-function renderRolesList() {
-  const s = currentServer();
-  const amOwner = !!(s && currentUser && s.owner_id === currentUser.id);
-  const openedRoles = new Set([...rolesList.querySelectorAll('[data-role-id]')].filter(row => row.querySelector('details')?.open).map(row => row.dataset.roleId));
-  rolesList.innerHTML = '';
-  if (!serverRoles.length) {
-    rolesList.innerHTML = '<p class="roles-empty">Nenhum cargo ainda. Crie um pra separar quem vê ou entra em cada canal.</p>';
-    return;
-  }
-  for (const role of serverRoles) {
-    const row = document.createElement('div');
-    row.className = 'role-row';
-    row.dataset.roleId = String(role.id);
-    row.innerHTML = `
-        <input type="color" class="role-color" title="cor do cargo" aria-label="cor do cargo">
-        <input type="text" class="role-name" maxlength="32" aria-label="nome do cargo">
-        <label class="role-hoist" title="mostrar quem tem esse cargo num grupo separado na lista de membros (com o nome do cargo em cima)">
-          <input type="checkbox"> <span>separado</span>
-        </label>
-        <label class="role-admin" title="${amOwner ? 'administradores gerenciam o servidor, canais, cargos e calls' : 'só o dono muda quem é administrador'}">
-          <input type="checkbox"> <span>admin</span>
-        </label>
-        <span class="role-move">
-          <button type="button" class="role-up" title="subir o cargo" aria-label="subir o cargo">▲</button>
-          <button type="button" class="role-down" title="descer o cargo" aria-label="descer o cargo">▼</button>
-        </span>
-        <button type="button" class="role-delete" title="apagar cargo" aria-label="apagar cargo">${TRASH_ICON}</button>
-      `;
-    // ordem dos cargos: o de cima vale mais (cor do nome, grupo na lista de membros). Trocar de
-    // lugar regrava as posições de cima pra baixo, o que também desempata cargos antigos.
-    const index = serverRoles.indexOf(role);
-    const moveBy = async (delta) => {
-      const order = serverRoles.slice();
-      const target = index + delta;
-      if (target < 0 || target >= order.length) return;
-      [order[index], order[target]] = [order[target], order[index]];
-      rolesList.querySelectorAll('.role-move button').forEach((b) => { b.disabled = true; });
-      for (let k = 0; k < order.length; k++) {
-        const position = order.length - k;
-        if (order[k].position !== position) await roleRequest('PATCH', `/${order[k].id}`, { position });
-      }
-      await loadRoles();
-      renderRolesList();
-      renderMembers();
-    };
-    const up = row.querySelector('.role-up');
-    const down = row.querySelector('.role-down');
-    up.disabled = index === 0;
-    down.disabled = index === serverRoles.length - 1;
-    up.addEventListener('click', () => moveBy(-1));
-    down.addEventListener('click', () => moveBy(1));
-    const color = row.querySelector('.role-color');
-    const name = row.querySelector('.role-name');
-    const admin = row.querySelector('.role-admin input');
-    const hoist = row.querySelector('.role-hoist input');
-    hoist.checked = !!role.hoist;
-    hoist.addEventListener('change', async () => {
-      const ok = await roleRequest('PATCH', `/${role.id}`, { hoist: hoist.checked });
-      if (!ok) hoist.checked = !!role.hoist;
-    });
-    const del = row.querySelector('.role-delete');
-    color.value = role.color || '#9D5CE8';
-    name.value = role.name;
-    admin.checked = role.is_admin;
-    admin.disabled = !amOwner;
-    del.disabled = role.is_admin && !amOwner;
-
-    color.addEventListener('change', () => roleRequest('PATCH', `/${role.id}`, { color: color.value }));
-    name.addEventListener('change', async () => {
-      const ok = await roleRequest('PATCH', `/${role.id}`, { name: name.value });
-      if (!ok) name.value = role.name;
-    });
-    name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); });
-    admin.addEventListener('change', async () => {
-      const ok = await roleRequest('PATCH', `/${role.id}`, { is_admin: admin.checked });
-      if (!ok) admin.checked = role.is_admin;
-    });
-    del.addEventListener('click', async () => {
-      if (!confirm(`apagar o cargo "${role.name}"? quem tem esse cargo perde ele.`)) return;
-      await roleRequest('DELETE', `/${role.id}`);
-    });
-    const permissions = document.createElement('details'); permissions.className = 'role-permissions'; permissions.open = openedRoles.has(String(role.id));
-    const summary = document.createElement('summary'); summary.textContent = 'permissões deste cargo'; permissions.appendChild(summary);
-    for (const [key, title] of Object.entries({ manage_channels: 'gerenciar canais e categorias', manage_messages: 'apagar mensagens de outras pessoas', kick_members: 'expulsar membros', moderate_voice: 'mover e desconectar das calls' })) {
-      const label = document.createElement('label'); label.className = 'perm-toggle';
-      const text = document.createElement('span'); text.textContent = title;
-      const box = document.createElement('input'); box.type = 'checkbox'; box.checked = role.is_admin || !!(role.permissions && role.permissions[key]); box.disabled = role.is_admin;
-      box.addEventListener('change', async () => {
-        const next = { ...role.permissions, [key]: box.checked }; box.disabled = true;
-        try { const saved = await roleRequest('PATCH', `/${role.id}`, { permissions: next }); if (saved) role.permissions = next; else box.checked = !!(role.permissions && role.permissions[key]); }
-        catch (_) { box.checked = !!(role.permissions && role.permissions[key]); toast('sem conexão', 'error'); }
-        finally { box.disabled = role.is_admin; }
-      });
-      label.append(text, box); permissions.appendChild(label);
-    }
-    row.appendChild(permissions);
-    rolesList.appendChild(row);
-  }
-}
-
-roleCreateBtn.addEventListener('click', async () => {
-  const color = ACCENT_COLORS[serverRoles.length % ACCENT_COLORS.length];
-  const data = await roleRequest('POST', '', { name: 'novo cargo', color });
-  if (!data) return;
-  await loadRoles();
-  renderRolesList();
-  const input = rolesList.querySelector('.role-row:first-child .role-name');
-  if (input) { input.focus(); input.select(); }
-});
+// a lista e o editor de cargos (configurações do servidor) ficam em 25-server-settings.js
 
 // ---------- editar canal (nome, privado, quem entra na call) ----------
 

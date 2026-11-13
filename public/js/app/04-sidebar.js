@@ -1,5 +1,5 @@
 // didiscord — Barra lateral: canais, conversas diretas e criar canal
-// Parte 4 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 4 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -138,7 +138,8 @@ function buildChannelItem(ch, canManage) {
   if (currentChannel && currentChannel.id === ch.id) el.classList.add('active');
   if (unreadChannels.has(ch.id)) el.classList.add('is-unread');
   el.dataset.channelId = ch.id;
-  el.innerHTML = `<span class="icon">${ICONS[ch.type]}</span><span class="channel-item-name"></span>`;
+  el.innerHTML = `<span class="icon">${ICONS[ch.world_scene ? 'world' : ch.type]}</span><span class="channel-item-name"></span>`;
+  if (ch.world_scene) el.title = 'mundinho 3D — call espacial';
   el.querySelector('.channel-item-name').textContent = ch.name;
   const unread = unreadChannels.get(ch.id);
   if (unread && unread.mentions > 0) el.appendChild(mentionBadge(unread.mentions, 'channel-mention-badge'));
@@ -265,7 +266,7 @@ function setCreateType(type) {
   channelTypePicker.querySelectorAll('.channel-type-option').forEach((b) => {
     b.classList.toggle('active', b.dataset.type === type);
   });
-  newChannelName.placeholder = type === 'text' ? 'novo-canal' : 'Sala de Chamada';
+  newChannelName.placeholder = type === 'text' ? 'novo-canal' : type === 'world' ? 'Mundinho' : 'Sala de Chamada';
 }
 
 channelTypePicker.addEventListener('click', (e) => {

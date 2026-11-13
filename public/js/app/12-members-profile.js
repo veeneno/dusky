@@ -1,5 +1,5 @@
 // didiscord — Usuários, painel de membros e perfil
-// Parte 12 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 12 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -340,6 +340,9 @@ function showProfilePopout(user, mutuals, anchorEl) {
         actions.push({ label: 'desconectar da call', kind: 'ghost', onClick: () => { closeViewProfile(); disconnectMember(user.id, user.username); } });
       }
       actions.push({ label: `expulsar de ${s.name}`, kind: 'danger', onClick: () => { closeViewProfile(); kickMember(user); } });
+    }
+    if (s && canModerateMember(user.id, 'ban_members') && members.some((m) => m.id === user.id)) {
+      actions.push({ label: `banir de ${s.name}`, kind: 'danger', onClick: () => { closeViewProfile(); banMember(user); } });
     }
   }
   // cargos (só quando estou olhando um servidor e a pessoa é membro dele)

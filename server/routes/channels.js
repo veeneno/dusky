@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const realtime = require('../realtime');
 const access = require('../access');
+const audit = require('../audit');
 
 const router = express.Router();
 
@@ -82,6 +83,8 @@ router.patch('/:id', requireAuth, loadAdminChannel, (req, res) => {
   // a ver), e quem está numa call que ficou proibida pra ele cai dela
   realtime.broadcastToServer(ch.server_id, { type: 'channels_updated', serverId: ch.server_id });
   realtime.enforceVoicePermissions(ch.server_id);
+  const changed = Object.keys(body).filter((k) => k === 'name' || k === 'category_id' || k.startsWith('private_') || k.endsWith('_role_ids'));
+  if (changed.length) audit.log(ch.server_id, req.user.id, 'channel_update', { type: 'channel', id: ch.id, name: ch.name }, { changed });
   res.json({ ok: true });
 });
 
@@ -91,6 +94,7 @@ router.delete('/:id', requireAuth, loadAdminChannel, (req, res) => {
   realtime.kickFromChannelVoice(ch.id);
   db.prepare('DELETE FROM channels WHERE id = ?').run(ch.id);
   realtime.broadcastToServer(ch.server_id, { type: 'channel_deleted', serverId: ch.server_id, channelId: ch.id });
+  audit.log(ch.server_id, req.user.id, 'channel_delete', { type: 'channel', id: ch.id, name: ch.name }, { channel_type: ch.type });
   res.json({ ok: true });
 });
 

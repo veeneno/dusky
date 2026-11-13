@@ -1,0 +1,645 @@
+/* ===================================================================
+   mundinho 3D (docs/MUNDINHO.md, public/js/app/27-world.js, public/world/)
+   Interface por cima do 3D: tudo redondinho, gordinho e com um pulinho ao clicar.
+   Cores sempre pelas variáveis do tema (o 3D em si tem cores próprias).
+   =================================================================== */
+
+#callParticipants[hidden], .world-stage[hidden] { display: none !important; }
+
+.call-view.is-world { position: relative; }
+/* na call-mundo, a tela compartilhada aparece na TV (o tile continua existindo escondido: é ele que toca o som) */
+.call-view.is-world .call-screenshare-area { display: none !important; }
+
+.world-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #07070c;
+  isolation: isolate;
+}
+/* camadas: vídeo da TV (CSS3D) atrás, canvas no meio (com um furo na TV), interface em cima */
+.world-css-layer { position: absolute !important; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.world-canvas { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
+.world-labels { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+
+/* na call-mundo, os botões da call flutuam por cima do mundo */
+.call-view.is-world .call-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: none;
+}
+.call-view.is-world .call-controls > * { pointer-events: auto; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+
+.world-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 24px;
+}
+.world-loading small { color: var(--text-faint); font-size: 0.75rem; font-weight: 500; }
+.world-loading-cube {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: var(--accent);
+  box-shadow: 0 6px 0 color-mix(in srgb, var(--accent) 60%, #000);
+  animation: world-hop 0.9s cubic-bezier(.3, 1.6, .5, 1) infinite;
+}
+@keyframes world-hop {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-14px) rotate(45deg); }
+}
+
+/* ---------- TV ---------- */
+.world-tv-outer { pointer-events: none; }
+.world-tv-inner { position: relative; width: 100%; height: 100%; background: #000; overflow: hidden; }
+.world-tv-inner iframe, .world-tv-video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; object-fit: contain; background: #000; }
+.world-tv-inner:fullscreen { width: 100vw; height: 100vh; }
+.world-tv-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: radial-gradient(circle at 50% 40%, #1d2240, #07080e 70%);
+  color: #f2f3f5;
+  font-size: 34px;
+  text-align: center;
+  padding: 40px;
+}
+.world-tv-card-emoji { font-size: 96px; }
+
+/* ---------- etiquetas: balãozinho com rabinho ---------- */
+.world-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 4px;
+  margin-top: -8px;
+  border-radius: 999px;
+  background: var(--bg-floating);
+  color: var(--text-heading);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: pointer;
+  will-change: transform;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+}
+.world-tag::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background: inherit;
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+.world-tag[hidden] { display: none; }
+.world-tag-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.625rem;
+  box-shadow: 0 0 0 2px var(--bg-floating);
+  transition: box-shadow 0.12s ease, transform 0.12s ease;
+  position: relative;
+  z-index: 1;
+}
+.world-tag-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.world-tag.is-speaking .world-tag-avatar { box-shadow: 0 0 0 2px var(--bg-floating), 0 0 0 4px var(--success); transform: scale(1.06); }
+.world-tag.is-self { background: var(--accent); color: var(--accent-contrast); }
+.world-tag-icons:empty { display: none; }
+.world-tag-icons { font-size: 0.75rem; position: relative; z-index: 1; }
+.world-tag-name { position: relative; z-index: 1; }
+
+/* ---------- dock (embaixo à esquerda) ---------- */
+.world-dock {
+  position: absolute;
+  left: 16px;
+  bottom: 92px; /* acima dos botões da call */
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  border-radius: 26px;
+  background: var(--bg-floating);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.22), 0 14px 30px rgba(0, 0, 0, 0.3);
+}
+.world-dock-sep { width: 2px; height: 34px; border-radius: 2px; background: var(--border-strong); margin: 0 3px; }
+.world-dock-btn {
+  width: 60px;
+  height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: none;
+  border-radius: 20px;
+  background: var(--bg-hover);
+  color: var(--text-normal);
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(.3, 1.6, .5, 1), background 0.12s ease;
+}
+.world-dock-btn:hover { transform: translateY(-3px); background: var(--bg-active); color: var(--text-heading); }
+.world-dock-btn:active { transform: translateY(1px) scale(0.94); }
+.world-dock-btn[hidden] { display: none; }
+.world-dock-btn.is-on { background: var(--accent); color: var(--accent-contrast); animation: world-pop 0.35s cubic-bezier(.3, 1.6, .5, 1); }
+.world-dock-emoji { font-size: 1.375rem; line-height: 1; }
+.world-dock-glyph { font-weight: 700; }
+
+/* tela cheia do mundo: a call inteira (com os botões) ocupa a tela */
+.call-view.is-world:fullscreen { width: 100vw; height: 100vh; background: #07070c; }
+.call-view.is-world:fullscreen .call-header { position: absolute; top: 0; left: 0; right: 0; z-index: 4; background: none; box-shadow: none; pointer-events: none; opacity: 0; }
+.world-dock-label { font-size: 0.625rem; font-weight: 700; letter-spacing: 0.01em; }
+@keyframes world-pop { 0% { transform: scale(0.85); } 100% { transform: scale(1); } }
+
+/* ---------- dica (em cima, à esquerda; dá pra fechar) ---------- */
+.world-hint {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 28px);
+  padding: 7px 7px 7px 14px;
+  border-radius: 999px;
+  background: var(--bg-floating);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2);
+}
+.world-hint b { color: var(--text-heading); font-weight: 700; }
+.world-hint button {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+.world-hint button:hover { color: var(--text-heading); background: var(--bg-active); }
+.world-hint[hidden] { display: none; }
+
+/* ---------- botões redondos e pílulas (painéis) ---------- */
+.world-round-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  color: var(--text-heading);
+  font: inherit;
+  font-size: 1.125rem;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(.3, 1.6, .5, 1), background 0.12s ease;
+}
+.world-round-btn:hover:not(:disabled) { transform: scale(1.08); background: var(--bg-active); }
+.world-round-btn:active:not(:disabled) { transform: scale(0.92); }
+.world-round-btn:disabled { opacity: 0.4; cursor: default; }
+.world-round-btn.is-big { width: 58px; height: 58px; font-size: 1.5rem; background: var(--accent); color: var(--accent-contrast); box-shadow: 0 4px 0 color-mix(in srgb, var(--accent) 55%, #000); }
+.world-round-btn.is-small { width: 30px; height: 30px; font-size: 0.75rem; }
+.world-round-btn.is-on { background: var(--danger); color: #fff; }
+
+.world-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--accent) 55%, #000);
+  transition: transform 0.12s ease;
+}
+.world-pill-btn:hover { transform: translateY(-1px); }
+.world-pill-btn:active { transform: translateY(2px); box-shadow: none; }
+.world-pill-btn.is-soft { background: var(--bg-hover); color: var(--text-heading); box-shadow: none; }
+.world-pill-btn.is-soft:hover { background: var(--bg-active); }
+.world-pill-btn.is-soft.is-on { background: var(--success); color: #fff; }
+.world-pill-btn.is-ghost { background: transparent; color: var(--danger); box-shadow: none; }
+.world-pill-btn.is-ghost:hover { background: var(--danger-soft); }
+.world-pill-btn[hidden] { display: none; }
+
+/* ---------- folha (painel da TV) ---------- */
+.world-sheet {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 6;
+  width: min(330px, calc(100% - 28px));
+  max-height: calc(100% - 110px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 26px;
+  background: var(--bg-floating);
+  color: var(--text-normal);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.22), 0 18px 40px rgba(0, 0, 0, 0.35);
+  animation: world-sheet-in 0.28s cubic-bezier(.3, 1.4, .5, 1) both;
+}
+.world-sheet[hidden] { display: none; }
+@keyframes world-sheet-in { from { opacity: 0; transform: translateY(-10px) scale(0.96); } to { opacity: 1; transform: none; } }
+.world-sheet-head { display: flex; align-items: center; gap: 10px; }
+.world-sheet-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  font-size: 1.375rem;
+}
+.world-sheet-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.world-sheet-title strong { color: var(--text-heading); font-size: 1rem; }
+.world-sheet-title small { color: var(--text-muted); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.world-tv-section { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 20px; background: var(--bg-hover); }
+.world-tv-section[hidden] { display: none; }
+.world-tv-controls { flex-direction: row; align-items: center; justify-content: center; gap: 12px; }
+.world-tv-label { font-size: 0.6875rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.world-tv-me { display: flex; align-items: center; gap: 10px; }
+.world-tv-me .world-round-btn { background: var(--bg-floating); }
+.world-tv-volume { flex: 1; min-width: 0; accent-color: var(--accent); }
+.world-tv-yt { display: flex; gap: 6px; }
+.world-tv-yt input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 14px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--bg-floating);
+  color: var(--text-heading);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+.world-tv-yt input:focus { outline: none; border-color: var(--accent); }
+.world-tv-screens { display: flex; flex-direction: column; gap: 6px; }
+.world-tv-screens .world-pill-btn { justify-content: flex-start; }
+.world-tv-off { align-self: center; }
+
+@media (max-width: 760px) {
+  .world-hint { display: none; }
+  .world-dock-btn { width: 48px; height: 48px; border-radius: 16px; }
+  .world-dock-label { display: none; }
+  .world-dock { bottom: 84px; left: 8px; }
+}
+
+/* ---------- 1ª pessoa: mira e aviso de "clique pra olhar" ---------- */
+.world-crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  pointer-events: none;
+}
+.world-crosshair::before, .world-crosshair::after {
+  content: '';
+  position: absolute;
+  background: #fff;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+.world-crosshair::before { left: 8px; top: 2px; width: 2px; height: 14px; }
+.world-crosshair::after { top: 8px; left: 2px; height: 2px; width: 14px; }
+.world-crosshair[hidden] { display: none; }
+.world-lock-prompt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  transform: translate(-50%, 28px);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-floating) 88%, transparent);
+  color: var(--text-normal);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  pointer-events: none;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2);
+}
+.world-lock-prompt b { color: var(--text-heading); }
+.world-lock-prompt[hidden] { display: none; }
+
+/* ---------- Duno ---------- */
+.duno-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 174px; /* acima do dock e dos botões da call */
+  z-index: 6;
+  translate: -50% 0; /* `translate` (e não transform): a animação de entrada usa transform */
+  width: min(720px, calc(100% - 24px));
+  max-height: calc(100% - 190px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 28px;
+  background: var(--bg-floating);
+  color: var(--text-normal);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.22), 0 18px 40px rgba(0, 0, 0, 0.35);
+  animation: world-sheet-in 0.28s cubic-bezier(.3, 1.4, .5, 1) both;
+}
+.duno-panel[hidden] { display: none; }
+.duno-head { display: flex; align-items: center; gap: 10px; }
+.duno-head-icon { width: 40px; height: 40px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-soft); font-size: 1.25rem; }
+.duno-head-title { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.duno-head-title strong { color: var(--text-heading); font-size: 1.0625rem; letter-spacing: 0.02em; }
+.duno-head-title small { color: var(--text-muted); font-size: 0.75rem; }
+.duno-empty { margin: 0; color: var(--text-muted); font-size: 0.8125rem; text-align: center; padding: 6px; }
+.duno-avatar {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+.duno-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.duno-lobby { display: flex; flex-direction: column; gap: 6px; }
+.duno-lobby-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 18px; background: var(--bg-hover); }
+.duno-lobby-name { flex: 1; min-width: 0; font-weight: 700; color: var(--text-heading); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.duno-badge { padding: 3px 10px; border-radius: 999px; background: var(--bg-floating); font-size: 0.75rem; font-weight: 700; color: var(--text-muted); }
+.duno-badge.is-play { background: var(--success); color: #fff; }
+.duno-badge.is-host { background: color-mix(in srgb, var(--mention) 25%, var(--bg-floating)); color: var(--text-heading); }
+.duno-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.duno-start:disabled { opacity: 0.5; cursor: default; transform: none; }
+
+.duno-turn { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 999px; background: var(--bg-hover); font-weight: 800; font-size: 0.8125rem; color: var(--text-heading); }
+.duno-turn.is-me { background: var(--accent); color: var(--accent-contrast); animation: duno-pulse 1.2s ease-in-out infinite; }
+.duno-turn-track { flex: 1; height: 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.25); overflow: hidden; }
+.duno-turn-fill { display: block; height: 100%; border-radius: inherit; background: currentColor; transform-origin: left; }
+.duno-turn.is-hurry .duno-turn-fill { background: var(--danger); }
+.duno-turn-secs { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+@keyframes duno-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 6px var(--accent-soft); } }
+
+.duno-players { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.duno-player { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 20px; background: var(--bg-hover); border: 2px solid transparent; max-width: 100%; }
+.duno-player.is-turn { border-color: var(--accent); }
+.duno-player-info { display: flex; flex-direction: column; }
+.duno-player-info strong { font-size: 0.8125rem; color: var(--text-heading); }
+.duno-player-info small { font-size: 0.6875rem; color: var(--text-muted); font-weight: 700; }
+.duno-mini-hand { display: flex; flex-wrap: wrap; gap: 3px; flex-basis: 100%; }
+
+.duno-table { display: flex; align-items: center; justify-content: center; gap: 28px; padding: 14px; border-radius: 24px; background: radial-gradient(circle at 50% 30%, #3a8f6c, #23664c); }
+.duno-pile { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.duno-pile small { display: inline-flex; align-items: center; gap: 5px; color: #e8f5ee; font-size: 0.6875rem; font-weight: 700; }
+.duno-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 2px #fff; }
+.duno-log { text-align: center; font-size: 0.8125rem; font-weight: 600; color: var(--text-muted); min-height: 1.2em; }
+
+/* cartas (cores do jogo são fixas, como num baralho de verdade) */
+.duno-card {
+  position: relative;
+  width: 62px;
+  height: 92px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 4px solid #fff;
+  border-radius: 12px;
+  background: var(--card, #2a2730);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  color: #fff;
+  user-select: none;
+}
+.duno-card-oval {
+  width: 46px;
+  height: 66px;
+  border-radius: 50%;
+  background: #fff;
+  transform: rotate(-24deg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.duno-card-oval.is-rainbow { background: conic-gradient(#ef5b5b 0 25%, #f5c84c 0 50%, #4fbf7a 0 75%, #4f8ff0 0); }
+.duno-sym { transform: rotate(24deg); font-size: 1.5rem; font-weight: 900; color: var(--card, #2a2730); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.1); }
+.duno-card.is-wild .duno-sym { color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
+.duno-corner { position: absolute; font-size: 0.625rem; font-weight: 900; line-height: 1; }
+.duno-corner.is-tl { top: 4px; left: 5px; }
+.duno-corner.is-br { bottom: 4px; right: 5px; transform: rotate(180deg); }
+.duno-card.is-back { background: #2a2730; }
+.duno-card.is-back .duno-card-oval { background: #e85c9d; }
+.duno-logo { transform: rotate(24deg); font-size: 0.75rem; font-weight: 900; color: #fff; letter-spacing: 0.02em; }
+.duno-card.is-small { width: 26px; height: 38px; border-width: 2px; border-radius: 6px; }
+.duno-card.is-small .duno-card-oval { width: 18px; height: 27px; }
+.duno-card.is-small .duno-sym { font-size: 0.625rem; }
+.duno-card.is-small .duno-corner { display: none; }
+button.duno-card { cursor: pointer; transition: transform 0.15s cubic-bezier(.3, 1.6, .5, 1); }
+button.duno-card:disabled { cursor: default; }
+.duno-deck:not(:disabled):hover { transform: translateY(-4px) rotate(-3deg); }
+
+.duno-hand { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; padding: 12px 4px 4px; }
+.duno-hand .duno-card { margin: 0 -6px; }
+.duno-hand .duno-card:disabled { filter: saturate(0.55) brightness(0.8); }
+.duno-hand .duno-card.is-playable { transform: translateY(-10px); }
+.duno-hand .duno-card.is-playable:hover { transform: translateY(-18px) scale(1.06); z-index: 1; }
+
+.duno-shout {
+  min-height: 42px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 999px;
+  background: #ef5b5b;
+  color: #fff;
+  font: inherit;
+  font-weight: 900;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #a83434;
+  animation: duno-wiggle 0.8s ease-in-out infinite;
+}
+.duno-shout.is-armed { background: var(--success); box-shadow: 0 4px 0 color-mix(in srgb, var(--success) 55%, #000); animation: none; }
+.duno-shout.is-catch { background: #f5c84c; color: #3a2a00; box-shadow: 0 4px 0 #b08a1c; }
+.duno-shout:active { transform: translateY(3px); box-shadow: none; }
+@keyframes duno-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
+
+.duno-colors { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; border-radius: 22px; background: var(--bg-hover); }
+.duno-colors strong { color: var(--text-heading); font-size: 0.8125rem; }
+.duno-colors > div { display: flex; gap: 10px; }
+.duno-colors button { width: 46px; height: 46px; border: 4px solid #fff; border-radius: 50%; cursor: pointer; transition: transform 0.15s cubic-bezier(.3, 1.6, .5, 1); }
+.duno-colors button:hover { transform: scale(1.12); }
+.duno-colors .duno-colors-cancel { background: var(--bg-floating); color: var(--text-muted); border-color: var(--border-strong); font-weight: 800; }
+.duno-end { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; }
+.duno-end strong { font-size: 1.25rem; color: var(--text-heading); }
+.duno-end small { color: var(--text-muted); }
+.duno-trophy { font-size: 3rem; animation: world-hop 1.2s cubic-bezier(.3, 1.6, .5, 1) infinite; }
+
+/* ---------- piano ---------- */
+.piano-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 174px;
+  z-index: 6;
+  translate: -50% 0;
+  width: min(760px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 28px;
+  background: var(--bg-floating);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.22), 0 18px 40px rgba(0, 0, 0, 0.35);
+  animation: world-sheet-in 0.28s cubic-bezier(.3, 1.4, .5, 1) both;
+}
+.piano-panel[hidden] { display: none; }
+.piano-head { display: flex; align-items: center; gap: 8px; }
+.piano-head-icon { width: 40px; height: 40px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-soft); font-size: 1.25rem; }
+.piano-head-title { flex: 1; display: flex; flex-direction: column; }
+.piano-head-title strong { color: var(--text-heading); }
+.piano-head-title small { color: var(--text-muted); font-size: 0.75rem; }
+.piano-head-title b { color: var(--text-heading); }
+.piano-keys { position: relative; height: 170px; border-radius: 16px; overflow: hidden; background: #111; padding: 0; }
+.piano-key { position: absolute; top: 0; border: none; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; font: inherit; user-select: none; touch-action: none; }
+.piano-key.is-white { height: 100%; background: linear-gradient(#fff, #f1eee9); border-right: 2px solid #d9d4cc; border-radius: 0 0 10px 10px; color: #4a4450; padding-bottom: 10px; }
+.piano-key.is-black { height: 60%; z-index: 1; background: linear-gradient(#2b2b33, #121216); border-radius: 0 0 8px 8px; color: #e9e6f0; padding-bottom: 8px; box-shadow: 0 3px 0 #000; }
+.piano-key.is-white.is-down { background: linear-gradient(var(--accent-soft), color-mix(in srgb, var(--accent) 35%, #fff)); }
+.piano-key.is-black.is-down { background: var(--accent); }
+.piano-label { min-width: 22px; padding: 2px 5px; border-radius: 7px; background: rgba(0, 0, 0, 0.08); font-size: 0.75rem; font-weight: 800; text-align: center; }
+.piano-key.is-black .piano-label { background: rgba(255, 255, 255, 0.12); font-size: 0.6875rem; }
+.piano-note { font-size: 0.625rem; font-weight: 700; color: #9a93a3; margin-bottom: 6px; }
+
+/* ---------- Duno: barrinha do modo cartas (só a vez e o tempo) ---------- */
+.duno-bar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 6px 8px 6px 6px;
+  border-radius: 999px;
+  background: var(--bg-floating);
+  color: var(--text-heading);
+  font-weight: 800;
+  font-size: 0.875rem;
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.22), 0 14px 30px rgba(0, 0, 0, 0.3);
+  animation: world-sheet-in 0.25s cubic-bezier(.3, 1.4, .5, 1) both;
+}
+.duno-bar[hidden] { display: none; }
+.duno-bar.is-me { background: var(--accent); color: var(--accent-contrast); animation: duno-pulse 1.2s ease-in-out infinite; }
+.duno-bar-text { padding-right: 2px; white-space: nowrap; }
+.duno-bar .duno-dot { width: 14px; height: 14px; }
+/* tempo: um anel que vai esvaziando */
+.duno-bar-time {
+  --p: 1;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  background:
+    radial-gradient(closest-side, var(--bg-floating) 74%, transparent 76%),
+    conic-gradient(var(--success) calc(var(--p) * 360deg), var(--bg-hover) 0);
+  color: var(--text-heading);
+}
+.duno-bar-time.is-hurry { background: radial-gradient(closest-side, var(--bg-floating) 74%, transparent 76%), conic-gradient(var(--danger) calc(var(--p) * 360deg), var(--bg-hover) 0); }
+.duno-bar-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-heading);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.duno-bar.is-me .duno-bar-btn { background: rgba(255, 255, 255, 0.2); color: inherit; }
+.duno-bar-btn:hover { filter: brightness(1.15); }
+.duno-bar-btn.is-icon { width: 32px; padding: 0; }
+.duno-bar-btn.is-ghost { background: transparent; opacity: 0.75; }
+.duno-bar-btn.is-shout { background: #ef5b5b; color: #fff; box-shadow: 0 3px 0 #a83434; animation: duno-wiggle 0.8s ease-in-out infinite; }
+.duno-bar-btn.is-shout.is-armed { background: var(--success); box-shadow: none; animation: none; }
+.duno-bar-btn.is-catch { background: #f5c84c; color: #3a2a00; }
+.duno-bar-log { flex-basis: 100%; text-align: center; font-size: 0.6875rem; font-weight: 600; opacity: 0.75; padding-bottom: 2px; }
+
+/* seletor de cor do coringa: flutua no meio, acima da mão */
+.duno-colors.is-pop {
+  position: absolute;
+  left: 50%;
+  bottom: 42%;
+  translate: -50% 0;
+  z-index: 7;
+  background: var(--bg-floating);
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.22), 0 14px 30px rgba(0, 0, 0, 0.3);
+  animation: world-sheet-in 0.25s cubic-bezier(.3, 1.4, .5, 1) both;
+}
+
+/* modo cartas: dock e dica somem (as cartas ocupam a parte de baixo) */
+.world-stage.is-card-mode .world-dock, .world-stage.is-card-mode .world-hint { display: none; }

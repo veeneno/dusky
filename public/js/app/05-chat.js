@@ -1,5 +1,5 @@
 // didiscord — Chat: abrir canal, lista de mensagens e histórico
-// Parte 5 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 5 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -95,6 +95,7 @@ async function selectChannel(ch, opts = {}) {
 }
 
 function messageGroupKey(m) {
+  if (m.system_type) return `s${m.id}`; // aviso do sistema nunca agrupa com nada
   return m.user_id ? `u${m.user_id}` : `b${m.bot_name || 'bot'}`;
 }
 
@@ -252,7 +253,51 @@ function removeMessageFromDom(messageId) {
   }
 }
 
+// frases de boas-vindas (mensagens do sistema), no espírito das do Discord. A escolhida depende do
+// id da mensagem, então todo mundo vê a mesma frase e ela não muda ao recarregar.
+const WELCOME_LINES = [
+  '{u} chegou. Bem-vindo!',
+  '{u} acabou de pousar no servidor.',
+  'Que bom ter você aqui, {u}.',
+  '{u} entrou na festa.',
+  'Eba, {u} chegou!',
+  '{u} apareceu. Segura a vibe!',
+  'Bem-vindo, {u}. A gente estava te esperando.',
+  '{u} pulou pra dentro do servidor.',
+  'Um {u} selvagem apareceu.',
+  '{u} chegou. Trouxe pizza? Esperamos que sim.',
+  'Abram alas: {u} chegou.',
+  '{u} acabou de entrar. Finjam que estão ocupados!',
+];
+const SYSTEM_JOIN_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>';
+
+function buildSystemMessageEl(m) {
+  const el = document.createElement('div');
+  el.className = 'msg-group is-system';
+  el.dataset.messageId = m.id;
+  const line = WELCOME_LINES[Math.abs(Number(m.id) || 0) % WELCOME_LINES.length];
+  const [before, after] = line.split('{u}');
+  el.innerHTML = `
+      <span class="msg-system-icon">${SYSTEM_JOIN_ICON}</span>
+      <div class="msg-system-body">
+        <span class="msg-system-text"></span>
+        <span class="msg-time">${formatTime(m.created_at)}</span>
+      </div>`;
+  const text = el.querySelector('.msg-system-text');
+  const name = document.createElement('span');
+  name.className = 'msg-author is-clickable';
+  name.textContent = m.system_username || 'alguém';
+  if (m.system_user_id) {
+    name.dataset.userId = String(m.system_user_id);
+    name.addEventListener('click', (e) => openViewProfile(m.system_user_id, e.currentTarget));
+  }
+  text.append(document.createTextNode(before), name, document.createTextNode(after || ''));
+  applyAuthorColors(el);
+  return el;
+}
+
 function buildMessageEl(m, continued) {
+  if (m.system_type) return buildSystemMessageEl(m);
   const isBot = !m.user_id;
   const name = isBot ? (m.bot_name || 'bot') : m.username;
 

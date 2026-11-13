@@ -10,6 +10,7 @@ public/uploads/banners/*
 public/uploads/attachments/*
 public/uploads/server/*
 public/uploads/themes/*
+public/uploads/sounds/*
 !public/uploads/*/.gitkeep
 
 # gerados ao rodar
@@ -29,3 +30,6 @@ prompt.txt
 # servidor de mídia (LiveKit): binário baixado e chave gerada na primeira vez
 server/sfu/bin/
 server/sfu/data/
+
+# arquivo temporário do FUSE quando o banco está aberto por dois processos
+server/db/.fuse_hidden*

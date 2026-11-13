@@ -16,12 +16,23 @@ function getUser(userId) {
   return db.prepare(`SELECT ${PUBLIC_USER_COLUMNS} FROM users WHERE id = ?`).get(userId);
 }
 
+// colunas públicas de um servidor (o que vai pros membros no server_updated). As permissões do
+// @everyone vão como objeto em `everyone_permissions`.
+const SERVER_COLUMNS = 'id, name, icon_url, owner_id, created_at, banner_url, description, system_channel_id, system_welcome, afk_channel_id, afk_timeout, join_role_id, everyone_permissions_json';
+
 function getServer(serverId) {
-  return db.prepare('SELECT id, name, icon_url, owner_id, created_at FROM servers WHERE id = ?').get(serverId);
+  const row = db.prepare(`SELECT ${SERVER_COLUMNS} FROM servers WHERE id = ?`).get(serverId);
+  if (!row) return row;
+  const { everyone_permissions_json, ...rest } = row;
+  return { ...rest, system_welcome: !!rest.system_welcome, everyone_permissions: everyonePermissions(everyone_permissions_json) };
 }
 
 function isServerMember(serverId, userId) {
   return !!db.prepare('SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?').get(serverId, userId);
+}
+
+function isBanned(serverId, userId) {
+  return !!db.prepare('SELECT 1 FROM server_bans WHERE server_id = ? AND user_id = ?').get(serverId, userId);
 }
 
 function serverMemberIds(serverId) {
@@ -29,7 +40,7 @@ function serverMemberIds(serverId) {
 }
 
 function getChannel(channelId) {
-  return db.prepare('SELECT id, name, type, position, server_id, category_id, private_view, private_connect, private_send, private_attach, private_react, private_pin FROM channels WHERE id = ?').get(channelId);
+  return db.prepare('SELECT id, name, type, position, server_id, category_id, world_scene, private_view, private_connect, private_send, private_attach, private_react, private_pin FROM channels WHERE id = ?').get(channelId);
 }
 
 // ------------------------------------------------------------------
@@ -51,11 +62,32 @@ function isServerAdmin(serverId, userId) {
   `).get(serverId, userId);
 }
 
-const SERVER_PERMISSIONS = ['manage_channels', 'manage_messages', 'kick_members', 'moderate_voice'];
+// permissões que um cargo (ou o @everyone) pode dar. Administrador tem todas.
+//   manage_server       editar perfil do servidor, mensagens do sistema, AFK e convites
+//   view_audit_log      ver o registro de auditoria
+//   ban_members         banir e desbanir
+//   manage_soundboard   adicionar, editar e apagar sons do soundboard
+//   use_soundboard      tocar sons numa call deste servidor
+//   use_external_sounds tocar, numa call deste servidor, sons de OUTROS servidores
+const SERVER_PERMISSIONS = [
+  'manage_server', 'manage_channels', 'manage_messages', 'kick_members', 'ban_members',
+  'moderate_voice', 'view_audit_log', 'manage_soundboard', 'use_soundboard', 'use_external_sounds',
+];
+
+// lê o JSON das permissões do @everyone, só com as chaves conhecidas
+function everyonePermissions(json) {
+  let grants = {};
+  try { grants = JSON.parse(json || '{}') || {}; } catch (_) { grants = {}; }
+  return Object.fromEntries(SERVER_PERMISSIONS.map((k) => [k, grants[k] === true]));
+}
+
 function serverPermissions(serverId, userId) {
   const result = Object.fromEntries(SERVER_PERMISSIONS.map(k => [k, false]));
   if (!isServerMember(serverId, userId)) return result;
   if (isServerAdmin(serverId, userId)) return Object.fromEntries(SERVER_PERMISSIONS.map(k => [k, true]));
+  // base: o que todo membro pode (@everyone); os cargos da pessoa só acrescentam
+  const base = db.prepare('SELECT everyone_permissions_json FROM servers WHERE id = ?').get(serverId);
+  Object.assign(result, everyonePermissions(base && base.everyone_permissions_json));
   const roles = db.prepare(`SELECT r.permissions_json FROM roles r JOIN member_roles mr ON mr.role_id = r.id
     WHERE mr.server_id = ? AND mr.user_id = ?`).all(serverId, userId);
   for (const role of roles) {
@@ -179,12 +211,13 @@ function mutualServers(userA, userB) {
 }
 
 module.exports = {
-  SERVER_PERMISSIONS, serverPermissions, hasServerPermission, canChannelAction,
+  SERVER_PERMISSIONS, serverPermissions, everyonePermissions, SERVER_COLUMNS, hasServerPermission, canChannelAction,
   PUBLIC_USER_COLUMNS,
   publicUser,
   getUser,
   getServer,
   isServerMember,
+  isBanned,
   serverMemberIds,
   getChannel,
   dmMemberIds,

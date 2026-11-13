@@ -70,10 +70,21 @@ const themeBackgroundUpload = multer({
   fileFilter: (req, file, cb) => cb(null, IMAGE_TYPES.includes(file.mimetype)),
 });
 
+// arquivo bruto do soundboard: vai pra pasta temporária do sistema, o ffmpeg corta/converte e o
+// temporário é apagado (ver server/soundboard.js). Qualquer áudio ou vídeo, até 25MB.
+const soundUpload = multer({
+  storage: multer.diskStorage({
+    destination: require('os').tmpdir(),
+    filename: (req, file, cb) => cb(null, 'didiscord-som-' + crypto.randomBytes(12).toString('hex')),
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, /^(audio|video)\//.test(file.mimetype) || file.mimetype === 'application/ogg'),
+});
+
 function attachmentTypeOf(mimetype) {
   if (IMAGE_TYPES.includes(mimetype)) return 'image';
   if (VIDEO_TYPES.includes(mimetype)) return 'video';
   return 'file'; // qualquer outro tipo — chip de download genérico no chat
 }
 
-module.exports = { avatarUpload, bannerUpload, attachmentUpload, serverIconUpload, themeBackgroundUpload, attachmentTypeOf, UPLOADS_ROOT };
+module.exports = { avatarUpload, bannerUpload, soundUpload, attachmentUpload, serverIconUpload, themeBackgroundUpload, attachmentTypeOf, UPLOADS_ROOT };

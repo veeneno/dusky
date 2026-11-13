@@ -2,6 +2,9 @@ const { WebSocketServer } = require('ws');
 const wsTickets = require('./wsTickets');
 const db = require('./db');
 const access = require('./access');
+const soundboard = require('./soundboard');
+const world = require('./world');
+const { createTables } = require('./games/duno');
 
 const clients = new Set();
 const onlineCounts = new Map(); // userId -> quantidade de conexões abertas (várias abas)
@@ -140,6 +143,16 @@ function handleClientMessage(ws, msg) {
       return handleActivitySet(ws, msg);
     case 'status_set':
       return handleStatusSet(ws, msg);
+    case 'soundboard_play':
+      return handleSoundboardPlay(ws, msg);
+    case 'world_move':
+      return handleWorldMove(ws, msg);
+    case 'world_tv':
+      return handleWorldTv(ws, msg);
+    case 'game':
+      return handleGame(ws, msg);
+    case 'piano':
+      return handlePiano(ws, msg);
     default:
       return; // tipo desconhecido, ignora
   }
@@ -164,23 +177,26 @@ function handleVoiceJoin(ws, msg) {
   const prev = voiceStates.get(ws.userId);
   if (prev) removeVoiceState(ws.userId, prev, ws);
 
-  const state = { channelId, serverId, muted: false, deafened: false, cameraOn: false, screenOn: false, ws };
+  // lastActiveAt: última vez que a pessoa falou (ou entrou) — o canal AFK usa (ver checkAfk)
+  const state = { channelId, serverId, muted: false, deafened: false, cameraOn: false, screenOn: false, ws, lastActiveAt: Date.now() };
+  // canal-mundo (docs/MUNDINHO.md): a pessoa nasce no ponto de entrada da cena
+  if (ch.world_scene) { state.scene = ch.world_scene; state.world = world.spawn(ch.world_scene); }
   voiceStates.set(ws.userId, state);
   persistVoiceState(ws.userId, state);
 
   // manda pro recém-chegado a lista de quem já está na sala — é ele quem inicia a oferta WebRTC
   const participants = [...voiceStates.entries()]
     .filter(([userId, s]) => userId !== ws.userId && s.channelId === channelId)
-    .map(([userId, s]) => ({ userId, muted: s.muted, deafened: s.deafened, cameraOn: s.cameraOn, screenOn: s.screenOn }));
+    .map(([userId, s]) => ({ userId, muted: s.muted, deafened: s.deafened, cameraOn: s.cameraOn, screenOn: s.screenOn, world: s.world || null }));
   const bot = botStates.get(serverId);
   if (bot && bot.channelId === channelId) {
     participants.push({ userId: BOT_USER_ID, muted: bot.muted, deafened: bot.deafened, cameraOn: false, screenOn: false });
   }
 
-  send(ws, { type: 'voice_channel_state', channelId, participants });
+  send(ws, { type: 'voice_channel_state', channelId, participants, self: state.world ? { world: state.world, scene: world.getScene(state.scene).id, tv: tvStates.get(channelId) || world.TV_OFF, games: gamesSnapshot(channelId, state.scene, ws.userId), now: Date.now() } : null });
 
   // avisa quem enxerga esse canal que alguém novo entrou (pra call e pra pré-visualização na sidebar)
-  broadcastToChannel(channelId, { type: 'voice_user_joined', channelId, userId: ws.userId, muted: false, deafened: false, cameraOn: false, screenOn: false }, ws);
+  broadcastToChannel(channelId, { type: 'voice_user_joined', channelId, userId: ws.userId, muted: false, deafened: false, cameraOn: false, screenOn: false, world: state.world || null }, ws);
 }
 
 function handleVoiceLeave(ws) {
@@ -191,10 +207,18 @@ function handleVoiceLeave(ws) {
 function handleVoiceUpdate(ws, msg) {
   const state = voiceStates.get(ws.userId);
   if (!state || state.ws !== ws) return; // não está em call, ou é uma aba "fantasma"
+  if (state.muted && !msg.muted) state.lastActiveAt = Date.now(); // desmutou: está ali
+  const startedScreen = !state.screenOn && !!msg.screenOn;
   state.muted = !!msg.muted;
   state.deafened = !!msg.deafened;
   state.cameraOn = !!msg.cameraOn;
   state.screenOn = !!msg.screenOn;
+  // call-mundo: começou a compartilhar e a TV está desligada → vai pra TV; parou → a TV desliga
+  if (state.world) {
+    const tv = tvStates.get(state.channelId);
+    if (startedScreen && (!tv || tv.mode === 'off')) setTv(state.channelId, { mode: 'screen', userId: ws.userId, by: ws.userId });
+    else if (!state.screenOn && tv && tv.mode === 'screen' && tv.userId === ws.userId) setTv(state.channelId, world.TV_OFF);
+  }
   persistVoiceState(ws.userId, state);
   broadcastToChannel(state.channelId, { type: 'voice_state_update', channelId: state.channelId, userId: ws.userId, muted: state.muted, deafened: state.deafened, cameraOn: state.cameraOn, screenOn: state.screenOn });
 }
@@ -207,6 +231,7 @@ function handleVoiceSpeaking(ws, msg) {
   const speaking = !!msg.speaking;
   if (state.speaking === speaking) return;
   state.speaking = speaking;
+  if (speaking) state.lastActiveAt = Date.now();
   broadcastToChannel(state.channelId, { type: 'voice_speaking', channelId: state.channelId, userId: ws.userId, speaking }, ws);
 }
 
@@ -358,6 +383,16 @@ function onVoiceLeave(fn) { voiceLeaveListeners.push(fn); }
 
 function removeVoiceState(userId, state, except) {
   voiceStates.delete(userId);
+  // mundinho: quem estava na TV saiu → TV desliga; call vazia → esquece a TV
+  const tv = tvStates.get(state.channelId);
+  if (tv) {
+    if (humansInChannel(state.channelId).length === 0) tvStates.delete(state.channelId);
+    else if (tv.mode === 'screen' && tv.userId === userId) setTv(state.channelId, world.TV_OFF);
+  }
+  if (state.world) {
+    if (humansInChannel(state.channelId).length === 0) gameTables.clearChannel(state.channelId);
+    else gameTables.onLeaveCall(state.channelId, userId);
+  }
   persistVoiceState(userId, { channelId: null, muted: false, deafened: false, cameraOn: false, screenOn: false });
   // avisa quem enxerga o canal (e a própria pessoa, caso ela já não enxergue mais — ex: foi
   // expulsa ou perdeu o cargo — e precise saber que caiu da call)
@@ -389,15 +424,162 @@ function disconnectUser(userId, by) {
 
 // manda a aba que está na call da pessoa trocar pra outro canal de voz. A troca em si (fechar as
 // conexões e abrir as novas) acontece no navegador dela, igual quando ela mesma clica no canal.
-function moveUser(userId, channel, by) {
+function moveUser(userId, channel, by, reason) {
   const state = voiceStates.get(userId);
   if (!state || !state.ws || state.channelId === channel.id) return false;
   send(state.ws, {
     type: 'voice_move',
     channel: { id: channel.id, name: channel.name, type: channel.type, server_id: channel.server_id },
     by: by || null,
+    reason: reason || null,
   });
   return true;
+}
+
+// ------------------------------------------------------------------
+// canal AFK: quem passa afk_timeout segundos sem falar numa call é levado pro canal AFK do
+// servidor (configurações do servidor → visão geral). Conta só a voz de verdade (o anel verde,
+// voice_speaking): estar mudo também conta como parado, igual no Discord.
+// ------------------------------------------------------------------
+const AFK_CHECK_MS = 30 * 1000;
+function checkAfk() {
+  const now = Date.now();
+  const servers = new Map(); // cache por rodada
+  for (const [uid, state] of voiceStates.entries()) {
+    // quem está com câmera ou tela ligada não está "parado"
+    if (uid === BOT_USER_ID || !state.ws || state.speaking || state.cameraOn || state.screenOn) continue;
+    if (!servers.has(state.serverId)) servers.set(state.serverId, access.getServer(state.serverId));
+    const server = servers.get(state.serverId);
+    if (!server || !server.afk_channel_id || state.channelId === server.afk_channel_id) continue;
+    if (now - (state.lastActiveAt || now) < Math.max(60, server.afk_timeout || 300) * 1000) continue;
+    const afk = access.canConnectChannel(server.afk_channel_id, uid);
+    state.lastActiveAt = now; // não tenta de novo a cada rodada se não der
+    if (afk) moveUser(uid, afk, null, 'afk');
+  }
+}
+setInterval(checkAfk, AFK_CHECK_MS).unref();
+
+// ------------------------------------------------------------------
+// mundinho 3D: onde está o boneco de cada um numa call-mundo (ver server/world.js e
+// docs/MUNDINHO.md). Vai só pras abas que estão NA call — quem só vê o canal na lateral não precisa.
+// ------------------------------------------------------------------
+function sendToCall(channelId, event, exceptUserId) {
+  const payload = JSON.stringify(event);
+  for (const [uid, s] of voiceStates.entries()) {
+    if (uid !== exceptUserId && s.channelId === channelId && s.ws && s.ws.readyState === s.ws.OPEN) s.ws.send(payload);
+  }
+}
+
+// TV de cada call-mundo (só em memória: call vazia = TV desligada)
+const tvStates = new Map(); // channelId -> estado (ver world.applyTv)
+function setTv(channelId, tv) {
+  if (!tv || tv.mode === 'off') tvStates.delete(channelId); else tvStates.set(channelId, tv);
+  sendToCall(channelId, { type: 'world_tv_state', channelId, tv: tv || world.TV_OFF, now: Date.now() });
+}
+
+function handleWorldTv(ws, msg) {
+  const state = voiceStates.get(ws.userId);
+  if (!state || state.ws !== ws || !state.world) return;
+  const now = Date.now();
+  if (!ws.tvBucket || now - ws.tvBucket.t >= 1000) ws.tvBucket = { t: now, n: 0 };
+  if (++ws.tvBucket.n > 6) return;
+  const screenOn = (uid) => {
+    const s = voiceStates.get(uid);
+    return !!(s && s.channelId === state.channelId && s.screenOn);
+  };
+  const { tv, error } = world.applyTv(tvStates.get(state.channelId), msg, { userId: ws.userId, now, screenOn });
+  if (error) { send(ws, { type: 'world_tv_denied', error }); return; }
+  setTv(state.channelId, tv);
+}
+
+function handleWorldMove(ws, msg) {
+  const state = voiceStates.get(ws.userId);
+  if (!state || state.ws !== ws || !state.world) return;
+  if (!world.allowMove(ws)) return;
+  const occupied = (seatId) => {
+    for (const [uid, s] of voiceStates.entries()) {
+      if (uid !== ws.userId && s.channelId === state.channelId && s.world && s.world.seat === seatId) return true;
+    }
+    return false;
+  };
+  const { state: next, corrected } = world.applyMove(state.scene, state.world, msg, occupied);
+  const prevSeat = state.world.seat;
+  if (next.action !== 'stand' || next.x !== state.world.x || next.z !== state.world.z || next.y !== state.world.y) state.lastActiveAt = Date.now();
+  state.world = next;
+  if (corrected) send(ws, { type: 'world_correction', world: next });
+  sendToCall(state.channelId, { type: 'world_state', channelId: state.channelId, userId: ws.userId, ...next }, ws.userId);
+  // sentou/levantou numa cadeira de mesa de jogos: o jogo fica sabendo (host, jogar/assistir)
+  if (prevSeat !== next.seat) {
+    const def = world.tableForSeat(state.scene, next.seat);
+    const prevDef = world.tableForSeat(state.scene, prevSeat);
+    if (def || prevDef) gameTables.onSeat(state.channelId, ws.userId, def, next.seat, prevDef);
+  }
+}
+
+// ------------------------------------------------------------------
+// jogos nas mesas do mundinho (server/games/duno.js). Cada um da call recebe a SUA visão da mesa
+// (quem joga só vê a própria mão).
+// ------------------------------------------------------------------
+const gameTables = createTables({ onChange: broadcastGame });
+
+function broadcastGame(channelId, tableId) {
+  for (const [uid, s] of voiceStates.entries()) {
+    if (s.channelId !== channelId || !s.ws || !s.scene) continue;
+    const def = world.tableById(s.scene, tableId);
+    if (def) send(s.ws, { type: 'game_state', channelId, state: gameTables.viewFor(channelId, def, uid), now: Date.now() });
+  }
+}
+
+function gamesSnapshot(channelId, sceneId, userId) {
+  return (world.getScene(sceneId).tables || []).map((def) => gameTables.viewFor(channelId, def, userId));
+}
+
+function handleGame(ws, msg) {
+  const state = voiceStates.get(ws.userId);
+  if (!state || state.ws !== ws || !state.world) return;
+  const now = Date.now();
+  if (!ws.gameBucket || now - ws.gameBucket.t >= 1000) ws.gameBucket = { t: now, n: 0 };
+  if (++ws.gameBucket.n > 10) return;
+  const def = world.tableById(state.scene, msg && msg.table);
+  if (!def) return;
+  const { error } = gameTables.handle(state.channelId, def, ws.userId, msg);
+  if (error) send(ws, { type: 'game_denied', table: def.id, error });
+}
+
+// piano: só quem está sentado no banco toca; as notas vão pros outros da call (cada um sintetiza)
+function handlePiano(ws, msg) {
+  const state = voiceStates.get(ws.userId);
+  if (!state || state.ws !== ws || !state.world) return;
+  if (!state.world.seat || state.world.seat !== world.pianoSeat(state.scene)) return;
+  const note = Number(msg.note);
+  if (!Number.isInteger(note) || note < 21 || note > 108) return;
+  const now = Date.now();
+  if (!ws.pianoBucket || now - ws.pianoBucket.t >= 1000) ws.pianoBucket = { t: now, n: 0 };
+  if (++ws.pianoBucket.n > 60) return;
+  state.lastActiveAt = now;
+  sendToCall(state.channelId, { type: 'piano_note', channelId: state.channelId, userId: ws.userId, note, on: !!msg.on }, ws.userId);
+}
+
+// ------------------------------------------------------------------
+// soundboard: "toquei o som X" — confere as permissões (ver server/soundboard.js) e avisa cada
+// pessoa da mesma call, na aba que está na call. Cada navegador baixa e toca o som sozinho.
+// ------------------------------------------------------------------
+function handleSoundboardPlay(ws, msg) {
+  const state = voiceStates.get(ws.userId);
+  if (!state || state.ws !== ws) return;
+  const sound = soundboard.getSound(msg.soundId);
+  const denied = state.deafened ? 'tire o ensurdecer pra usar o soundboard' : soundboard.playDenied(ws.userId, state.serverId, sound);
+  if (denied) { send(ws, { type: 'soundboard_denied', soundId: Number(msg.soundId) || null, error: denied }); return; }
+  if (!soundboard.takeCooldown(ws.userId)) { send(ws, { type: 'soundboard_denied', soundId: sound.id, error: 'calma — espera um pouquinho entre um som e outro', cooldown: true }); return; }
+  state.lastActiveAt = Date.now();
+  const event = {
+    type: 'soundboard_play', channelId: state.channelId, userId: ws.userId,
+    sound: { id: sound.id, server_id: sound.server_id, name: sound.name, emoji: sound.emoji, url: sound.url, volume: sound.volume, duration_ms: sound.duration_ms },
+  };
+  const payload = JSON.stringify(event);
+  for (const s of voiceStates.values()) {
+    if (s.channelId === state.channelId && s.ws && s.ws.readyState === s.ws.OPEN) s.ws.send(payload);
+  }
 }
 
 // depois de mudar cargos/permissões: quem está numa call em que não pode mais estar cai dela

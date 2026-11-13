@@ -1,5 +1,5 @@
 // didiscord — Compartilhamento de tela pela placa de vídeo (app desktop)
-// Parte 20 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 20 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.

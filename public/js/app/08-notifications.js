@@ -1,5 +1,5 @@
 // didiscord — Notificações do sistema, não lidas e pular pra uma mensagem
-// Parte 8 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 8 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -71,7 +71,7 @@ function showSystemNotification(message) {
   if (!notificationsSupported() || Notification.permission !== 'granted') return;
   if (pushDeviceEnabled && !appIsInFront()) return;
   const isDm = message.server_id == null;
-  const author = message.username || message.bot_name || 'alguém';
+  const author = message.username || message.bot_name || (message.system_type ? 'didiscord' : 'alguém');
   let title = author;
   if (!isDm) {
     const s = servers.find((x) => x.id === message.server_id);

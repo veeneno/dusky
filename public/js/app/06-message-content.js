@@ -1,5 +1,5 @@
 // didiscord — Conteúdo das mensagens: Markdown, reações, fixar e prévia de links
-// Parte 6 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 6 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -35,6 +35,7 @@ function messageMentionsMe(m) {
 // texto puro de uma mensagem (notificação, resposta, fixadas)
 function messagePlain(m, fallback = '') {
   if (!m) return fallback;
+  if (m.system_type === 'member_join') return `${m.system_username || 'alguém'} entrou no servidor`;
   const t = DidiMarkdown.plain(m.content || '', mentionContext(m));
   if (t) return t;
   if (m.attachment_type === 'gif') return 'mandou um gif';

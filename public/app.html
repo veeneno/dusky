@@ -21,7 +21,9 @@
   <link rel="stylesheet" href="/css/chat-extras.css?v=20">
   <link rel="stylesheet" href="/css/design.css?v=21">
   <link rel="stylesheet" href="/css/media.css?v=20">
-  <link rel="stylesheet" href="/css/server-options.css?v=30">
+  <link rel="stylesheet" href="/css/server-options.css?v=31">
+  <link rel="stylesheet" href="/css/server-settings.css?v=1">
+  <link rel="stylesheet" href="/css/world.css?v=8">
 </head>
 <body>
   <div class="app-shell">
@@ -90,6 +92,10 @@
           </button>
           <button type="button" class="call-quick-btn is-narrow" id="callQuickScreenOptsBtn" title="opções do compartilhamento de tela" aria-label="opções do compartilhamento de tela">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>
+          </button>
+          <button type="button" class="call-quick-btn" id="callQuickSoundboardBtn" title="soundboard" aria-label="soundboard">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span>sons</span>
           </button>
         </div>
       </div>
@@ -241,6 +247,9 @@
 
         <div class="call-screenshare-area" id="callScreenShareArea" hidden></div>
 
+        <!-- mundinho 3D (27-world.js + public/world/): só é montado quando a call é um mundo -->
+        <div class="world-stage" id="worldStage" hidden></div>
+
         <div class="call-participants" id="callParticipants">
           <!-- preenchido via js/app/ -->
         </div>
@@ -257,6 +266,9 @@
           </button>
           <button class="call-control-btn" id="callViewScreenBtn" title="compartilhar tela" aria-label="compartilhar tela">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </button>
+          <button class="call-control-btn" id="callViewSoundboardBtn" title="soundboard" aria-label="soundboard">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
           </button>
           <button class="call-control-btn danger" id="callViewLeaveBtn" title="sair da chamada" aria-label="sair da chamada">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 4.28 1.36 2 2 0 0 1 1.72 2v3.5a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 5.11 3.5h3.5a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 1.36 4.28 2 2 0 0 1-.45 2.11z"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
@@ -280,6 +292,10 @@
           <button type="button" class="channel-type-option" data-type="voice">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
             <span><strong>voz</strong><small>chamada, câmera e tela</small></span>
+          </button>
+          <button type="button" class="channel-type-option" data-type="world">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>
+            <span><strong>mundinho</strong><small>sala 3D com call espacial</small></span>
           </button>
         </div>
       </div>
@@ -491,48 +507,282 @@
     </div>
   </div>
 
-  <!-- modal: configurações do servidor (só dono) -->
-  <div class="modal-backdrop" id="serverSettingsBackdrop" hidden>
-    <div class="modal card server-settings-modal" role="dialog">
-      <header class="server-settings-heading"><div><p class="field-help">SEU SERVIDOR, DO SEU JEITO</p><h3 class="display">configurações do servidor</h3></div><button type="button" class="btn btn-ghost" data-close aria-label="fechar configurações">✕</button></header>
-      <nav class="server-settings-nav" aria-label="configurações do servidor"><button type="button" data-server-tab="overview" aria-pressed="true">visão geral</button><button type="button" data-server-tab="roles" aria-pressed="false">cargos e permissões</button><button type="button" data-server-tab="categories" aria-pressed="false">categorias</button></nav>
-      <section data-server-panel="overview">
-      <div class="server-settings-identity">
-        <button type="button" class="server-settings-icon" id="serverSettingsIcon" title="trocar ícone"></button>
-        <div class="server-settings-icon-actions">
-          <button type="button" class="btn btn-ghost btn-sm" id="serverSettingsIconBtn">trocar ícone</button>
-          <button type="button" class="btn btn-ghost btn-sm btn-quiet" id="serverSettingsIconRemoveBtn" hidden>remover</button>
-          <p class="field-help">quadrado fica melhor. png, jpg, webp ou gif.</p>
+  <!-- configurações do servidor: tela cheia com seções na lateral, igual às do usuário (e às do
+       Discord). Cada aba só aparece pra quem tem a permissão dela — ver 25-server-settings.js -->
+  <div class="settings-backdrop server-settings" id="serverSettingsBackdrop" hidden>
+    <div class="settings-modal" role="dialog" aria-label="configurações do servidor">
+      <nav class="settings-nav" aria-label="seções das configurações do servidor">
+        <div class="settings-nav-inner">
+          <div class="settings-nav-group ss-nav-server-name" id="ssNavServerName">servidor</div>
+          <button type="button" class="settings-tab" data-ss-tab="profile">perfil do servidor</button>
+          <button type="button" class="settings-tab" data-ss-tab="overview">visão geral</button>
+          <button type="button" class="settings-tab" data-ss-tab="roles">cargos</button>
+          <button type="button" class="settings-tab" data-ss-tab="categories">categorias</button>
+          <button type="button" class="settings-tab" data-ss-tab="soundboard">soundboard</button>
+          <div class="settings-nav-sep" data-ss-group-sep></div>
+          <div class="settings-nav-group" data-ss-group>pessoas</div>
+          <button type="button" class="settings-tab" data-ss-tab="members">membros</button>
+          <button type="button" class="settings-tab" data-ss-tab="invites">convites</button>
+          <div class="settings-nav-sep" data-ss-group-sep></div>
+          <div class="settings-nav-group" data-ss-group>moderação</div>
+          <button type="button" class="settings-tab" data-ss-tab="bans">banimentos</button>
+          <button type="button" class="settings-tab" data-ss-tab="audit">registro de auditoria</button>
+          <div class="settings-nav-sep" id="ssDeleteSep"></div>
+          <button type="button" class="settings-tab is-danger" id="ssDeleteTab">apagar servidor</button>
         </div>
-        <input type="file" id="serverSettingsIconInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+      </nav>
+
+      <div class="settings-content">
+        <div class="settings-content-inner">
+
+        <!-- perfil do servidor -->
+        <section class="settings-tab-panel" data-ss-panel="profile" hidden>
+          <h2 class="settings-title">perfil do servidor</h2>
+          <p class="settings-lead">Como o servidor aparece pra todo mundo: na lateral, nos convites e no cartão do servidor.</p>
+          <div class="ss-profile-grid">
+            <div class="ss-profile-form">
+              <div class="field">
+                <label for="serverSettingsNameInput">nome</label>
+                <input id="serverSettingsNameInput" type="text" maxlength="40" autocomplete="off">
+              </div>
+              <div class="settings-section">
+                <h3 class="settings-section-title">ícone</h3>
+                <p class="settings-section-help">Quadrado fica melhor. png, jpg, webp ou gif.</p>
+                <div class="settings-row">
+                  <button type="button" class="btn btn-primary btn-sm" id="serverSettingsIconBtn">trocar ícone</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="serverSettingsIconRemoveBtn" hidden>remover</button>
+                </div>
+                <input type="file" id="serverSettingsIconInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+              </div>
+              <div class="settings-section">
+                <h3 class="settings-section-title">banner</h3>
+                <p class="settings-section-help">Aparece no topo da lista de canais e no convite. Pode ser gif; 960×540 fica perfeito.</p>
+                <div class="settings-row">
+                  <button type="button" class="btn btn-primary btn-sm" id="ssBannerBtn">enviar banner</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="ssBannerRemoveBtn" hidden>remover</button>
+                </div>
+                <input type="file" id="ssBannerInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+              </div>
+              <div class="field">
+                <label for="ssDescriptionInput">descrição <span class="field-hint" id="ssDescriptionCount">0/190</span></label>
+                <textarea id="ssDescriptionInput" maxlength="190" rows="3" placeholder="conta pro pessoal do que é o servidor"></textarea>
+              </div>
+            </div>
+            <div class="ss-profile-preview">
+              <div class="ss-preview-card">
+                <div class="ss-preview-banner" id="ssPreviewBanner"></div>
+                <button type="button" class="ss-preview-icon server-settings-icon" id="serverSettingsIcon" title="trocar ícone"></button>
+                <div class="ss-preview-body">
+                  <strong class="ss-preview-name" id="ssPreviewName"></strong>
+                  <div class="ss-preview-counts" id="ssPreviewCounts"></div>
+                  <p class="ss-preview-desc" id="ssPreviewDesc"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="field-error" id="serverSettingsError"></div>
+        </section>
+
+        <!-- visão geral: mensagens do sistema e AFK -->
+        <section class="settings-tab-panel" data-ss-panel="overview" hidden>
+          <h2 class="settings-title">visão geral</h2>
+          <div class="settings-section">
+            <h3 class="settings-section-title">canal de mensagens do sistema</h3>
+            <p class="settings-section-help">Onde aparecem os avisos automáticos do servidor, como "fulano chegou".</p>
+            <select id="ssSystemChannel"></select>
+            <label class="settings-toggle ss-toggle-gap">
+              <span class="settings-toggle-text"><strong>dar boas-vindas a quem entrar</strong><small>manda uma frase aleatória de boas-vindas quando alguém entra pelo convite</small></span>
+              <input type="checkbox" id="ssSystemWelcome">
+            </label>
+          </div>
+          <div class="settings-section">
+            <h3 class="settings-section-title">canal AFK</h3>
+            <p class="settings-section-help">Quem fica sem falar numa call por esse tempo é levado pro canal AFK. Câmera ou tela ligada contam como "presente".</p>
+            <div class="ss-two-fields">
+              <div class="field"><label for="ssAfkChannel">canal</label><select id="ssAfkChannel"></select></div>
+              <div class="field"><label for="ssAfkTimeout">tempo sem falar</label>
+                <select id="ssAfkTimeout">
+                  <option value="60">1 minuto</option>
+                  <option value="300">5 minutos</option>
+                  <option value="900">15 minutos</option>
+                  <option value="1800">30 minutos</option>
+                  <option value="3600">1 hora</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- cargos: lista à esquerda, editor à direita -->
+        <section class="settings-tab-panel ss-roles-panel" data-ss-panel="roles" hidden>
+          <h2 class="settings-title">cargos</h2>
+          <p class="settings-lead">Use cargos pra organizar o pessoal e dizer quem pode o quê. O cargo mais alto da lista é o que pinta o nome.</p>
+          <div class="ss-join-role">
+            <div class="ss-join-role-text">
+              <strong>cargo de entrada</strong>
+              <small>todo mundo que entrar pelo convite já ganha esse cargo</small>
+            </div>
+            <select id="ssJoinRole"></select>
+            <button type="button" class="btn btn-ghost btn-sm" id="ssJoinRoleApply" title="dar o cargo de entrada pra quem já está no servidor">dar pra quem já está</button>
+          </div>
+          <div class="ss-roles-layout">
+            <div class="ss-roles-side">
+              <button type="button" class="btn btn-primary btn-sm ss-role-create" id="roleCreateBtn">criar cargo</button>
+              <div class="ss-roles-list" id="rolesList"></div>
+            </div>
+            <div class="ss-role-editor" id="ssRoleEditor"></div>
+          </div>
+        </section>
+
+        <!-- categorias (editor em categoryBackdrop, 13-servers.js) -->
+        <section class="settings-tab-panel" data-ss-panel="categories" hidden>
+          <h2 class="settings-title">categorias</h2>
+          <p class="settings-lead">Organize texto e voz juntos. Mova canais pelo botão de editar canal. As permissões continuam em cada canal.</p>
+          <div class="settings-row ss-row-gap"><button class="btn btn-primary btn-sm" id="categoryCreateBtn" type="button">nova categoria</button></div>
+          <div id="categorySettingsList"></div>
+        </section>
+
+        <!-- soundboard -->
+        <section class="settings-tab-panel" data-ss-panel="soundboard" hidden>
+          <h2 class="settings-title">soundboard</h2>
+          <p class="settings-lead">Sons curtos que o pessoal toca nas calls. Quem está neste servidor também pode usar os sons daqui nas calls de outros servidores.</p>
+          <div class="ss-list-head">
+            <span class="ss-count" id="ssSoundCount"></span>
+            <button type="button" class="btn btn-primary btn-sm" id="ssSoundUploadBtn">enviar som</button>
+          </div>
+          <div class="ss-sound-grid" id="ssSoundGrid"></div>
+        </section>
+
+        <!-- membros -->
+        <section class="settings-tab-panel" data-ss-panel="members" hidden>
+          <h2 class="settings-title">membros</h2>
+          <div class="ss-list-head">
+            <span class="ss-count" id="ssMemberCount"></span>
+            <input type="search" class="ss-search" id="ssMemberSearch" placeholder="procurar membro" autocomplete="off">
+          </div>
+          <div class="ss-table" id="ssMemberList"></div>
+        </section>
+
+        <!-- convites -->
+        <section class="settings-tab-panel" data-ss-panel="invites" hidden>
+          <h2 class="settings-title">convites</h2>
+          <p class="settings-lead">Todos os links de convite ativos. Revogar um link faz ele parar de funcionar na hora.</p>
+          <div class="ss-list-head">
+            <span class="ss-count" id="ssInviteCount"></span>
+            <button type="button" class="btn btn-primary btn-sm" id="ssInviteCreateBtn">criar convite</button>
+          </div>
+          <div class="ss-table" id="ssInviteList"></div>
+        </section>
+
+        <!-- banimentos -->
+        <section class="settings-tab-panel" data-ss-panel="bans" hidden>
+          <h2 class="settings-title">banimentos</h2>
+          <p class="settings-lead">Quem foi banido não volta por convite até ser desbanido. Pra banir, use a aba membros ou o perfil da pessoa.</p>
+          <div class="ss-list-head">
+            <span class="ss-count" id="ssBanCount"></span>
+            <input type="search" class="ss-search" id="ssBanSearch" placeholder="procurar banido" autocomplete="off">
+          </div>
+          <div class="ss-table" id="ssBanList"></div>
+        </section>
+
+        <!-- registro de auditoria -->
+        <section class="settings-tab-panel" data-ss-panel="audit" hidden>
+          <h2 class="settings-title">registro de auditoria</h2>
+          <p class="settings-lead">Tudo que mudou no servidor nos últimos 90 dias, e quem mudou.</p>
+          <div class="ss-list-head ss-audit-filters">
+            <select id="ssAuditActor" aria-label="filtrar por quem fez"></select>
+            <select id="ssAuditAction" aria-label="filtrar por ação"></select>
+          </div>
+          <div class="ss-audit-list" id="ssAuditList"></div>
+          <button type="button" class="btn btn-ghost btn-sm ss-more" id="ssAuditMore" hidden>carregar mais</button>
+        </section>
+
+        </div>
+      </div>
+
+      <button type="button" class="settings-close" data-ss-close aria-label="fechar configurações do servidor">
+        <span class="settings-close-x">×</span>
+        <span class="settings-close-key">esc</span>
+      </button>
+
+      <!-- barra "alterações não salvas" (perfil e visão geral), igual à do Discord -->
+      <div class="ss-unsaved" id="ssUnsavedBar" hidden>
+        <span>Cuidado — você tem alterações que não foram salvas!</span>
+        <div class="ss-unsaved-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="ssUnsavedReset">redefinir</button>
+          <button type="button" class="btn btn-primary btn-sm" id="serverSettingsSaveBtn">salvar alterações</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- caixa de confirmação/pergunta das configurações do servidor (window.prompt não existe no app desktop) -->
+  <div class="modal-backdrop" id="ssDialogBackdrop" hidden>
+    <div class="modal card ss-dialog" role="dialog" aria-labelledby="ssDialogTitle">
+      <h3 id="ssDialogTitle"></h3>
+      <p class="modal-lead" id="ssDialogText"></p>
+      <div class="field" id="ssDialogField" hidden>
+        <label for="ssDialogInput" id="ssDialogLabel"></label>
+        <input id="ssDialogInput" type="text" autocomplete="off">
+      </div>
+      <p class="field-error" id="ssDialogError"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" id="ssDialogCancel">cancelar</button>
+        <button class="btn btn-primary" type="button" id="ssDialogOk">ok</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- editor de som do soundboard: escolhe o arquivo, corta o trecho e dá nome/emoji/volume -->
+  <div class="modal-backdrop" id="soundEditorBackdrop" hidden>
+    <div class="modal card sound-editor" role="dialog" aria-labelledby="soundEditorTitle">
+      <h3 id="soundEditorTitle">enviar som</h3>
+      <div class="sound-editor-file" id="soundEditorFileRow">
+        <button type="button" class="btn btn-ghost btn-sm" id="soundEditorPick">escolher arquivo</button>
+        <span class="field-help" id="soundEditorFileName">mp3, wav, ogg, m4a ou até um vídeo — até 25MB</span>
+        <input type="file" id="soundEditorInput" accept="audio/*,video/*" hidden>
+      </div>
+      <div class="sound-editor-wave" id="soundEditorWaveWrap" hidden>
+        <canvas id="soundEditorWave" height="96"></canvas>
+        <div class="sound-editor-sel" id="soundEditorSel">
+          <span class="sound-editor-handle is-start" data-handle="start"></span>
+          <span class="sound-editor-handle is-end" data-handle="end"></span>
+        </div>
+        <div class="sound-editor-playhead" id="soundEditorPlayhead" hidden></div>
+      </div>
+      <div class="sound-editor-times" id="soundEditorTimes" hidden>
+        <span id="soundEditorRange"></span>
+        <button type="button" class="btn btn-ghost btn-sm" id="soundEditorPreview">ouvir trecho</button>
+      </div>
+      <div class="ss-two-fields">
+        <div class="field"><label for="soundEditorName">nome</label><input id="soundEditorName" type="text" maxlength="32" autocomplete="off" placeholder="ex: buzina"></div>
+        <div class="field sound-editor-emoji-field"><label>emoji</label>
+          <div class="settings-row">
+            <button type="button" class="sound-editor-emoji" id="soundEditorEmoji" title="escolher emoji" aria-label="escolher emoji">🔊</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="soundEditorEmojiClear">sem emoji</button>
+          </div>
+        </div>
       </div>
       <div class="field">
-        <label for="serverSettingsNameInput">nome do servidor</label>
-        <input id="serverSettingsNameInput" type="text" maxlength="40" autocomplete="off">
+        <label for="soundEditorVolume">volume <span class="field-hint" id="soundEditorVolumeValue">100%</span></label>
+        <input type="range" id="soundEditorVolume" min="5" max="100" step="5" value="100">
       </div>
-      <div class="field-error" id="serverSettingsError"></div>
+      <p class="field-error" id="soundEditorError"></p>
       <div class="modal-actions">
-        <button class="btn btn-ghost" type="button" data-close>fechar</button>
-        <button class="btn btn-primary" type="button" id="serverSettingsSaveBtn">salvar</button>
+        <button class="btn btn-ghost" type="button" data-close>cancelar</button>
+        <button class="btn btn-primary" type="button" id="soundEditorSave">enviar</button>
       </div>
-      </section>
-      <section class="roles-section" data-server-panel="roles" hidden>
-        <div class="roles-section-head">
-          <h4>cargos</h4>
-          <button class="btn btn-ghost btn-sm" type="button" id="roleCreateBtn">novo cargo</button>
-        </div>
-        <p class="field-help">Dá cargos pras pessoas pelo perfil delas (clique no nome na lista de membros). Administradores gerenciam o servidor, os canais, os cargos e as calls.</p>
-        <p class="field-help">A ordem importa: use as setas pra subir ou descer um cargo. O nome da pessoa (no chat e na lista de membros) fica com a cor do cargo mais alto dela marcado como "separado".</p>
-        <div class="roles-list" id="rolesList"></div>
-      </section>
-      <section data-server-panel="categories" hidden><div class="roles-section-head"><h4>categorias de canais</h4><button class="btn btn-primary" id="categoryCreateBtn" type="button">nova categoria</button></div><p class="field-help">Organize texto e voz juntos. Mova canais pelo botão de editar canal. As permissões continuam em cada canal.</p><div id="categorySettingsList"></div></section>
-      <div class="danger-zone" id="serverDangerZone">
-        <div>
-          <strong>apagar servidor</strong>
-          <p>Apaga todos os canais e mensagens pra sempre. Não dá pra desfazer.</p>
-        </div>
-        <button class="btn btn-danger" type="button" id="serverSettingsDeleteBtn">apagar servidor</button>
-      </div>
+    </div>
+  </div>
+
+  <!-- seletor do soundboard (abre pelo botão na call e na barra da call) -->
+  <div class="soundboard-popup" id="soundboardPopup" role="dialog" aria-label="soundboard" hidden>
+    <div class="soundboard-head">
+      <input type="search" id="soundboardSearch" placeholder="procurar som" autocomplete="off">
+    </div>
+    <div class="soundboard-body" id="soundboardBody"></div>
+    <div class="soundboard-foot">
+      <span id="soundboardHint">clique pra tocar pra call · botão direito pra ouvir só você</span>
     </div>
   </div>
 
@@ -865,6 +1115,12 @@
             </div>
 
 
+            <div class="field">
+              <label for="soundboardVolumeRange">volume do soundboard <span id="soundboardVolumeValue" class="field-hint">60%</span></label>
+              <input type="range" id="soundboardVolumeRange" min="0" max="100" step="5" value="60">
+              <span class="field-help">o quão alto tocam os sons que o pessoal solta na call (só pra você)</span>
+            </div>
+
             <label class="settings-toggle">
               <span class="settings-toggle-text"><strong>sons de notificação</strong><small>som curto quando alguém entra ou sai da call e quando chega mensagem</small></span>
               <input type="checkbox" id="notificationSoundsCheckbox" checked>
@@ -981,30 +1237,33 @@
   <script src="/js/markdown.js?v=20"></script>
   <script src="/js/emoji.js?v=20"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=31"></script>
-  <script src="/js/app/02-preferences.js?v=31"></script>
-  <script src="/js/app/03-context-menus.js?v=31"></script>
-  <script src="/js/app/04-sidebar.js?v=31"></script>
-  <script src="/js/app/05-chat.js?v=31"></script>
-  <script src="/js/app/06-message-content.js?v=31"></script>
-  <script src="/js/app/07-composer.js?v=31"></script>
-  <script src="/js/app/08-notifications.js?v=31"></script>
-  <script src="/js/app/09-panels-attachments.js?v=31"></script>
-  <script src="/js/app/10-video-player.js?v=31"></script>
-  <script src="/js/app/11-slash-commands.js?v=31"></script>
-  <script src="/js/app/12-members-profile.js?v=31"></script>
-  <script src="/js/app/13-servers.js?v=31"></script>
-  <script src="/js/app/14-roles.js?v=31"></script>
-  <script src="/js/app/15-media-viewer.js?v=31"></script>
-  <script src="/js/app/16-site-admin.js?v=31"></script>
-  <script src="/js/app/17-settings.js?v=31"></script>
-  <script src="/js/app/18-call-audio.js?v=31"></script>
-  <script src="/js/app/19-call-ui.js?v=31"></script>
-  <script src="/js/app/20-screencast-native.js?v=31"></script>
-  <script src="/js/app/21-call-sfu.js?v=31"></script>
-  <script src="/js/app/22-call-mesh.js?v=31"></script>
-  <script src="/js/app/23-call-media.js?v=31"></script>
-  <script src="/js/app/24-presence.js?v=31"></script>
-  <script src="/js/app/25-realtime.js?v=31"></script>
+  <script src="/js/app/01-state.js?v=37"></script>
+  <script src="/js/app/02-preferences.js?v=37"></script>
+  <script src="/js/app/03-context-menus.js?v=37"></script>
+  <script src="/js/app/04-sidebar.js?v=37"></script>
+  <script src="/js/app/05-chat.js?v=37"></script>
+  <script src="/js/app/06-message-content.js?v=37"></script>
+  <script src="/js/app/07-composer.js?v=37"></script>
+  <script src="/js/app/08-notifications.js?v=37"></script>
+  <script src="/js/app/09-panels-attachments.js?v=37"></script>
+  <script src="/js/app/10-video-player.js?v=37"></script>
+  <script src="/js/app/11-slash-commands.js?v=37"></script>
+  <script src="/js/app/12-members-profile.js?v=37"></script>
+  <script src="/js/app/13-servers.js?v=37"></script>
+  <script src="/js/app/14-roles.js?v=37"></script>
+  <script src="/js/app/15-media-viewer.js?v=37"></script>
+  <script src="/js/app/16-site-admin.js?v=37"></script>
+  <script src="/js/app/17-settings.js?v=37"></script>
+  <script src="/js/app/18-call-audio.js?v=37"></script>
+  <script src="/js/app/19-call-ui.js?v=37"></script>
+  <script src="/js/app/20-screencast-native.js?v=37"></script>
+  <script src="/js/app/21-call-sfu.js?v=37"></script>
+  <script src="/js/app/22-call-mesh.js?v=37"></script>
+  <script src="/js/app/23-call-media.js?v=37"></script>
+  <script src="/js/app/24-presence.js?v=37"></script>
+  <script src="/js/app/25-server-settings.js?v=37"></script>
+  <script src="/js/app/26-soundboard.js?v=37"></script>
+  <script src="/js/app/27-world.js?v=37"></script>
+  <script src="/js/app/28-realtime.js?v=37"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // didiscord — Painel de admin do site
-// Parte 16 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 16 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -234,7 +234,15 @@ document.addEventListener('keydown', (e) => {
   if (!viewProfileBackdrop.hidden) { closeViewProfile(); return; }
   if (!settingsModalBackdrop.hidden) { closeSettingsModal(); return; }
   if (!serverMenu.hidden) { closeServerMenu(); return; }
-  for (const bd of [adminBackdrop, channelEditBackdrop, newDmBackdrop, inviteBackdrop, serverSettingsBackdrop, addServerBackdrop, joinInviteBackdrop, profileModalBackdrop]) {
+  if (!soundboardPopup.hidden) { closeSoundboardPicker(); return; }
+  if (!ssDialogBackdrop.hidden) { closeSsDialog(null); return; }
+  if (!soundEditorBackdrop.hidden) { closeSoundEditor(); return; }
+  // modais que abrem POR CIMA das configurações do servidor fecham antes delas
+  for (const bd of [categoryBackdrop, adminBackdrop, channelEditBackdrop, newDmBackdrop, inviteBackdrop]) {
+    if (!bd.hidden) { bd.hidden = true; return; }
+  }
+  if (!serverSettingsBackdrop.hidden) { closeServerSettings(); return; }
+  for (const bd of [addServerBackdrop, joinInviteBackdrop, profileModalBackdrop]) {
     if (!bd.hidden) { bd.hidden = true; return; }
   }
 });

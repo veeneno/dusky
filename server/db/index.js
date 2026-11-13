@@ -185,6 +185,80 @@ if (!hadFts) {
   console.log('[db] índice de busca criado');
 }
 
+// ------------------------------------------------------------------
+// configurações do servidor (estilo Discord), banimentos, registro de auditoria e soundboard
+// ------------------------------------------------------------------
+
+// perfil do servidor: banner (pode ser gif) e descrição curta (aparece no convite e na lateral)
+ensureColumn('servers', 'banner_url', 'TEXT');
+ensureColumn('servers', 'description', 'TEXT');
+// mensagens do sistema ("fulano chegou"): canal onde aparecem (NULL = desligado) e se avisa quem entra
+ensureColumn('servers', 'system_channel_id', 'INTEGER REFERENCES channels(id) ON DELETE SET NULL');
+ensureColumn('servers', 'system_welcome', 'INTEGER NOT NULL DEFAULT 1');
+// canal AFK: quem fica sem falar por afk_timeout segundos numa call é levado pra ele (NULL = desligado)
+ensureColumn('servers', 'afk_channel_id', 'INTEGER REFERENCES channels(id) ON DELETE SET NULL');
+ensureColumn('servers', 'afk_timeout', 'INTEGER NOT NULL DEFAULT 300');
+// cargo que todo mundo ganha ao entrar no servidor por convite (NULL = nenhum). Nunca pode ser admin.
+ensureColumn('servers', 'join_role_id', 'INTEGER REFERENCES roles(id) ON DELETE SET NULL');
+// permissões do "@everyone": o que TODO membro pode, mesmo sem cargo nenhum. Os cargos só somam.
+// Soundboard (usar e usar sons de outros servidores) nasce liberado, igual no Discord.
+ensureColumn('servers', 'everyone_permissions_json', `TEXT NOT NULL DEFAULT '{"use_soundboard":true,"use_external_sounds":true}'`);
+// mundinho 3D (docs/MUNDINHO.md): canal de voz com cena 3D. NULL = canal de voz normal
+ensureColumn('channels', 'world_scene', 'TEXT');
+// cena que não existe mais (ex.: a 'lounge' da 1ª versão) vira a cena padrão — senão o site pediria
+// um arquivo de cena que sumiu e o mundinho não carregaria
+(function fixMissingScenes() {
+  const dir = path.join(__dirname, '..', '..', 'public', 'world', 'scenes');
+  const fix = db.prepare('UPDATE channels SET world_scene = ? WHERE world_scene = ?');
+  for (const { world_scene: id } of db.prepare('SELECT DISTINCT world_scene FROM channels WHERE world_scene IS NOT NULL').all()) {
+    if (!fs.existsSync(path.join(dir, `${id}.json`))) {
+      fix.run('penthouse', id);
+      console.log(`[db] canais-mundo com a cena "${id}" (que não existe mais) passaram pra "penthouse"`);
+    }
+  }
+})();
+// mensagem do sistema: system_type ('member_join'...) e de quem ela fala (system_user_id)
+ensureColumn('messages', 'system_type', 'TEXT');
+ensureColumn('messages', 'system_user_id', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
+
+db.exec(`
+  -- banidos não voltam por convite enquanto o banimento existir
+  CREATE TABLE IF NOT EXISTS server_bans (
+    server_id  INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason     TEXT,
+    banned_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (server_id, user_id)
+  );
+  -- quem fez o quê em cada servidor (ver server/audit.js)
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id    INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    actor_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action       TEXT NOT NULL,
+    target_type  TEXT,
+    target_id    INTEGER,
+    target_name  TEXT,
+    details_json TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_server ON audit_log(server_id, id);
+  -- sons do soundboard (ver server/soundboard.js). O arquivo já fica cortado e em mp3.
+  CREATE TABLE IF NOT EXISTS soundboard_sounds (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id   INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    emoji       TEXT,
+    volume      REAL NOT NULL DEFAULT 1,
+    file_url    TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_soundboard_server ON soundboard_sounds(server_id);
+`);
+
 // canais padrão de um servidor recém-criado — usado por routes/servers.js
 function createDefaultChannels(serverId, createdBy) {
   const insert = db.prepare(

@@ -9,6 +9,7 @@ const { attachmentUpload, attachmentTypeOf } = require('../upload');
 const { MESSAGE_COLUMNS, MESSAGE_SELECT_BY_ID } = require('../db/messageQueries');
 const musicBot = require('../bots/musicBot');
 const extras = require('../chatExtras');
+const audit = require('../audit');
 
 // mergeParams pra ter acesso a :channelId, já que é montado como sub-rota
 const router = express.Router({ mergeParams: true });
@@ -278,6 +279,11 @@ router.delete('/:messageId', requireAuth, (req, res) => {
   }
 
   realtime.broadcastToChannel(channelId, { type: 'message_deleted', channelId, messageId });
+  // moderador apagando mensagem de outra pessoa: vai pro registro (sem o conteúdo)
+  if (server && !isAuthor) {
+    const author = message.user_id ? access.getUser(message.user_id) : null;
+    audit.log(server.id, req.user.id, 'message_delete', { type: 'user', id: message.user_id, name: author ? author.username : 'bot' }, { channel: channel.name });
+  }
   res.json({ ok: true });
 });
 

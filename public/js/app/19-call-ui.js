@@ -1,5 +1,5 @@
 // didiscord — Tela da call: atalhos, participantes, telas compartilhadas e estatísticas
-// Parte 19 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 19 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -232,6 +232,7 @@ function toggleElementFullscreen(el) {
 }
 
 function renderCallParticipants() {
+  syncWorldView(); // call-mundo: mostra o mundinho 3D no lugar da grade (27-world.js)
   callParticipants.innerHTML = '';
   if (!voiceChannel || !currentUser) {
     callParticipants.classList.remove('has-spotlight');

@@ -5,6 +5,7 @@ const realtime = require('../realtime');
 const access = require('../access');
 const { memberRow } = require('./servers');
 const extras = require('../chatExtras');
+const { MESSAGE_SELECT_BY_ID } = require('../db/messageQueries');
 
 const router = express.Router();
 
@@ -77,17 +78,44 @@ router.post('/:code/accept', requireAuth, (req, res) => {
     return res.json({ server, already_member: true });
   }
   if (problem) return res.status(410).json({ error: problem });
+  if (access.isBanned(server.id, req.user.id)) return res.status(403).json({ error: 'você foi banido desse servidor' });
+
+  // cargo de entrada (configurações do servidor → cargos). Admin nunca é dado assim.
+  const joinRole = server.join_role_id
+    ? db.prepare('SELECT id FROM roles WHERE id = ? AND server_id = ? AND is_admin = 0').get(server.join_role_id, server.id)
+    : null;
 
   db.transaction(() => {
     db.prepare('INSERT INTO server_members (server_id, user_id) VALUES (?, ?)').run(server.id, req.user.id);
     db.prepare('UPDATE invites SET uses = uses + 1 WHERE code = ?').run(invite.code);
+    if (joinRole) db.prepare('INSERT OR IGNORE INTO member_roles (server_id, user_id, role_id) VALUES (?, ?, ?)').run(server.id, req.user.id, joinRole.id);
     extras.markServerRead(server.id, req.user.id); // histórico antigo não chega como "não lido"
   })();
 
   const member = memberRow(server.id, req.user.id);
   realtime.broadcastToServer(server.id, { type: 'member_joined', serverId: server.id, member }, null);
+  if (joinRole) realtime.broadcastToServer(server.id, { type: 'roles_updated', serverId: server.id });
   realtime.sendToUsers([req.user.id], { type: 'server_joined', server });
+  postWelcome(server, req.user.id);
   res.json({ server });
 });
+
+// mensagem do sistema "fulano chegou" no canal escolhido (configurações → visão geral). O texto
+// em si é montado no navegador (uma das frases de boas-vindas, ver 05-chat.js) — aqui só fica o
+// tipo e quem entrou.
+function postWelcome(server, userId) {
+  if (!server.system_channel_id || !server.system_welcome) return;
+  const channel = access.getChannel(server.system_channel_id);
+  if (!channel || channel.server_id !== server.id || channel.type !== 'text') return;
+  try {
+    const { lastInsertRowid } = db.prepare(
+      "INSERT INTO messages (channel_id, content, system_type, system_user_id) VALUES (?, '', 'member_join', ?)"
+    ).run(channel.id, userId);
+    const message = extras.decorateMessage(db.prepare(MESSAGE_SELECT_BY_ID).get(lastInsertRowid));
+    realtime.broadcastToChannel(channel.id, { type: 'message_created', message });
+  } catch (err) {
+    console.error('[invites] não deu pra postar a mensagem de boas-vindas:', err.message);
+  }
+}
 
 module.exports = router;

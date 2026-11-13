@@ -99,6 +99,8 @@ app.use('/api/musicbot', musicbotRoutes);
 app.use('/api/rtc', rtcRoutes);
 app.use('/api/giphy', giphyRoutes);
 app.use('/api/servers/:serverId/categories', require('./routes/categories'));
+app.use('/api/servers/:serverId/soundboard', require('./routes/soundboard').serverRouter);
+app.use('/api/soundboard', require('./routes/soundboard'));
 app.use('/api/servers', serversRoutes);
 app.use('/api/push', require('./routes/push'));
 app.use('/api/invites', invitesRoutes);

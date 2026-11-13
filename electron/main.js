@@ -366,6 +366,8 @@ function setupPermissions() {
   const allowed = new Set([
     'media', 'audioCapture', 'videoCapture', 'display-capture', 'speaker-selection',
     'notifications', 'fullscreen', 'clipboard-sanitized-write',
+    // mundinho 3D em 1ª pessoa: a câmera segue o mouse prendendo o cursor (Esc solta)
+    'pointerLock',
   ]);
   const ses = session.defaultSession;
   ses.setPermissionRequestHandler((_wc, permission, callback, details) => {

@@ -1,6 +1,6 @@
 # public/js/app/ — o código do site
 
-Aqui mora tudo que roda na página principal (`app.html`): chat, servidores, perfil, calls, compartilhamento de tela e configurações. Era um arquivo só (`public/js/app.js`, com mais de 10 mil linhas); agora são 25 arquivos, um por assunto.
+Aqui mora tudo que roda na página principal (`app.html`): chat, servidores, perfil, calls, compartilhamento de tela e configurações. Era um arquivo só (`public/js/app.js`, com mais de 10 mil linhas); agora são 28 arquivos, um por assunto.
 
 ## Como os arquivos se enxergam
 
@@ -13,7 +13,7 @@ Por que não módulos (`import`/`export`)? O estado do app (`currentChannel`, `p
 1. **A ordem importa.** O número no nome é a ordem de carga. Código que roda **na hora em que o arquivo carrega** (fora de função) só pode usar `const`/`let` de arquivos anteriores e funções de arquivos anteriores ou do próprio arquivo. Dentro de funções e de `addEventListener(..., () => …)` pode usar qualquer coisa de qualquer arquivo, porque isso só roda depois que todos carregaram.
 2. **Nomes são globais.** Antes de criar uma função ou variável no topo, procure o nome na pasta (`grep -rn "function nome" public/js/app/`). Dois `const` com o mesmo nome em arquivos diferentes derrubam o segundo arquivo inteiro. Evite nomes que o navegador já usa em `window` (`name`, `status`, `top`, `open`, `close`, `stop`, `focus`…).
 3. **Arquivo novo** entra na pasta com o número da posição certa e ganha uma linha `<script>` no `app.html`, no mesmo lugar da ordem.
-4. **Mudou qualquer arquivo? Suba o `?v=` de todos** no `app.html` (hoje `?v=30`). O servidor já manda tudo sem cache, mas o número igual em todos deixa claro que são do mesmo conjunto — numa call todo mundo precisa estar com a mesma versão.
+4. **Mudou qualquer arquivo? Suba o `?v=` de todos** no `app.html` (hoje `?v=34`). O servidor já manda tudo sem cache, mas o número igual em todos deixa claro que são do mesmo conjunto — numa call todo mundo precisa estar com a mesma versão.
 5. **Estado compartilhado** (o que vários assuntos usam) fica em `01-state.js`. Estado de um assunto só fica no arquivo dele.
 6. Cores, fontes e cantos sempre por variável CSS; comentários em português explicando o porquê. (Regras gerais do projeto, ver README da raiz.)
 
@@ -45,7 +45,10 @@ Por que não módulos (`import`/`export`)? O estado do app (`currentChannel`, `p
 | `22-call-mesh.js` (689 linhas) | **Calls em malha (conexão direta) e qualidade do áudio.** chamada em grupo — uma RTCPeerConnection por pessoa ("malha"/mesh); qualidade do áudio (Opus / RED) | `createPeer()`, `handleRtcSignal()`, `closePeer()`, `updateVoiceStats()`, ajustes do Opus no SDP |
 | `23-call-media.js` (491 linhas) | **Câmera, compartilhar tela e entrar/sair da call.** câmera; compartilhamento de tela | `toggleCamera()`, `startScreenShare()`, `stopScreenShare()`, `joinVoiceCall()`, `leaveVoiceCall()` |
 | `24-presence.js` (175 linhas) | **Rich presence ("jogando X").** "jogando X" (rich presence) | `initPresence()`, `sendMyActivity()`, `renderPresenceSettings()` |
-| `25-realtime.js` (402 linhas) | **Eventos em tempo real e partida do app.** eventos em tempo real | `wireRealtime()` (todos os `Realtime.on(...)`) e, no fim, o bloco `init` que dá a partida no app |
+| `25-server-settings.js` | **Configurações do servidor (tela cheia, estilo Discord).** abas por permissão; barra de alterações não salvas; perfil do servidor (nome, ícone, banner, descrição); visão geral (mensagens do sistema, canal AFK); cargos (lista + editor, @everyone, cargo de entrada); soundboard; membros; convites; banimentos; registro de auditoria; `ssAsk()` (pergunta/confirmação) | `openServerSettings()`, `refreshServerSettingsView()`, `renderSsRoles()`, `banMember()`, `ssAsk()` |
+| `26-soundboard.js` | **Soundboard.** tocar o som que alguém soltou na call; seletor com os sons de todos os servidores; editor de som (onda, corte até ~5 s, nome, emoji, volume) | `handleSoundboardPlay()`, `openSoundboardPicker()`, `openSoundEditor()`, `previewSound()` |
+| `27-world.js` | **Mundinho 3D (cola).** posições dos bonecos da call-mundo, envio da minha posição, áudio espacial (PannerNode), mostrar o mundo no lugar da grade e carregar `public/world/` sob demanda — ver `docs/MUNDINHO.md` | `isWorldChannel()`, `syncWorldView()`, `worldOnRemoteState()`, `createWorldPanner()` |
+| `28-realtime.js` | **Eventos em tempo real e partida do app.** eventos em tempo real | `wireRealtime()` (todos os `Realtime.on(...)`) e, no fim, o bloco `init` que dá a partida no app |
 
 ## Onde procurar
 
@@ -54,7 +57,10 @@ Por que não módulos (`import`/`export`)? O estado do app (`currentChannel`, `p
 - **Voz ruim, microfone, supressão de ruído** → `18-call-audio.js` (o processamento) e `17-settings.js` (a tela de configurações). Os worklets ficam em `public/js/worklets/`.
 - **Alguém não ouve alguém** → `21-call-sfu.js` se o servidor usa `SFU=livekit`, senão `22-call-mesh.js`. Entrar e sair da call é `23-call-media.js`.
 - **Tela compartilhada** → `23-call-media.js` (começar/parar), `19-call-ui.js` (mostrar), `20-screencast-native.js` (placa de vídeo, app desktop).
-- **Evento que chega do servidor** (`Realtime.on`) → `25-realtime.js`.
+- **Evento que chega do servidor** (`Realtime.on`) → `28-realtime.js`.
+- **Mundinho 3D** → `27-world.js` (cola) + `public/world/` (o 3D: world.js, avatar.js, props.js, tv.js e scenes/ — módulos ES carregados sob demanda) + `server/world.js`. Plano e status: `docs/MUNDINHO.md`.
+- **Configurações do servidor** → `25-server-settings.js` (as regras de verdade: `server/access.js` e `server/routes/servers.js`).
+- **Soundboard** → `26-soundboard.js` no site, `server/soundboard.js` + `server/routes/soundboard.js` no servidor.
 - **Cargos, cor do nome, quem pode o quê na tela** → `14-roles.js`. A regra de verdade é sempre a do servidor (`server/access.js`).
 
 Os outros scripts da página continuam onde estavam: `public/js/themes.js` (temas), `realtime.js` (WebSocket), `markdown.js`, `emoji.js`.

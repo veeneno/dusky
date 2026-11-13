@@ -1,5 +1,5 @@
 // didiscord — Calls pelo servidor de mídia (LiveKit)
-// Parte 21 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 21 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -76,7 +76,8 @@ function sfuTrackSubscribed(track, publication, participant) {
     peer.sfuMicReceiver = track.receiver || null;
     peer.voiceStatsPrevious = null;
     // faixa nova = refaz o que lê direto dela (reforço acima de 100% e indicador de fala)
-    if (peer.boostGain) { try { peer.boostGain.disconnect(); } catch (_) { /* já desligado */ } }
+    for (const node of [peer.boostGain, peer.spatialPanner]) { if (node) { try { node.disconnect(); } catch (_) { /* já desligado */ } } }
+    peer.spatialPanner = null;
     peer.boostGain = null;
     peer.boostSource = null;
     connectPeerAudio(peer);

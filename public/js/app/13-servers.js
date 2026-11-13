@@ -1,5 +1,5 @@
 // didiscord — Servidores: barra, menu, convites, configurações e conversas diretas
-// Parte 13 de 25 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
+// Parte 13 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
 // ordem pelo app.html: o que um declara no topo (const, let, function) os outros enxergam.
@@ -159,6 +159,7 @@ function renderSidebarHeader() {
   const s = currentServer();
   closeServerMenu();
   if (!s) {
+    renderSidebarBanner(null);
     serverHeaderName.textContent = 'mensagens diretas';
     serverHeaderBtn.classList.add('is-home');
     serverHeaderBtn.disabled = true;
@@ -167,6 +168,15 @@ function renderSidebarHeader() {
   serverHeaderName.textContent = s.name;
   serverHeaderBtn.classList.remove('is-home');
   serverHeaderBtn.disabled = false;
+  renderSidebarBanner(s);
+}
+
+// banner do servidor (configurações → perfil do servidor) no topo da lista de canais, igual ao Discord
+function renderSidebarBanner(s) {
+  const header = serverHeaderBtn.closest('.sidebar-header');
+  const url = s && s.banner_url;
+  header.classList.toggle('has-banner', !!url);
+  header.style.setProperty('--server-banner', url ? `url("${url.replace(/"/g, '%22')}")` : 'none');
 }
 
 railHomeBtn.addEventListener('click', () => selectServer(null));
@@ -185,6 +195,10 @@ function upsertServer(server) {
 
 // o servidor sumiu pra mim (apaguei, saí, fui expulso ou alguém apagou) — limpa tudo dele
 function removeServerLocally(serverId, message) {
+  if (currentServerId === serverId && !serverSettingsBackdrop.hidden) {
+    serverSettingsBackdrop.hidden = true;
+    ssUnsavedBar.hidden = true;
+  }
   servers = servers.filter((s) => s.id !== serverId);
   for (const [chId, sid] of [...unreadChannels.entries()]) if (sid === serverId) unreadChannels.delete(chId);
   if (voiceChannel && voiceChannel.server_id === serverId) leaveVoiceCall({ silent: true });
@@ -270,7 +284,7 @@ function openServerMenu() {
   const isOwner = s.owner_id === currentUser.id;
   const items = [
     { label: 'convidar pessoas', icon: 'invite', accent: true, onClick: openInviteModal },
-    isAdminOfCurrentServer() && { label: 'configurações do servidor', icon: 'settings', onClick: openServerSettings },
+    canOpenServerSettings() && { label: 'configurações do servidor', icon: 'settings', onClick: () => openServerSettings() },
     hasCurrentPermission('manage_channels') && { label: 'criar categoria', icon: 'channel', onClick: () => editCategory() },
     hasCurrentPermission('manage_channels') && { label: 'criar canal', icon: 'channel', onClick: () => openCreateModal('text') },
     !isOwner && { sep: true },
@@ -326,7 +340,8 @@ async function leaveCurrentServer() {
 async function kickMember(user) {
   const s = currentServer();
   if (!s) return;
-  if (!confirm(`expulsar ${user.username} de "${s.name}"? a pessoa só volta com um convite novo.`)) return;
+  const ok = await ssAsk({ title: `expulsar ${user.username}`, text: `${user.username} sai de "${s.name}" e só volta com um convite novo.`, okLabel: 'expulsar', danger: true });
+  if (!ok) return;
   const res = await fetch(`/api/servers/${s.id}/members/${user.id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { toast(data.error || 'não deu pra expulsar', 'error'); return; }
@@ -508,108 +523,7 @@ inviteCopyBtn.addEventListener('click', async () => {
   setTimeout(() => { inviteCopyBtn.textContent = 'copiar'; }, 1800);
 });
 
-// ---------- configurações do servidor (só dono) ----------
-
-const serverSettingsBackdrop = document.getElementById('serverSettingsBackdrop');
-const serverSettingsIcon = document.getElementById('serverSettingsIcon');
-const serverSettingsIconBtn = document.getElementById('serverSettingsIconBtn');
-const serverSettingsIconRemoveBtn = document.getElementById('serverSettingsIconRemoveBtn');
-const serverSettingsIconInput = document.getElementById('serverSettingsIconInput');
-const serverSettingsNameInput = document.getElementById('serverSettingsNameInput');
-const serverSettingsError = document.getElementById('serverSettingsError');
-const serverSettingsSaveBtn = document.getElementById('serverSettingsSaveBtn');
-const serverSettingsDeleteBtn = document.getElementById('serverSettingsDeleteBtn');
-const closeServerSettings = wireModal(serverSettingsBackdrop);
-
-function refreshServerSettingsIcon() {
-  const s = currentServer();
-  if (!s) return;
-  serverSettingsIcon.innerHTML = serverIconInner(s);
-  serverSettingsIconRemoveBtn.hidden = !s.icon_url;
-}
-
-function openServerSettings() {
-  const s = currentServer();
-  if (!s || !isAdminOfCurrentServer()) return;
-  serverSettingsNameInput.value = s.name;
-  serverSettingsError.textContent = '';
-  serverSettingsError.classList.remove('is-success');
-  refreshServerSettingsIcon();
-  serverDangerZone.hidden = s.owner_id !== currentUser.id;
-  renderRolesList();
-  loadRoles().then(renderRolesList);
-  selectServerSettingsTab('overview');
-  renderCategorySettings();
-  serverSettingsBackdrop.hidden = false;
-}
-
-serverSettingsIcon.addEventListener('click', () => serverSettingsIconInput.click());
-serverSettingsIconBtn.addEventListener('click', () => serverSettingsIconInput.click());
-
-serverSettingsIconInput.addEventListener('change', async () => {
-  const s = currentServer();
-  const file = serverSettingsIconInput.files[0];
-  if (!s || !file) return;
-  const formData = new FormData();
-  formData.append('icon', file);
-  serverSettingsIconBtn.disabled = true;
-  try {
-    const res = await fetch(`/api/servers/${s.id}/icon`, { method: 'POST', body: formData });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { serverSettingsError.textContent = data.error || 'não deu pra trocar o ícone'; return; }
-    upsertServer(data.server);
-    refreshServerSettingsIcon();
-  } finally {
-    serverSettingsIconBtn.disabled = false;
-    serverSettingsIconInput.value = '';
-  }
-});
-
-serverSettingsIconRemoveBtn.addEventListener('click', async () => {
-  const s = currentServer();
-  if (!s) return;
-  const res = await fetch(`/api/servers/${s.id}/icon`, { method: 'DELETE' });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { serverSettingsError.textContent = data.error || 'não deu pra remover o ícone'; return; }
-  upsertServer(data.server);
-  refreshServerSettingsIcon();
-});
-
-serverSettingsSaveBtn.addEventListener('click', async () => {
-  const s = currentServer();
-  if (!s) return;
-  serverSettingsError.classList.remove('is-success');
-  const name = serverSettingsNameInput.value.trim();
-  if (!name) { serverSettingsError.textContent = 'dá um nome pro servidor'; return; }
-  serverSettingsSaveBtn.disabled = true;
-  try {
-    const res = await fetch(`/api/servers/${s.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { serverSettingsError.textContent = data.error || 'não deu pra salvar'; return; }
-    upsertServer(data.server);
-    serverSettingsError.textContent = 'salvo';
-    serverSettingsError.classList.add('is-success');
-  } finally {
-    serverSettingsSaveBtn.disabled = false;
-  }
-});
-
-serverSettingsDeleteBtn.addEventListener('click', async () => {
-  const s = currentServer();
-  if (!s) return;
-  const typed = prompt(`pra apagar "${s.name}" de vez, digite o nome do servidor:`);
-  if (typed == null) return;
-  if (typed.trim() !== s.name) { serverSettingsError.textContent = 'o nome não bate — nada foi apagado'; return; }
-  const res = await fetch(`/api/servers/${s.id}`, { method: 'DELETE' });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { serverSettingsError.textContent = data.error || 'não deu pra apagar'; return; }
-  closeServerSettings();
-  removeServerLocally(s.id, `${s.name} foi apagado`);
-});
+// as configurações do servidor (tela cheia) ficam em 25-server-settings.js
 
 // ---------- aceitar convite vindo do link (/invite/CODIGO -> /app.html?invite=CODIGO) ----------
 
@@ -780,13 +694,6 @@ newDmSearch.addEventListener('input', renderContacts);
 const LOCK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 const GEAR_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
-// Abas mantêm a identidade, os cargos e a organização em áreas separadas.
-function selectServerSettingsTab(key) {
-  document.querySelectorAll('[data-server-panel]').forEach(p => { p.hidden = p.dataset.serverPanel !== key; });
-  document.querySelectorAll('[data-server-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.serverTab === key)));
-  serverDangerZone.hidden = key !== 'overview' || !currentServer() || currentServer().owner_id !== currentUser.id;
-}
-document.querySelectorAll('[data-server-tab]').forEach(b => b.addEventListener('click', () => selectServerSettingsTab(b.dataset.serverTab)));
 const categoryBackdrop = document.getElementById('categoryBackdrop');
 const closeCategoryEditor = wireModal(categoryBackdrop);
 let editingCategoryId = null;

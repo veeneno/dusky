@@ -6,7 +6,10 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const realtime = require('../realtime');
 const access = require('../access');
-const { serverIconUpload } = require('../upload');
+const { serverIconUpload, bannerUpload } = require('../upload');
+const audit = require('../audit');
+const soundboard = require('../soundboard');
+const world = require('../world');
 
 const router = express.Router();
 
@@ -61,7 +64,7 @@ function canModerate(server, actorId, targetId) {
   return !access.isServerAdmin(server.id, targetId);
 }
 
-const CHANNEL_COLUMNS = 'id, name, type, position, server_id, category_id, private_view, private_connect, private_send, private_attach, private_react, private_pin';
+const CHANNEL_COLUMNS = 'id, name, type, position, server_id, category_id, world_scene, private_view, private_connect, private_send, private_attach, private_react, private_pin';
 
 // canais que `userId` consegue ver, cada um com o que ele pode fazer ali. Pra administradores vai
 // junto a configuração de acesso (quais cargos veem/entram), usada na tela de editar canal.
@@ -127,11 +130,10 @@ function memberRow(serverId, userId) {
 // GET /api/servers — servidores dos quais eu sou membro (na ordem em que entrei)
 router.get('/', requireAuth, (req, res) => {
   const servers = db.prepare(`
-    SELECT s.id, s.name, s.icon_url, s.owner_id, s.created_at
-    FROM servers s JOIN server_members sm ON sm.server_id = s.id
+    SELECT s.id FROM servers s JOIN server_members sm ON sm.server_id = s.id
     WHERE sm.user_id = ?
     ORDER BY sm.joined_at, s.id
-  `).all(req.user.id).map((s) => ({ ...s, is_admin: access.isServerAdmin(s.id, req.user.id) }));
+  `).all(req.user.id).map((r) => ({ ...access.getServer(r.id), is_admin: access.isServerAdmin(r.id, req.user.id) }));
   res.json({ servers });
 });
 
@@ -159,19 +161,101 @@ router.get('/:serverId', requireAuth, loadMemberServer, (req, res) => {
   res.json({ server: req.server });
 });
 
-// PATCH /api/servers/:serverId — renomear (só dono)
-router.patch('/:serverId', requireAuth, loadMemberServer, requireAdmin, (req, res) => {
-  const name = cleanServerName((req.body || {}).name);
-  if (!name) return res.status(400).json({ error: 'dá um nome pro servidor' });
+const DESCRIPTION_MAX = 190;
+const AFK_TIMEOUTS = [60, 300, 900, 1800, 3600];
 
-  db.prepare('UPDATE servers SET name = ? WHERE id = ?').run(name, req.server.id);
+// PATCH /api/servers/:serverId — configurações do servidor. Todos os campos são opcionais:
+//   name, description                     (perfil do servidor)
+//   system_channel_id, system_welcome     (mensagens do sistema: canal de texto ou null)
+//   afk_channel_id, afk_timeout           (canal AFK: canal de voz ou null; segundos)
+//   join_role_id                          (cargo de entrada — só administradores, cargo não-admin)
+router.patch('/:serverId', requireAuth, loadMemberServer, requirePermission('manage_server'), (req, res) => {
+  const body = req.body || {};
+  const sets = [];
+  const vals = [];
+  const changed = [];
+  const field = (column, value) => {
+    if (req.server[column] === value) return;
+    sets.push(`${column} = ?`); vals.push(typeof value === 'boolean' ? (value ? 1 : 0) : value); changed.push(column);
+  };
+  const channelOfType = (raw, type) => {
+    if (raw === null || raw === '' || raw === 0) return { ok: true, id: null };
+    const ch = access.getChannel(Number(raw));
+    return ch && ch.server_id === req.server.id && ch.type === type ? { ok: true, id: ch.id } : { ok: false };
+  };
+
+  if (body.name !== undefined) {
+    const name = cleanServerName(body.name);
+    if (!name) return res.status(400).json({ error: 'dá um nome pro servidor' });
+    field('name', name);
+  }
+  if (body.description !== undefined) {
+    const d = typeof body.description === 'string' ? body.description.replace(/\r/g, '').trim().slice(0, DESCRIPTION_MAX) : '';
+    field('description', d || null);
+  }
+  if (body.system_channel_id !== undefined) {
+    const r = channelOfType(body.system_channel_id, 'text');
+    if (!r.ok) return res.status(400).json({ error: 'escolha um canal de texto deste servidor' });
+    field('system_channel_id', r.id);
+  }
+  if (body.system_welcome !== undefined) field('system_welcome', !!body.system_welcome);
+  if (body.afk_channel_id !== undefined) {
+    const r = channelOfType(body.afk_channel_id, 'voice');
+    if (!r.ok) return res.status(400).json({ error: 'escolha um canal de voz deste servidor' });
+    field('afk_channel_id', r.id);
+  }
+  if (body.afk_timeout !== undefined) {
+    const t = Number(body.afk_timeout);
+    if (!AFK_TIMEOUTS.includes(t)) return res.status(400).json({ error: 'tempo de AFK inválido' });
+    field('afk_timeout', t);
+  }
+  if (body.join_role_id !== undefined) {
+    // dar cargo pra todo mundo que entra é mexer em cargos: só administradores
+    if (!access.isServerAdmin(req.server.id, req.user.id)) return res.status(403).json({ error: 'só administradores escolhem o cargo de entrada' });
+    let roleId = null;
+    if (body.join_role_id !== null && body.join_role_id !== '' && body.join_role_id !== 0) {
+      const role = db.prepare('SELECT id, is_admin FROM roles WHERE id = ? AND server_id = ?').get(Number(body.join_role_id), req.server.id);
+      if (!role) return res.status(400).json({ error: 'cargo inválido' });
+      if (role.is_admin) return res.status(400).json({ error: 'o cargo de entrada não pode ser de administrador' });
+      roleId = role.id;
+    }
+    field('join_role_id', roleId);
+  }
+
+  if (sets.length) {
+    db.prepare(`UPDATE servers SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.server.id);
+    audit.log(req.server.id, req.user.id, 'server_update', { type: 'server', id: req.server.id, name: req.server.name }, { changed });
+  }
+  const server = access.getServer(req.server.id);
+  if (sets.length) realtime.broadcastToServer(server.id, { type: 'server_updated', server });
+  res.json({ server });
+});
+
+// POST /api/servers/:serverId/banner — banner do perfil do servidor (pode ser gif)
+router.post('/:serverId/banner', requireAuth, loadMemberServer, requirePermission('manage_server'), (req, res) => {
+  bannerUpload.single('banner')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: 'não deu pra enviar essa imagem (máx. 15MB)' });
+    if (!req.file) return res.status(400).json({ error: 'imagem inválida (use png, jpg, webp ou gif)' });
+    db.prepare('UPDATE servers SET banner_url = ? WHERE id = ?').run(`/uploads/banners/${req.file.filename}`, req.server.id);
+    removeOldUpload(req.server.banner_url);
+    audit.log(req.server.id, req.user.id, 'server_banner', { type: 'server', id: req.server.id, name: req.server.name }, { removed: false });
+    const server = access.getServer(req.server.id);
+    realtime.broadcastToServer(server.id, { type: 'server_updated', server });
+    res.json({ server });
+  });
+});
+
+router.delete('/:serverId/banner', requireAuth, loadMemberServer, requirePermission('manage_server'), (req, res) => {
+  db.prepare('UPDATE servers SET banner_url = NULL WHERE id = ?').run(req.server.id);
+  removeOldUpload(req.server.banner_url);
+  audit.log(req.server.id, req.user.id, 'server_banner', { type: 'server', id: req.server.id, name: req.server.name }, { removed: true });
   const server = access.getServer(req.server.id);
   realtime.broadcastToServer(server.id, { type: 'server_updated', server });
   res.json({ server });
 });
 
-// POST /api/servers/:serverId/icon — trocar ícone (só dono)
-router.post('/:serverId/icon', requireAuth, loadMemberServer, requireAdmin, (req, res) => {
+// POST /api/servers/:serverId/icon — trocar ícone
+router.post('/:serverId/icon', requireAuth, loadMemberServer, requirePermission('manage_server'), (req, res) => {
   serverIconUpload.single('icon')(req, res, (err) => {
     if (err) return res.status(400).json({ error: 'não deu pra enviar essa imagem (máx. 15MB)' });
     if (!req.file) return res.status(400).json({ error: 'imagem inválida (use png, jpg, webp ou gif)' });
@@ -179,6 +263,7 @@ router.post('/:serverId/icon', requireAuth, loadMemberServer, requireAdmin, (req
     const iconUrl = `/uploads/server/${req.file.filename}`;
     db.prepare('UPDATE servers SET icon_url = ? WHERE id = ?').run(iconUrl, req.server.id);
     removeOldUpload(req.server.icon_url);
+    audit.log(req.server.id, req.user.id, 'server_icon', { type: 'server', id: req.server.id, name: req.server.name }, { removed: false });
 
     const server = access.getServer(req.server.id);
     realtime.broadcastToServer(server.id, { type: 'server_updated', server });
@@ -186,10 +271,11 @@ router.post('/:serverId/icon', requireAuth, loadMemberServer, requireAdmin, (req
   });
 });
 
-// DELETE /api/servers/:serverId/icon — remover ícone (só dono)
-router.delete('/:serverId/icon', requireAuth, loadMemberServer, requireAdmin, (req, res) => {
+// DELETE /api/servers/:serverId/icon — remover ícone
+router.delete('/:serverId/icon', requireAuth, loadMemberServer, requirePermission('manage_server'), (req, res) => {
   db.prepare('UPDATE servers SET icon_url = NULL WHERE id = ?').run(req.server.id);
   removeOldUpload(req.server.icon_url);
+  audit.log(req.server.id, req.user.id, 'server_icon', { type: 'server', id: req.server.id, name: req.server.name }, { removed: true });
   const server = access.getServer(req.server.id);
   realtime.broadcastToServer(server.id, { type: 'server_updated', server });
   res.json({ server });
@@ -208,11 +294,14 @@ router.delete('/:serverId', requireAuth, loadMemberServer, requireOwner, (req, r
     SELECT m.attachment_url FROM messages m JOIN channels c ON c.id = m.channel_id
     WHERE c.server_id = ? AND m.attachment_url LIKE '/uploads/%'
   `).all(serverId).map((r) => r.attachment_url);
+  const sounds = soundboard.serverSounds(serverId).map((x) => x.url);
 
   db.prepare('DELETE FROM servers WHERE id = ?').run(serverId);
 
   removeOldUpload(req.server.icon_url);
+  removeOldUpload(req.server.banner_url);
   attachments.forEach(removeOldUpload);
+  sounds.forEach(soundboard.removeSoundFile);
 
   realtime.sendToUsers(memberIds, { type: 'server_deleted', serverId });
   res.json({ ok: true });
@@ -267,8 +356,63 @@ router.delete('/:serverId/members/:userId', requireAuth, loadMemberServer, requi
   if (!canModerate(req.server, req.user.id, targetId)) {
     return res.status(403).json({ error: 'você não pode expulsar essa pessoa' });
   }
+  const target = access.getUser(targetId);
   removeMember(req.server.id, targetId, 'kicked');
+  audit.log(req.server.id, req.user.id, 'member_kick', { type: 'user', id: targetId, name: target && target.username });
   res.json({ ok: true });
+});
+
+// ------------------------------------------------------------------
+// banimentos
+// ------------------------------------------------------------------
+
+// GET /api/servers/:serverId/bans — quem está banido
+router.get('/:serverId/bans', requireAuth, loadMemberServer, requirePermission('ban_members'), (req, res) => {
+  const bans = db.prepare(`
+    SELECT b.user_id, b.reason, b.created_at, u.username, u.avatar_url, bu.username AS banned_by_username
+    FROM server_bans b JOIN users u ON u.id = b.user_id LEFT JOIN users bu ON bu.id = b.banned_by
+    WHERE b.server_id = ? ORDER BY b.created_at DESC
+  `).all(req.server.id);
+  res.json({ bans });
+});
+
+// PUT /api/servers/:serverId/bans/:userId { reason? } — bane: tira do servidor (e da call) e
+// bloqueia a volta por convite até alguém desbanir
+router.put('/:serverId/bans/:userId', requireAuth, loadMemberServer, requirePermission('ban_members'), (req, res) => {
+  const targetId = Number(req.params.userId);
+  const target = targetId ? access.getUser(targetId) : null;
+  if (!target) return res.status(404).json({ error: 'essa pessoa não existe' });
+  if (targetId === req.user.id) return res.status(400).json({ error: 'você não pode se banir' });
+  if (!canModerate(req.server, req.user.id, targetId)) return res.status(403).json({ error: 'você não pode banir essa pessoa' });
+  const reason = typeof (req.body || {}).reason === 'string' ? req.body.reason.trim().slice(0, 300) : '';
+  db.prepare(`
+    INSERT INTO server_bans (server_id, user_id, reason, banned_by) VALUES (?, ?, ?, ?)
+    ON CONFLICT(server_id, user_id) DO UPDATE SET reason = excluded.reason, banned_by = excluded.banned_by
+  `).run(req.server.id, targetId, reason || null, req.user.id);
+  if (access.isServerMember(req.server.id, targetId)) removeMember(req.server.id, targetId, 'banned');
+  audit.log(req.server.id, req.user.id, 'member_ban', { type: 'user', id: targetId, name: target.username }, reason ? { reason } : null);
+  realtime.broadcastToServer(req.server.id, { type: 'bans_updated', serverId: req.server.id });
+  res.json({ ok: true });
+});
+
+// DELETE /api/servers/:serverId/bans/:userId — desbane (a pessoa volta com um convite novo)
+router.delete('/:serverId/bans/:userId', requireAuth, loadMemberServer, requirePermission('ban_members'), (req, res) => {
+  const targetId = Number(req.params.userId);
+  const result = db.prepare('DELETE FROM server_bans WHERE server_id = ? AND user_id = ?').run(req.server.id, targetId);
+  if (!result.changes) return res.status(404).json({ error: 'essa pessoa não está banida' });
+  const target = access.getUser(targetId);
+  audit.log(req.server.id, req.user.id, 'member_unban', { type: 'user', id: targetId, name: target && target.username });
+  realtime.broadcastToServer(req.server.id, { type: 'bans_updated', serverId: req.server.id });
+  res.json({ ok: true });
+});
+
+// ------------------------------------------------------------------
+// registro de auditoria
+// ------------------------------------------------------------------
+
+// GET /api/servers/:serverId/audit-log?before=&action=&actor= — 50 por página, do mais novo
+router.get('/:serverId/audit-log', requireAuth, loadMemberServer, requirePermission('view_audit_log'), (req, res) => {
+  res.json({ ...audit.list(req.server.id, { before: req.query.before, action: req.query.action, actorId: req.query.actor }), actions: audit.ACTIONS });
 });
 
 // ------------------------------------------------------------------
@@ -292,9 +436,12 @@ router.post('/:serverId/channels', requireAuth, loadMemberServer, requirePermiss
   if (typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'nome do canal é obrigatório' });
   }
-  if (type !== 'text' && type !== 'voice') {
+  if (type !== 'text' && type !== 'voice' && type !== 'world') {
     return res.status(400).json({ error: 'tipo de canal inválido' });
   }
+  // mundinho 3D = canal de voz com uma cena (docs/MUNDINHO.md)
+  const worldScene = type === 'world' ? (world.isValidScene((req.body || {}).scene) ? req.body.scene : world.DEFAULT_SCENE) : null;
+  const dbType = type === 'world' ? 'voice' : type;
 
   // canais de texto seguem o jeito do Discord: minúsculo e com hífen no lugar de espaço
   let cleanName = name.trim().slice(0, CHANNEL_NAME_MAX);
@@ -302,17 +449,18 @@ router.post('/:serverId/channels', requireAuth, loadMemberServer, requirePermiss
 
   const maxPos = db.prepare(
     'SELECT COALESCE(MAX(position), -1) AS m FROM channels WHERE server_id = ? AND type = ?'
-  ).get(req.server.id, type).m;
+  ).get(req.server.id, dbType).m;
 
   const result = db.prepare(
     'INSERT INTO channels (name, type, position, created_by, server_id) VALUES (?, ?, ?, ?, ?)'
-  ).run(cleanName, type, maxPos + 1, req.user.id, req.server.id);
+  ).run(cleanName, dbType, maxPos + 1, req.user.id, req.server.id);
 
-  db.prepare('UPDATE channels SET category_id = ? WHERE id = ?').run(categoryId, result.lastInsertRowid);
+  db.prepare('UPDATE channels SET category_id = ?, world_scene = ? WHERE id = ?').run(categoryId, worldScene, result.lastInsertRowid);
   const created = access.getChannel(result.lastInsertRowid);
   // canal novo nasce aberto pra todo mundo do servidor
-  const channel = { ...created, private_view: false, private_connect: false, can_connect: type === 'voice' ? true : undefined };
+  const channel = { ...created, private_view: false, private_connect: false, can_connect: dbType === 'voice' ? true : undefined };
   realtime.broadcastToServer(req.server.id, { type: 'channel_created', serverId: req.server.id, channel });
+  audit.log(req.server.id, req.user.id, 'channel_create', { type: 'channel', id: channel.id, name: channel.name }, { channel_type: dbType, world: !!worldScene });
   res.status(201).json({ channel });
 });
 
@@ -354,7 +502,31 @@ router.post('/:serverId/invites', requireAuth, loadMemberServer, (req, res) => {
     'INSERT INTO invites (code, server_id, created_by, max_uses, expires_at) VALUES (?, ?, ?, ?, ?)'
   ).run(code, req.server.id, req.user.id, maxUses || null, expiresAt);
 
+  audit.log(req.server.id, req.user.id, 'invite_create', { type: 'invite', name: code }, { max_uses: maxUses || null, max_age_hours: maxAgeHours || null });
   res.status(201).json({ invite: { code, server_id: req.server.id, max_uses: maxUses || null, expires_at: expiresAt, uses: 0 } });
+});
+
+// GET /api/servers/:serverId/invites — todos os convites do servidor (aba "convites")
+router.get('/:serverId/invites', requireAuth, loadMemberServer, requirePermission('manage_server'), (req, res) => {
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const invites = db.prepare(`
+    SELECT i.code, i.uses, i.max_uses, i.expires_at, i.created_at, i.created_by, u.username AS created_by_username, u.avatar_url AS created_by_avatar_url
+    FROM invites i LEFT JOIN users u ON u.id = i.created_by
+    WHERE i.server_id = ? ORDER BY i.created_at DESC
+  `).all(req.server.id).map((i) => ({ ...i, expired: !!(i.expires_at && i.expires_at < now) || !!(i.max_uses && i.uses >= i.max_uses) }));
+  res.json({ invites });
+});
+
+// DELETE /api/servers/:serverId/invites/:code — revoga um convite (quem gerencia o servidor, ou quem criou)
+router.delete('/:serverId/invites/:code', requireAuth, loadMemberServer, (req, res) => {
+  const invite = db.prepare('SELECT code, created_by FROM invites WHERE code = ? AND server_id = ?').get(String(req.params.code), req.server.id);
+  if (!invite) return res.status(404).json({ error: 'convite não encontrado' });
+  if (invite.created_by !== req.user.id && !access.hasServerPermission(req.server.id, req.user.id, 'manage_server')) {
+    return res.status(403).json({ error: 'seu cargo não permite essa ação' });
+  }
+  db.prepare('DELETE FROM invites WHERE code = ?').run(invite.code);
+  audit.log(req.server.id, req.user.id, 'invite_delete', { type: 'invite', name: invite.code });
+  res.json({ ok: true });
 });
 
 // ------------------------------------------------------------------
@@ -381,6 +553,7 @@ router.post('/:serverId/roles', requireAuth, loadMemberServer, requireAdmin, (re
     'INSERT INTO roles (server_id, name, color, is_admin, hoist, position) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(req.server.id, name, color, body.is_admin ? 1 : 0, body.hoist ? 1 : 0, maxPos + 1);
   rolesChanged(req.server.id);
+  audit.log(req.server.id, req.user.id, 'role_create', { type: 'role', id: lastInsertRowid, name });
   res.status(201).json({ role: listRoles(req.server.id).find((r) => r.id === lastInsertRowid) });
 });
 
@@ -417,6 +590,10 @@ router.patch('/:serverId/roles/:roleId', requireAuth, loadMemberServer, requireA
     if (req.server.owner_id !== req.user.id) {
       return res.status(403).json({ error: 'só o dono pode mudar quem é administrador' });
     }
+    // o cargo de entrada vai pra todo mundo que entra: nunca pode virar administrador
+    if (body.is_admin && req.server.join_role_id === req.role.id) {
+      return res.status(400).json({ error: 'esse é o cargo de entrada — troque o cargo de entrada antes de torná-lo administrador' });
+    }
     sets.push('is_admin = ?'); vals.push(body.is_admin ? 1 : 0);
   }
   if (body.position !== undefined && Number.isFinite(Number(body.position))) {
@@ -424,6 +601,9 @@ router.patch('/:serverId/roles/:roleId', requireAuth, loadMemberServer, requireA
   }
   if (sets.length) db.prepare(`UPDATE roles SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.role.id);
   rolesChanged(req.server.id);
+  // mudar só a posição (as setas) não vale uma linha no registro
+  const changed = Object.keys(body).filter((k) => ['name', 'color', 'permissions', 'hoist', 'is_admin'].includes(k));
+  if (changed.length) audit.log(req.server.id, req.user.id, 'role_update', { type: 'role', id: req.role.id, name: req.role.name }, { changed });
   res.json({ role: listRoles(req.server.id).find((r) => r.id === req.role.id) });
 });
 
@@ -434,7 +614,36 @@ router.delete('/:serverId/roles/:roleId', requireAuth, loadMemberServer, require
   }
   db.prepare('DELETE FROM roles WHERE id = ?').run(req.role.id);
   rolesChanged(req.server.id);
+  audit.log(req.server.id, req.user.id, 'role_delete', { type: 'role', id: req.role.id, name: req.role.name });
   res.json({ ok: true });
+});
+
+// PATCH /api/servers/:serverId/everyone { permissions } — o que todo membro pode, sem cargo nenhum
+router.patch('/:serverId/everyone', requireAuth, loadMemberServer, requireAdmin, (req, res) => {
+  const p = (req.body || {}).permissions;
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return res.status(400).json({ error: 'permissões inválidas' });
+  const grants = Object.fromEntries(access.SERVER_PERMISSIONS.map((k) => [k, p[k] === true]));
+  db.prepare('UPDATE servers SET everyone_permissions_json = ? WHERE id = ?').run(JSON.stringify(grants), req.server.id);
+  audit.log(req.server.id, req.user.id, 'everyone_permissions', { type: 'role', name: '@everyone' });
+  const server = access.getServer(req.server.id);
+  realtime.broadcastToServer(server.id, { type: 'server_updated', server });
+  rolesChanged(req.server.id);
+  res.json({ server });
+});
+
+// POST /api/servers/:serverId/join-role/apply — dá o cargo de entrada pra quem JÁ está no servidor
+router.post('/:serverId/join-role/apply', requireAuth, loadMemberServer, requireAdmin, (req, res) => {
+  const role = req.server.join_role_id ? db.prepare('SELECT id, name, is_admin FROM roles WHERE id = ?').get(req.server.join_role_id) : null;
+  if (!role || role.is_admin) return res.status(400).json({ error: 'escolha um cargo de entrada primeiro' });
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO member_roles (server_id, user_id, role_id)
+    SELECT server_id, user_id, ? FROM server_members WHERE server_id = ?
+  `).run(role.id, req.server.id);
+  if (result.changes) {
+    rolesChanged(req.server.id);
+    audit.log(req.server.id, req.user.id, 'member_roles', { type: 'role', id: role.id, name: role.name }, { bulk: result.changes, added: [role.name] });
+  }
+  res.json({ ok: true, given: result.changes });
 });
 
 // PUT /api/servers/:serverId/members/:userId/roles { role_ids: [...] } — define os cargos de alguém
@@ -463,6 +672,12 @@ router.put('/:serverId/members/:userId/roles', requireAuth, loadMemberServer, re
     for (const id of wanted) add.run(req.server.id, targetId, id);
   })();
   rolesChanged(req.server.id);
+  const added = wanted.filter((id) => !current.includes(id)).map((id) => valid.get(id).name);
+  const removed = current.filter((id) => !wanted.includes(id) && valid.has(id)).map((id) => valid.get(id).name);
+  if (added.length || removed.length) {
+    const target = access.getUser(targetId);
+    audit.log(req.server.id, req.user.id, 'member_roles', { type: 'user', id: targetId, name: target && target.username }, { added, removed });
+  }
   res.json({ role_ids: wanted });
 });
 
@@ -487,6 +702,10 @@ function loadVoiceTarget(req, res, next) {
 // POST /api/servers/:serverId/voice/:userId/disconnect — tira alguém da call
 router.post('/:serverId/voice/:userId/disconnect', requireAuth, loadMemberServer, requirePermission('moderate_voice'), loadVoiceTarget, (req, res) => {
   realtime.disconnectUser(req.targetId, req.user.username);
+  if (req.targetId !== req.user.id) {
+    const target = access.getUser(req.targetId);
+    audit.log(req.server.id, req.user.id, 'voice_disconnect', { type: 'user', id: req.targetId, name: target && target.username });
+  }
   res.json({ ok: true });
 });
 
@@ -501,9 +720,15 @@ router.post('/:serverId/voice/:userId/move', requireAuth, loadMemberServer, requ
   }
   if (req.voiceState.channelId === channel.id) return res.json({ ok: true, unchanged: true });
   realtime.moveUser(req.targetId, channel, req.user.username);
+  if (req.targetId !== req.user.id) {
+    const target = access.getUser(req.targetId);
+    audit.log(req.server.id, req.user.id, 'voice_move', { type: 'user', id: req.targetId, name: target && target.username }, { channel: channel.name });
+  }
   res.json({ ok: true });
 });
 
 module.exports = router;
+module.exports.loadMemberServer = loadMemberServer;
+module.exports.requirePermission = requirePermission;
 module.exports.memberRow = memberRow;
 module.exports.listChannels = listChannels;
