@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "dusky",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "identifier": "fun.sambalele.dusky",
   "build": {
     "frontendDist": "../ui"
@@ -24,5 +24,16 @@
       "icons/icon.png",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJGN0ZBODk3M0QwMTQ5MkQKUldRdFNRRTlsNmgvTDNjUmhxc3B4b0Vmb0FKanQ1aDAzOWQyS3UwRUxuaTBPdDRtRFZoNDczd2MK",
+      "endpoints": [
+        "https://dusky.veneno.space/downloads/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

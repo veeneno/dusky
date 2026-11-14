@@ -27,6 +27,7 @@ const adminRoutes = require('./routes/admin');
 const activityRoutes = require('./routes/activity');
 const embedRoutes = require('./routes/embeds');
 const downloadRoutes = require('./routes/downloads');
+const versionRoutes = require('./routes/version');
 const realtime = require('./realtime');
 const sfu = require('./sfu/livekit');
 
@@ -103,6 +104,7 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
 
 // app desktop: /baixar, /downloads/*, /api/downloads (público, sem login)
 app.use(downloadRoutes);
+app.use(versionRoutes); // /api/version (público)
 
 // rotas de autenticação (registro, login, logout, /me)
 app.use('/api/auth', authRoutes);

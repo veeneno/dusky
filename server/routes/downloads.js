@@ -49,12 +49,30 @@ router.get('/api/downloads', (req, res) => {
   });
 });
 
+// latest.json do app novo (tauri/, atualizador assinado). O `npm run release` grava só o nome de
+// cada arquivo; aqui ele vira endereço completo no MESMO endereço por onde o app perguntou
+// (dusky.veneno.space, o antigo, um IP de teste…) — assim um latest.json serve pra todos.
+router.get('/downloads/latest.json', (req, res, next) => {
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(DOWNLOADS_DIR, 'latest.json'), 'utf8'));
+  } catch (_) {
+    return next(); // sem app novo publicado: 404 normal (o app entende como "sem atualização")
+  }
+  const base = `${req.protocol}://${req.get('host')}/downloads/`;
+  for (const p of Object.values(manifest.platforms || {})) {
+    if (p && p.url && !/^https?:\/\//i.test(p.url)) p.url = base + encodeURIComponent(p.url);
+  }
+  res.set('Cache-Control', 'no-cache');
+  res.json(manifest);
+});
+
 // os arquivos em si. Os latest*.yml nunca ficam em cache (é por eles que o app descobre que tem
 // versão nova); os instaladores podem, porque cada versão tem um nome diferente.
 router.use('/downloads', express.static(DOWNLOADS_DIR, {
   fallthrough: false,
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.yml')) res.setHeader('Cache-Control', 'no-cache');
+    if (/\.(yml|json)$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
     else res.setHeader('Cache-Control', 'public, max-age=86400');
     if (/\.(exe|AppImage|deb)$/.test(filePath)) res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`);
   },

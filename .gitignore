@@ -33,3 +33,7 @@ server/sfu/data/
 
 # arquivo temporário do FUSE quando o banco está aberto por dois processos
 server/db/.fuse_hidden*
+
+# chave PRIVADA que assina as atualizações do app novo (tauri/) — nunca vai pro git
+tauri/updater-key/
+*.key

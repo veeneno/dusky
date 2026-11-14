@@ -1,7 +1,8 @@
 {
   "name": "dusky",
-  "version": "0.1.0",
-  "description": "Discord privado pra dois",
+  "version": "1.0.0",
+  "codename": "Mist",
+  "description": "dusky — Discord privado pra você e seus amigos",
   "main": "server/index.js",
   "type": "commonjs",
   "scripts": {

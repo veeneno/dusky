@@ -154,6 +154,35 @@ pub fn migrate_legacy_dirs(identifier: &str) {
     }
 }
 
+/// Pasta de dados do app Electron antigo (productName "didiscord"): ~/.config/didiscord no Linux,
+/// %APPDATA%\\didiscord no Windows. Ela continua lá depois que o app novo entra no lugar (o
+/// desinstalador do Electron não apaga os dados).
+fn electron_data_dir() -> Option<PathBuf> {
+    let env_dir = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    #[cfg(windows)]
+    let base = env_dir("APPDATA");
+    #[cfg(not(windows))]
+    let base = env_dir("XDG_CONFIG_HOME").or_else(|| env_dir("HOME").map(|h| h.join(".config")));
+    base.map(|b| b.join("didiscord"))
+}
+
+/// Quem vem do app Electron (atualizado direto pro app novo, ver tauri/README.md) mantém o endereço
+/// do servidor e as preferências da bandeja: server.json e prefs.json têm o mesmo formato nos dois.
+/// Só copia o que ainda não existe na pasta nova.
+pub fn migrate_from_electron(data_dir: &Path) {
+    let Some(old) = electron_data_dir() else { return };
+    for name in ["server.json", "prefs.json"] {
+        let (from, to) = (old.join(name), data_dir.join(name));
+        if from.is_file() && !to.exists() {
+            let _ = std::fs::create_dir_all(data_dir);
+            match std::fs::copy(&from, &to) {
+                Ok(_) => log::info(&format!("{name} trazido do app antigo ({})", from.display())),
+                Err(err) => log::warn(&format!("não consegui trazer {name} do app antigo: {err}")),
+            }
+        }
+    }
+}
+
 fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     // cache do motor web: grande e refeito sozinho
     const SKIP: &[&str] = &["Cache", "Code Cache", "GPUCache", "ShaderCache", "GrShaderCache", "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "Crashpad"];
@@ -181,18 +210,32 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 // ---------- preferências ----------
 
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct Prefs {
     /// fechar a janela só esconde (padrão) — desligado, fechar sai do app
     pub close_to_tray: bool,
     /// o aviso "continua rodando" já apareceu uma vez
     pub tray_hint_shown: bool,
+    /// desenhar a página na placa de vídeo (padrão). Mudar reinicia o app: o motor web só lê isso
+    /// ao abrir (ver webview_setup.rs)
+    pub hardware_acceleration: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { close_to_tray: true, tray_hint_shown: false }
+        Self { close_to_tray: true, tray_hint_shown: false, hardware_acceleration: true }
     }
+}
+
+/// Pasta de dados do app (a mesma do app.path().app_data_dir() do Tauri), pra quem precisa dela
+/// antes do Tauri subir: ~/.local/share/<identifier> no Linux, %APPDATA%\\<identifier> no Windows.
+pub fn data_dir_for(identifier: &str) -> Option<PathBuf> {
+    let env_dir = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    #[cfg(windows)]
+    let base = env_dir("APPDATA");
+    #[cfg(not(windows))]
+    let base = env_dir("XDG_DATA_HOME").or_else(|| env_dir("HOME").map(|h| h.join(".local/share")));
+    base.map(|b| b.join(identifier))
 }
 
 pub fn load_prefs(dir: &Path) -> Prefs {

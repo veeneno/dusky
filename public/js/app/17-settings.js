@@ -375,18 +375,65 @@ function syncPrefControls() {
   }
 }
 
-const SITE_VERSION = '0.6.4';
+// versão do site: vem do servidor (package.json + commit que está rodando), não é fixa no código
+let siteVersionInfo = null;
+let siteVersionLoading = null;
+function loadSiteVersion() {
+  if (!siteVersionLoading) {
+    siteVersionLoading = fetch('/api/version', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((info) => { siteVersionInfo = info; return info; })
+      .catch(() => { siteVersionLoading = null; return null; });
+  }
+  return siteVersionLoading;
+}
+function siteVersionText() {
+  const v = siteVersionInfo;
+  if (!v || !v.version) return 'site';
+  return `site ${v.version}${v.commit ? ` (${v.commit})` : ''}`;
+}
+function desktopOsName(desk) {
+  return desk.platform === 'win32' ? 'Windows' : desk.platform === 'linux' ? 'Linux' : desk.platform;
+}
 function renderSettingsAppCard() {
   const card = document.getElementById('settingsAppCard');
   const desk = window.duskyDesktop;
-  card.innerHTML = '<span class="settings-card-icon"><svg width="26" height="13" viewBox="0 0 56 28"><path d="M 10 14 C 20 2, 36 26, 46 14" stroke="currentColor" stroke-width="2.5" fill="none" opacity="0.6"/><circle cx="10" cy="14" r="6" fill="currentColor"/><circle cx="46" cy="14" r="6" fill="currentColor"/></svg></span><span class="settings-card-text"><strong></strong><span></span></span>';
-  card.querySelector('strong').textContent = desk ? 'app desktop do dusky' : 'dusky no navegador';
-  card.querySelector('.settings-card-text span').textContent = desk
-    ? `site ${SITE_VERSION} · ${desk.platform === 'win32' ? 'Windows' : desk.platform === 'linux' ? 'Linux' : desk.platform}`
-    : `site ${SITE_VERSION} · instale o app pra compartilhar tela pela placa de vídeo e receber atualizações sozinho`;
+  const info = desk && desk.appInfo;
+  card.innerHTML = '<span class="settings-card-icon"><img src="/img/brand/dm-colorido-64.png" width="28" height="28" alt=""></span><span class="settings-card-text"><strong></strong><span></span></span>';
+  // app novo: "dusky Mist 1.0"; Electron antigo (sem appInfo): só "app desktop do dusky"
+  card.querySelector('strong').textContent = desk ? ((info && info.label) || 'app desktop do dusky') : 'dusky no navegador';
+  const line = () => {
+    const parts = [];
+    if (desk && desk.appVersion) parts.push(`app ${desk.appVersion}`);
+    parts.push(siteVersionText());
+    if (desk) parts.push(desktopOsName(desk));
+    else parts.push('instale o app pra compartilhar tela pela placa de vídeo e receber atualizações sozinho');
+    return parts.join(' · ');
+  };
+  const sub = card.querySelector('.settings-card-text span');
+  sub.textContent = line();
+  if (!siteVersionInfo) loadSiteVersion().then(() => { if (sub.isConnected) sub.textContent = line(); });
   const checkBtn = document.getElementById('settingsCheckUpdatesBtn');
   checkBtn.hidden = !(desk && typeof desk.checkForUpdates === 'function');
   document.getElementById('settingsDownloadBtn').textContent = desk ? 'página de download' : 'baixar o app';
+  // aceleração de hardware: só o app novo (Tauri) sabe mudar
+  const hwRow = document.getElementById('settingsHwAccelRow');
+  const canHw = !!(desk && typeof desk.setHardwareAcceleration === 'function');
+  hwRow.hidden = !canHw;
+  if (canHw) document.getElementById('settingsHwAccel').checked = !(info && info.gpu && info.gpu.hardwareAcceleration === false);
+}
+document.getElementById('settingsHwAccel').addEventListener('change', (e) => {
+  const desk = window.duskyDesktop;
+  if (!desk || !desk.setHardwareAcceleration) return;
+  const on = e.target.checked;
+  if (!confirm(`${on ? 'Ligar' : 'Desligar'} a aceleração de hardware? O app reinicia agora${inVoiceCallForSettings() ? ' (e sai da call)' : ''}.`)) {
+    e.target.checked = !on;
+    return;
+  }
+  desk.setHardwareAcceleration(on);
+});
+function inVoiceCallForSettings() {
+  try { return typeof voiceChannel !== 'undefined' && !!voiceChannel; } catch (_) { return false; }
 }
 document.getElementById('settingsCheckUpdatesBtn').addEventListener('click', () => {
   if (window.duskyDesktop && window.duskyDesktop.checkForUpdates) window.duskyDesktop.checkForUpdates();

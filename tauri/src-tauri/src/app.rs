@@ -5,7 +5,7 @@
 //! ui/loading.html aparece enquanto o site não responde (e pra trocar o endereço do servidor).
 
 use crate::server::{self, log, Prefs};
-use crate::{audio, call, deps, picker, screencast, tray, webview_setup};
+use crate::{audio, call, deps, picker, presence, screencast, tray, updater, webview_setup};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -21,13 +21,48 @@ use tauri_plugin_opener::OpenerExt;
 
 pub const BRIDGE_JS: &str = include_str!("bridge.js");
 
+/// codinome da versão (1.x = Mist)
+pub const CODENAME: &str = "Mist";
+
+/// "dusky Mist 1.0" — o nome que aparece nas configurações e na bandeja
+pub fn version_label() -> String {
+    let short: Vec<&str> = env!("CARGO_PKG_VERSION").split('.').take(2).collect();
+    format!("dusky {CODENAME} {}", short.join("."))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppInfo {
+    name: &'static str,
+    version: &'static str,
+    codename: &'static str,
+    label: String,
+    shell: &'static str,
+    os: &'static str,
+    /// aceleração de hardware e variáveis que pesam no WebGL (contador de fps do mundinho)
+    gpu: serde_json::Value,
+}
+
+fn app_info() -> AppInfo {
+    AppInfo {
+        name: "dusky",
+        version: env!("CARGO_PKG_VERSION"),
+        codename: CODENAME,
+        label: version_label(),
+        shell: "tauri",
+        os: std::env::consts::OS,
+        gpu: webview_setup::diagnostics(),
+    }
+}
+
 /// a ponte + se a call vai pelo Rust (Linux: o WebKitGTK não tem WebRTC)
 pub fn bridge_script() -> String {
     #[allow(unused_mut)]
     let mut s = format!(
-        "window.__DUSKY_NATIVE_CALL__ = {};\nwindow.__DUSKY_LOCAL_ORIGIN__ = {};\n{BRIDGE_JS}",
+        "window.__DUSKY_NATIVE_CALL__ = {};\nwindow.__DUSKY_LOCAL_ORIGIN__ = {};\nwindow.__DUSKY_APP_INFO__ = {};\n{BRIDGE_JS}",
         cfg!(target_os = "linux"),
-        serde_json::to_string(&local_base().origin().ascii_serialization()).unwrap()
+        serde_json::to_string(&local_base().origin().ascii_serialization()).unwrap(),
+        serde_json::to_string(&app_info()).unwrap()
     );
     // só no modo debug: DUSKY_INJECT_JS=arquivo.js roda um script extra em toda página (testes)
     #[cfg(debug_assertions)]
@@ -47,6 +82,8 @@ pub struct ConnectStatus {
     pub attempts: u32,
     pub since: u64,
     pub fixed_by_env: bool,
+    /// estava no site e ele caiu (a tela de "conectando…" mostra "o servidor caiu")
+    pub lost: bool,
 }
 
 pub struct AppState {
@@ -175,6 +212,11 @@ fn grant_site(app: &AppHandle, origin: &str) {
         "allow-desktop-set-badge",
         "allow-desktop-focus",
         "allow-status-report",
+        "allow-update-check",
+        "allow-app-set-hardware-acceleration",
+        "allow-presence-configure",
+        "allow-presence-candidates",
+        "allow-presence-current",
         "allow-screen-audio-plan",
         "allow-screen-audio-stop",
         "allow-screencast-available",
@@ -265,14 +307,11 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
     #[cfg(windows)]
     {
-        // os padrões do wry + áudio da call tocando sem um clique antes (app reaberto direto numa call)
-        builder = builder.additional_browser_args(
-            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required",
-        );
+        builder = builder.additional_browser_args(&webview_setup::browser_args());
     }
 
     let win = builder.build()?;
-    webview_setup::configure(&win);
+    webview_setup::configure(app, &win);
     Ok(win)
 }
 
@@ -331,18 +370,21 @@ pub fn spawn_connect(app: AppHandle, mode: &'static str) {
     tauri::async_runtime::spawn(async move { connect_to_site(app, mode).await });
 }
 
-/// mode: "connect" (normal), "setup" (nunca configurou) ou "change" (pediu pra trocar)
+/// mode: "connect" (normal), "lost" (o site caiu com a página aberta: igual ao connect, mas a tela
+/// avisa), "setup" (nunca configurou) ou "change" (pediu pra trocar)
 async fn connect_to_site(app: AppHandle, mode: &str) {
     let st = app.state::<AppState>();
     let gen = st.connect_gen.fetch_add(1, Ordering::SeqCst) + 1;
     let site = st.site();
-    let mode = if site.is_empty() { "setup" } else { mode };
+    let lost = mode == "lost";
+    let mode = if site.is_empty() { "setup" } else if lost { "connect" } else { mode };
     *st.connect.lock().unwrap() = ConnectStatus {
         phase: if mode == "connect" { "connecting".into() } else { mode.into() },
         url: (!site.is_empty()).then(|| site.clone()),
         attempts: 0,
         since: now_ms(),
         fixed_by_env: st.fixed_by_env,
+        lost,
     };
     let Some(win) = app.get_webview_window(MAIN) else { return };
     if !win.url().map(|u| is_local(&u)).unwrap_or(false) {
@@ -374,6 +416,61 @@ async fn connect_to_site(app: AppHandle, mode: &str) {
         tokio::time::sleep(Duration::from_millis(delay)).await;
         delay = (delay as f64 * 1.6).round().min(10_000.0) as u64;
     }
+}
+
+// ---------- site caiu com a página aberta ----------
+//
+// A página carregada não percebe sozinha que o servidor sumiu de vez (o chat fica parado e a call
+// cai). Então, enquanto a janela está no site, o app confere o servidor a cada 15 s (um pedido
+// pequeno, /api/version). Duas falhas seguidas (uns 30 s fora do ar, pra não piscar por causa de um
+// soluço da rede) -> volta pra tela de "conectando…", que fica tentando e abre o site de novo
+// quando ele voltar. No Linux o WebKitGTK ainda avisa na hora quando uma navegação pro site falha
+// (recarregar com o servidor desligado) — ver webview_setup.rs.
+
+const WATCH_EVERY: Duration = Duration::from_secs(15);
+const WATCH_FAILS: u32 = 2;
+
+fn main_on_site(app: &AppHandle) -> bool {
+    let st = app.state::<AppState>();
+    app.get_webview_window(MAIN).and_then(|w| w.url().ok()).map(|u| st.is_site(&u)).unwrap_or(false)
+}
+
+/// o site caiu: volta pra tela de "conectando…" (que reabre o site quando ele voltar)
+pub fn site_lost(app: &AppHandle, why: &str) {
+    if !main_on_site(app) {
+        return;
+    }
+    log::warn(&format!("servidor fora do ar ({why}) — voltando pra tela de conectando"));
+    // a página vai embora: nada do que ela comandava pode ficar rodando sozinho
+    let st = app.state::<AppState>();
+    st.call.leave();
+    st.screencast.stop();
+    st.audio.stop();
+    spawn_connect(app.clone(), "lost");
+}
+
+fn start_watchdog(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut fails = 0u32;
+        loop {
+            tokio::time::sleep(WATCH_EVERY).await;
+            if !main_on_site(&app) {
+                fails = 0;
+                continue;
+            }
+            let st = app.state::<AppState>();
+            let site = st.site();
+            if server::site_is_up(&st.http, &format!("{site}/api/version")).await {
+                fails = 0;
+                continue;
+            }
+            fails += 1;
+            if fails >= WATCH_FAILS && main_on_site(&app) && st.site() == site {
+                fails = 0;
+                site_lost(&app, "não respondeu");
+            }
+        }
+    });
 }
 
 // ---------- comandos: tela de "conectando…" ----------
@@ -459,6 +556,33 @@ fn status_report(app: AppHandle, webview: Webview, status: String) {
     tray::refresh(&app);
 }
 
+/// liga/desliga a aceleração de hardware e reinicia o app (o motor web só lê isso ao abrir)
+pub fn set_hardware_acceleration(app: &AppHandle, on: bool) {
+    let st = app.state::<AppState>();
+    {
+        let mut prefs = st.prefs.lock().unwrap();
+        if prefs.hardware_acceleration == on {
+            return;
+        }
+        prefs.hardware_acceleration = on;
+        server::save_prefs(&st.data_dir, &prefs);
+    }
+    log::info(&format!("aceleração de hardware {} — reiniciando", if on { "ligada" } else { "desligada" }));
+    st.quitting.store(true, Ordering::SeqCst);
+    st.audio.stop();
+    st.screencast.stop();
+    st.call.leave();
+    app.restart();
+}
+
+/// a página pede pra mudar (configurações → app). Reinicia na hora.
+#[tauri::command]
+fn app_set_hardware_acceleration(app: AppHandle, webview: Webview, on: bool) {
+    if require_site(&app, &webview).is_ok() {
+        set_hardware_acceleration(&app, on);
+    }
+}
+
 // ---------- ciclo de vida ----------
 
 pub fn run() {
@@ -470,6 +594,11 @@ pub fn run() {
     let context = tauri::generate_context!();
     // identifier novo = pasta de dados nova: traz o que estava na antiga antes de abrir qualquer coisa
     server::migrate_legacy_dirs(&context.config().identifier);
+    // aceleração de hardware: precisa estar decidida antes da primeira janela
+    let hw = server::data_dir_for(&context.config().identifier)
+        .map(|d| server::load_prefs(&d).hardware_acceleration)
+        .unwrap_or(true);
+    webview_setup::init_hardware_acceleration(hw);
 
     let app = tauri::Builder::default()
         // abrir o dusky de novo (atalho, menu de apps) com ele escondido: traz a janela de volta
@@ -483,8 +612,11 @@ pub fn run() {
         )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let data_dir = app.path().app_data_dir()?;
+            server::migrate_from_electron(&data_dir);
             let site = env_url.clone().unwrap_or_else(|| server::saved_server_or_default(&data_dir));
             let http = reqwest::Client::builder()
                 .user_agent(concat!("dusky-desktop/", env!("CARGO_PKG_VERSION")))
@@ -497,7 +629,7 @@ pub fn run() {
                 fixed_by_env: env_url.is_some(),
                 site_url: Mutex::new(site),
                 granted_sites: Mutex::new(HashSet::new()),
-                connect: Mutex::new(ConnectStatus { phase: "idle".into(), url: None, attempts: 0, since: 0, fixed_by_env: false }),
+                connect: Mutex::new(ConnectStatus { phase: "idle".into(), url: None, attempts: 0, since: 0, fixed_by_env: false, lost: false }),
                 connect_gen: AtomicU64::new(0),
                 status: Mutex::new("online".into()),
                 mentions: AtomicI64::new(0),
@@ -509,6 +641,8 @@ pub fn run() {
                 call: call::Call::default(),
                 tray: Mutex::new(None),
             });
+            app.manage(updater::Updates::default());
+            app.manage(presence::Presence::default());
             let handle = app.handle().clone();
             init_local_base(&handle);
             app.state::<AppState>().audio.set_app(&handle);
@@ -517,6 +651,8 @@ pub fn run() {
                 log::warn(&format!("não deu pra criar o ícone da bandeja: {err}"));
             }
             spawn_connect(handle.clone(), "connect");
+            start_watchdog(handle.clone());
+            updater::start(&handle);
             // já descobre o melhor jeito de compartilhar a tela (e baixa o ffmpeg se precisar), pra
             // estar pronto na primeira vez
             if !screencast::is_wayland() {
@@ -546,6 +682,7 @@ pub fn run() {
                 }
                 WindowEvent::Destroyed => {
                     st.audio.stop();
+                    app.state::<presence::Presence>().stop();
                     quit_for_real(app);
                 }
                 _ => {}
@@ -558,6 +695,11 @@ pub fn run() {
             desktop_set_badge,
             desktop_focus,
             status_report,
+            app_set_hardware_acceleration,
+            updater::update_check,
+            presence::presence_configure,
+            presence::presence_candidates,
+            presence::presence_current,
             audio::screen_audio_plan,
             audio::screen_audio_stop,
             screencast::screencast_available,
@@ -591,6 +733,7 @@ pub fn run() {
             st.audio.stop();
             st.screencast.stop();
             st.call.leave();
+            updater::install_on_exit(app);
         }
     });
 }

@@ -760,6 +760,7 @@ export function createWorld(container, api) {
     else if (e.code === 'KeyF') toggleWorldFullscreen();
     else if (e.code === 'KeyC' && camMode === 'first') toggleCrosshair();
     else if (e.code === 'KeyG' && duno) duno.toggle();
+    else if (e.code === 'F9') { e.preventDefault(); toggleFpsMeter(); }
   }
   function onKeyUp(e) { keys.delete(e.code); }
   function onBlur() { keys.clear(); }
@@ -886,6 +887,63 @@ export function createWorld(container, api) {
     }
   }
 
+  // ---------- contador de fps (F9) ----------
+  // Pra comparar o app com o navegador: fps de verdade, tempo de cada quadro, a placa que o WebGL
+  // está usando (se aparecer "llvmpipe"/"SwiftShader", está desenhando no processador), escala de
+  // pixels, foco (sem foco o mundo limita em 20 fps de propósito) e, no app, como está a aceleração.
+  const FPS_PREF_KEY = 'dusky:worldFps';
+  let fpsBox = null;
+  let fpsFrames = 0;
+  let fpsSince = performance.now();
+  let fpsWorst = 0;
+  let fpsPrev = 0;
+  function gpuName() {
+    try {
+      const gl = renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+    } catch (_) { return '?'; }
+  }
+  function toggleFpsMeter(force) {
+    const on = force === undefined ? !fpsBox : force;
+    savePref(FPS_PREF_KEY, on ? '1' : '0');
+    if (!on) { if (fpsBox) fpsBox.remove(); fpsBox = null; return; }
+    if (fpsBox) return;
+    fpsBox = document.createElement('pre');
+    fpsBox.className = 'world-fps';
+    fpsBox.style.cssText = 'position:absolute;left:8px;top:8px;z-index:5;margin:0;padding:6px 8px;border-radius:6px;'
+      + 'background:rgba(10,8,18,.72);color:#d9fff9;font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;pointer-events:none;white-space:pre';
+    container.appendChild(fpsBox);
+    fpsFrames = 0; fpsSince = performance.now(); fpsWorst = 0;
+  }
+  function tickFpsMeter(now) {
+    if (!fpsBox) return;
+    fpsFrames++;
+    if (fpsPrev) fpsWorst = Math.max(fpsWorst, now - fpsPrev);
+    fpsPrev = now;
+    if (now - fpsSince < 1000) return;
+    const fps = (fpsFrames * 1000) / (now - fpsSince);
+    const desk = window.duskyDesktop;
+    const gpu = desk && desk.appInfo && desk.appInfo.gpu;
+    const lines = [
+      `${fps.toFixed(0)} fps · pior quadro ${fpsWorst.toFixed(1)} ms`,
+      `placa: ${gpuName()}`,
+      `pixels: ${cw}×${ch} × ${renderer.getPixelRatio().toFixed(2)} (tela ${(window.devicePixelRatio || 1).toFixed(2)})`,
+      `foco: ${document.hasFocus() ? 'sim' : 'não (limitado a 20 fps)'}`,
+    ];
+    if (desk) {
+      lines.push(`app: ${(desk.appInfo && desk.appInfo.label) || desk.shell || 'desktop'}`);
+      if (gpu) {
+        lines.push(`aceleração: ${gpu.hardwareAcceleration ? 'ligada' : 'DESLIGADA'}${gpu.session ? ` · ${gpu.session}` : ''}`);
+        if (gpu.dmabufDisabled) lines.push('WEBKIT_DISABLE_DMABUF_RENDERER=1 (WebGL copiado pela CPU: lento)');
+        if (gpu.compositingDisabled) lines.push('WEBKIT_DISABLE_COMPOSITING_MODE=1');
+      }
+    }
+    fpsBox.textContent = lines.join('\n');
+    fpsFrames = 0; fpsSince = now; fpsWorst = 0;
+  }
+  if (pref(FPS_PREF_KEY, '0') === '1') toggleFpsMeter(true);
+
   // ---------- laço de desenho: só quando visível; sem foco, fps baixo ----------
   let visible = true;
   let raf = 0;
@@ -928,6 +986,7 @@ export function createWorld(container, api) {
     renderer.render(scene, camera);
     if (tv) { tv.update(now); tv.renderCss(cw, ch); }
     updateLabels();
+    tickFpsMeter(now);
   }
 
   function resize() {
@@ -992,6 +1051,7 @@ export function createWorld(container, api) {
 
   function destroy() {
     cancelAnimationFrame(raf);
+    if (fpsBox) { fpsBox.remove(); fpsBox = null; }
     ro.disconnect();
     if (tv) tv.destroy();
     canvas.removeEventListener('pointerdown', onPointerDown);

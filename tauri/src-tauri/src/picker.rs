@@ -74,6 +74,9 @@ pub async fn pick(app: &AppHandle, mode: &str) -> Option<Picked> {
             .initialization_script(app::bridge_script())
             .center()
     };
+    // Windows: os mesmos argumentos do Chromium da janela principal (senão o WebView2 não abre)
+    #[cfg(windows)]
+    let make = || make().additional_browser_args(&crate::webview_setup::browser_args());
     // por cima da janela principal (se der); senão, janela solta
     let builder = match app.get_webview_window(app::MAIN) {
         Some(main) => make().parent(&main).unwrap_or_else(|_| make()),

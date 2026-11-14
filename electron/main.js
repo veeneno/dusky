@@ -720,6 +720,11 @@ ipcMain.on('status:report', (event, status) => {
 // ---------- avisos: contador de menções no ícone e trazer a janela pra frente ----------
 
 let lastBadge = 0;
+// versão do app pra tela de configurações do site (síncrono: o preload precisa na hora)
+ipcMain.on('dusky:appInfo', (event) => {
+  event.returnValue = { name: 'dusky', version: app.getVersion(), codename: null, label: `dusky ${app.getVersion()} (Electron)`, shell: 'electron', os: process.platform };
+});
+
 ipcMain.on('dusky:badge', (event, count) => {
   if (!trustedSender(event)) return;
   const n = Math.max(0, Math.min(999, Number(count) || 0));

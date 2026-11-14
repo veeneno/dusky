@@ -10,12 +10,20 @@ mod call;
 mod call;
 mod deps;
 mod picker;
+mod presence;
 mod screencast;
 mod server;
 mod sources;
 mod tray;
+mod updater;
 mod webview_setup;
 
 fn main() {
+    // O atualizador do app Electron antigo, ao trocar o AppImage por este (migração, ver
+    // tauri/README.md), roda o arquivo novo uma vez com APPIMAGE_EXIT_AFTER_INSTALL=true e ESPERA
+    // ele terminar — no AppImage do Electron isso só "instala" e sai. Aqui também: sai na hora.
+    if std::env::var("APPIMAGE_EXIT_AFTER_INSTALL").as_deref() == Ok("true") {
+        return;
+    }
     app::run();
 }

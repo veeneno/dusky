@@ -37,7 +37,11 @@ ipcRenderer.on('dusky:pcm', (_event, bytes) => {
   }
 });
 
+let appInfo = null;
+try { appInfo = ipcRenderer.sendSync('dusky:appInfo'); } catch (_) { /* processo principal antigo */ }
 const desktopApi = {
+  appInfo,
+  appVersion: appInfo ? appInfo.version : null,
   platform: process.platform,
 
   // contador de menções não lidas no ícone do app (e piscar na barra de tarefas quando chega uma)

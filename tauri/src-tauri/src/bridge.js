@@ -55,6 +55,7 @@
 
   if (isLocal) {
     window.duskyShell = {
+      appInfo: window.__DUSKY_APP_INFO__ || null,
       getStatus: () => invoke('shell_get_status'),
       onStatus: (cb) => on('shell:status', cb),
       setServer: (input) => invoke('shell_set_server', { input: String(input || '') }),
@@ -81,16 +82,36 @@
     }
   });
 
+  const appInfo = window.__DUSKY_APP_INFO__ || { name: 'dusky', shell: 'tauri' };
   window.duskyDesktop = {
     platform,
     shell: 'tauri',
+    // { name, version, codename, label ("dusky Mist 1.0"), shell, os }
+    appInfo,
+    appVersion: appInfo.version || null,
 
     setBadge: (count) => { fire('desktop_set_badge', { count: Number(count) || 0 }); },
     focusWindow: () => { fire('desktop_focus'); },
+    // procura versão nova (as respostas aparecem em janelinhas do próprio app)
+    // aceleração de hardware (reinicia o app). appInfo.gpu.hardwareAcceleration diz como está
+    setHardwareAcceleration: (on) => { fire('app_set_hardware_acceleration', { on: !!on }); },
+    checkForUpdates: () => invoke('update_check').catch((err) => console.warn('[dusky] atualização', err)),
 
     status: {
       report: (status) => { fire('status_report', { status: String(status || '') }); },
       onSetRequest: (cb) => on('status:set', cb),
+    },
+
+    // "jogando X": o app descobre o jogo aberto e avisa o site (ver src/presence.rs)
+    presence: {
+      // { enabled, custom: [{ exe, name }] } — desligado = não lê nem envia nada
+      configure: (cfg) => { fire('presence_configure', { cfg: cfg || {} }); },
+      // [{ exe, label }] programas abertos que podem ser um jogo (pra "adicionar jogo")
+      candidates: () => invoke('presence_candidates').catch(() => []),
+      // { name, startedAt } | null
+      current: () => invoke('presence_current').catch(() => null),
+      // chamado com { name, startedAt } quando um jogo abre/troca, ou null quando fecha
+      onActivity: (cb) => on('presence:activity', cb),
     },
 
     getScreenAudioPlan: () => invoke('screen_audio_plan'),

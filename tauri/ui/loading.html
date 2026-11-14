@@ -2,27 +2,33 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'">
 <title>dusky</title>
 <style>
   html, body { height: 100%; margin: 0; }
   body {
-    background: #1e1f22; color: #b5bac1; display: flex; flex-direction: column;
+    background: radial-gradient(ellipse at 50% 120%, #2a2340 0%, #16151d 55%, #121118 100%); color: #b9b4c9; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 18px; user-select: none;
     font: 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     padding: 0 24px; box-sizing: border-box; text-align: center;
   }
-  .spinner {
-    width: 38px; height: 38px; border-radius: 50%;
-    border: 4px solid #313338; border-top-color: #5865f2;
-    animation: spin 0.9s linear infinite;
+  /* logo girando devagar, com uma névoa respirando atrás (Mist) */
+  .logo { position: relative; width: 120px; height: 120px; display: grid; place-items: center; }
+  .logo::before {
+    content: ""; position: absolute; inset: -30px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(184,140,255,.32), rgba(150,240,230,.12) 45%, transparent 70%);
+    filter: blur(14px); animation: breathe 3.2s ease-in-out infinite;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .logo img { position: relative; width: 112px; height: 112px; animation: spin 6s linear infinite; }
+  .lost .logo img { animation-duration: 14s; filter: saturate(.55); }
+  @keyframes spin { to { transform: rotate(-360deg); } }
+  @keyframes breathe { 0%, 100% { opacity: .55; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.06); } }
+  @media (prefers-reduced-motion: reduce) { .logo img, .logo::before { animation: none; } }
   h1 { margin: 0; font-size: 20px; color: #f2f3f5; font-weight: 600; }
   p { margin: 0; line-height: 1.45; }
   .url { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #949ba4; user-select: text; word-break: break-all; }
   .card {
-    width: 100%; max-width: 440px; background: #2b2d31; border-radius: 8px; padding: 20px;
+    width: 100%; max-width: 440px; background: rgba(38, 34, 52, .92); border: 1px solid rgba(184,140,255,.14); border-radius: 8px; padding: 20px;
     box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; text-align: left;
   }
   .card p { color: #b5bac1; }
@@ -31,13 +37,13 @@
     width: 100%; box-sizing: border-box; padding: 10px; border-radius: 4px; border: 0; outline: 0;
     background: #1e1f22; color: #dbdee1; font: 14px ui-monospace, Menlo, Consolas, monospace; user-select: text;
   }
-  input:focus { box-shadow: 0 0 0 2px #5865f2; }
+  input:focus { box-shadow: 0 0 0 2px #a67cf2; }
   .row { display: flex; gap: 8px; justify-content: flex-end; }
   button {
     border: 0; border-radius: 4px; padding: 9px 16px; font: 600 14px system-ui, sans-serif; cursor: pointer;
-    background: #5865f2; color: #fff;
+    background: #8b5cf6; color: #fff;
   }
-  button:hover { background: #4752c4; }
+  button:hover { background: #7646e0; }
   button:disabled { opacity: .6; cursor: default; }
   button.secondary { background: transparent; color: #dbdee1; }
   button.secondary:hover { text-decoration: underline; background: transparent; }
@@ -50,9 +56,10 @@
   <!-- conectando -->
   <div id="connecting" hidden>
     <div style="display:flex;flex-direction:column;align-items:center;gap:18px">
-      <div class="spinner"></div>
+      <div class="logo"><img src="logo.png" alt=""></div>
       <h1>dusky</h1>
-      <p>conectando ao servidor…</p>
+      <p id="connectingText">conectando ao servidor…</p>
+      <p class="hint" id="connectingVersion"></p>
       <p class="url" id="connectingUrl"></p>
     </div>
   </div>
@@ -91,6 +98,11 @@
     const showForm = askFor || formOpen;
     $('connecting').hidden = showForm;
     $('connectingUrl').textContent = status.url || '';
+    // o site caiu com a página aberta: avisa e segue tentando sozinho
+    document.body.classList.toggle('lost', !!status.lost);
+    $('connectingText').textContent = status.lost
+      ? `o servidor caiu — volto sozinho assim que ele voltar${status.attempts ? ` (tentativa ${status.attempts + 1})` : '…'}`
+      : 'conectando ao servidor…';
     // ~3 tentativas falhas (uns 5s) -> oferece trocar o endereço
     $('stuck').hidden = showForm || status.phase !== 'connecting' || status.attempts < 3 || status.fixedByEnv;
     $('form').hidden = !showForm;
@@ -143,6 +155,7 @@
     }
   });
 
+  if (api && api.appInfo) $('connectingVersion').textContent = `${api.appInfo.label} · ${api.appInfo.version}`;
   if (api) {
     api.onStatus((st) => { status = st; render(); });
     api.getStatus().then((st) => {

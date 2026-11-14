@@ -8,6 +8,7 @@
 
 use crate::app::{self, AppState};
 use crate::server;
+use crate::updater;
 use std::sync::atomic::Ordering;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -18,28 +19,33 @@ pub struct TrayItems {
     online: CheckMenuItem<Wry>,
     idle: CheckMenuItem<Wry>,
     close_to_tray: CheckMenuItem<Wry>,
+    hw_accel: CheckMenuItem<Wry>,
+    updates: MenuItem<Wry>,
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let st = app.state::<AppState>();
     let close_to_tray_on = st.prefs.lock().unwrap().close_to_tray;
+    let hw_on = crate::webview_setup::hardware_acceleration();
 
     let open = MenuItem::with_id(app, "open", "Abrir dusky", true, None::<&str>)?;
     let online = CheckMenuItem::with_id(app, "online", "🟢  Ativo", true, true, None::<&str>)?;
     let idle = CheckMenuItem::with_id(app, "idle", "🌙  Inativo", true, false, None::<&str>)?;
     let close_to_tray = CheckMenuItem::with_id(app, "closeToTray", "Continuar rodando ao fechar a janela", true, close_to_tray_on, None::<&str>)?;
+    let hw_accel = CheckMenuItem::with_id(app, "hwAccel", "Aceleração de hardware (reinicia)", true, hw_on, None::<&str>)?;
     let reload = MenuItem::with_id(app, "reload", "Recarregar", true, None::<&str>)?;
     let change = MenuItem::with_id(app, "changeServer", "Mudar endereço do servidor…", !st.fixed_by_env, None::<&str>)?;
-    let version = MenuItem::with_id(app, "version", format!("dusky {} (Tauri)", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
+    let updates = MenuItem::with_id(app, "updates", "Procurar atualizações", true, None::<&str>)?;
+    let version = MenuItem::with_id(app, "version", format!("{} ({})", app::version_label(), env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Sair do dusky", true, None::<&str>)?;
     let sep = || PredefinedMenuItem::separator(app);
     let menu = Menu::with_items(
         app,
-        &[&open, &sep()?, &online, &idle, &sep()?, &close_to_tray, &reload, &change, &sep()?, &version, &quit],
+        &[&open, &sep()?, &online, &idle, &sep()?, &close_to_tray, &hw_accel, &reload, &change, &sep()?, &updates, &version, &quit],
     )?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("dusky")
+        .tooltip(app::version_label())
         .menu(&menu)
         // Windows: clique esquerdo abre a janela, direito abre o menu (no Linux o clique sempre abre o menu)
         .show_menu_on_left_click(false)
@@ -54,7 +60,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     }
     let icon = builder.build(app)?;
 
-    *st.tray.lock().unwrap() = Some(TrayItems { icon, online, idle, close_to_tray });
+    *st.tray.lock().unwrap() = Some(TrayItems { icon, online, idle, close_to_tray, hw_accel, updates });
     refresh(app);
     Ok(())
 }
@@ -76,6 +82,10 @@ fn on_menu(app: &AppHandle, id: &str) {
             drop(prefs);
             refresh(app);
         }
+        "hwAccel" => {
+            // o CheckMenuItem já trocou a marca sozinho; vale o oposto do que está rodando agora
+            app::set_hardware_acceleration(app, !crate::webview_setup::hardware_acceleration());
+        }
         "reload" => {
             if let Some(win) = app.get_webview_window(app::MAIN) {
                 let _ = win.reload();
@@ -84,6 +94,14 @@ fn on_menu(app: &AppHandle, id: &str) {
         "changeServer" => {
             app::show_main(app);
             app::spawn_connect(app.clone(), "change");
+        }
+        "updates" => {
+            // versão já baixada: reinicia direto; senão procura (com aviso de "já está na mais nova")
+            if app.state::<updater::Updates>().pending_version().is_some() {
+                updater::install_and_restart(app);
+            } else {
+                tauri::async_runtime::spawn(updater::check(app.clone(), true));
+            }
         }
         "quit" => app::quit_for_real(app),
         _ => {}
@@ -101,11 +119,17 @@ pub fn refresh(app: &AppHandle) {
     let _ = t.online.set_checked(status == "online");
     let _ = t.idle.set_checked(status == "idle");
     let _ = t.close_to_tray.set_checked(close_to_tray);
+    let _ = t.hw_accel.set_checked(crate::webview_setup::hardware_acceleration());
+    let pending = app.try_state::<updater::Updates>().and_then(|u| u.pending_version());
+    let _ = t.updates.set_text(match pending {
+        Some(v) => format!("Reiniciar pra atualizar ({v})"),
+        None => "Procurar atualizações".into(),
+    });
     let prefix = match mentions {
         0 => String::new(),
         n if n > 99 => "(99+) ".into(),
         n => format!("({n}) "),
     };
     let label = if status == "idle" { "inativo" } else { "ativo" };
-    let _ = t.icon.set_tooltip(Some(format!("{prefix}dusky — {label}")));
+    let _ = t.icon.set_tooltip(Some(format!("{prefix}{} — {label}", app::version_label())));
 }
