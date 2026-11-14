@@ -1,6 +1,6 @@
-// didiscord-screencast — transmite a tela codificada UMA vez (na placa de vídeo) pra várias pessoas.
+// dusky-screencast — transmite a tela codificada UMA vez (na placa de vídeo) pra várias pessoas.
 //
-// Por que existe: na call do didiscord cada pessoa tem uma conexão direta com cada outra (malha).
+// Por que existe: na call do dusky cada pessoa tem uma conexão direta com cada outra (malha).
 // Compartilhando a tela pelo Chromium, o vídeo era codificado NO PROCESSADOR, uma vez POR PESSOA
 // assistindo — medido: ~1 núcleo inteiro por pessoa em 1080p60, o que derrubava o fps dos jogos.
 // O Chromium não sabe usar o codificador da NVIDIA (NVENC) no Linux.
@@ -155,7 +155,7 @@ func newCaster() (*caster, error) {
 		MimeType:    webrtc.MimeTypeH264,
 		ClockRate:   90000,
 		SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
-	}, "video", "didiscord-screen")
+	}, "video", "dusky-screen")
 	if err != nil {
 		return nil, err
 	}

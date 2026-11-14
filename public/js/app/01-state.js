@@ -1,7 +1,7 @@
 let channelCategories = [];
 let pendingCategoryId = null;
 
-// didiscord — Elementos da página e estado global
+// dusky — Elementos da página e estado global
 // Parte 1 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -166,14 +166,14 @@ const unreadChannels = new Map(); // channelId -> { serverId (null = DM), mentio
 let voiceChannel = null; // canal de voz que estou ocupando de verdade (pode diferir do currentChannel se eu for ver um canal de texto durante a call)
 let appAudioCaptureStream = null; // só no app desktop Electron: stream extra de getUserMedia quando
                                    // o plano de áudio da tela é 'app' (isolamento por app via PipeWire
-                                   // — ver window.didiscordDesktop em electron/preload.js). Guardado
+                                   // — ver window.duskyDesktop em electron/preload.js). Guardado
                                    // aqui só pra poder parar a track e devolver o roteamento no
                                    // stopScreenShare(); nunca é usado quando o plano é 'system' ou 'none'.
 let pcmAudioGenerator = null; // só no app desktop Electron/Windows: MediaStreamTrackGenerator usado
                                // quando o plano de áudio da tela é 'pcm' (WASAPI Process Loopback via
-                               // didiscord-audio-helper.exe — ver capturePcmAudioTrack abaixo)
+                               // dusky-audio-helper.exe — ver capturePcmAudioTrack abaixo)
 let pcmAudioWriter = null; // WritableStreamDefaultWriter do pcmAudioGenerator.writable
-let pcmAudioUnsubscribe = null; // cancela a inscrição em window.didiscordDesktop.onPcmChunk
+let pcmAudioUnsubscribe = null; // cancela a inscrição em window.duskyDesktop.onPcmChunk
 let pcmAudioLeftover = null; // Uint8Array — bytes de um frame incompleto, aguardando o próximo chunk
 let pcmAudioStartedAtMs = null; // performance.now() do primeiro chunk — timestamps do AudioData são relativos a isso
 let localStream = null;

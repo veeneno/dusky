@@ -1,4 +1,4 @@
-// didiscord — Visualizador de imagens e vídeos
+// dusky — Visualizador de imagens e vídeos
 // Parte 15 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -151,7 +151,7 @@ function showViewerItem() {
   mediaViewerDownload.href = m.attachment_url;
   mediaViewerDownload.setAttribute('download', viewerFileName(m));
   mediaViewerCaption.textContent = '';
-  if (m.content) mediaViewerCaption.appendChild(DidiMarkdown.render(m.content, mentionContext(m)));
+  if (m.content) mediaViewerCaption.appendChild(DuskyMarkdown.render(m.content, mentionContext(m)));
   mediaViewerCaption.hidden = !m.content;
   viewerRotation = 0;
   const isVideo = m.attachment_type === 'video';

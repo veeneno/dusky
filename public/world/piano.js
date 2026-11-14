@@ -9,7 +9,7 @@ const WHITE = [['KeyA', 0], ['KeyS', 2], ['KeyD', 4], ['KeyF', 5], ['KeyG', 7], 
 const BLACK = [['KeyW', 1], ['KeyE', 3], ['KeyT', 6], ['KeyY', 8], ['KeyU', 10], ['KeyO', 13], ['KeyP', 15]];
 const US_LABELS = { Semicolon: ';', Quote: "'" };
 const NOTE_NAMES = ['dó', 'dó#', 'ré', 'ré#', 'mi', 'fá', 'fá#', 'sol', 'sol#', 'lá', 'lá#', 'si'];
-const OCTAVE_KEY = 'didiscord:pianoOctave';
+const OCTAVE_KEY = 'dusky:pianoOctave';
 
 function labelFor(code, layout) {
   const k = layout && layout.get(code);

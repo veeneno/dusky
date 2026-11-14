@@ -2,8 +2,30 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-const DB_PATH = process.env.DIDISCORD_DB_PATH || path.join(__dirname, 'didiscord.db');
+// DUSKY_DB_PATH (ou o nome antigo DIDISCORD_DB_PATH) aponta pra outro banco — ex: ':memory:' nos testes
+const DB_PATH = process.env.DUSKY_DB_PATH || process.env.DIDISCORD_DB_PATH || defaultDbPath();
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
+
+// O projeto se chamava "didiscord": quem já tinha o banco server/db/didiscord.db continua com os
+// mesmos dados. Se dusky.db ainda não existe e o antigo sim, passa tudo do -wal pro arquivo
+// principal (checkpoint) e renomeia. Se algo der errado, segue usando o antigo, intacto.
+function defaultDbPath() {
+  const fresh = path.join(__dirname, 'dusky.db');
+  const legacy = path.join(__dirname, 'didiscord.db');
+  if (fs.existsSync(fresh) || !fs.existsSync(legacy)) return fresh;
+  try {
+    const old = new Database(legacy);
+    old.pragma('wal_checkpoint(TRUNCATE)');
+    old.pragma('journal_mode = DELETE'); // some com o -wal/-shm: o banco inteiro fica num arquivo só
+    old.close();
+    fs.renameSync(legacy, fresh);
+    console.log('[db] banco didiscord.db renomeado pra dusky.db');
+    return fresh;
+  } catch (err) {
+    console.warn('[db] não consegui renomear didiscord.db pra dusky.db, usando o antigo:', err.message);
+    return legacy;
+  }
+}
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
@@ -269,5 +291,6 @@ function createDefaultChannels(serverId, createdBy) {
 }
 
 db.createDefaultChannels = createDefaultChannels;
+db.DB_PATH = DB_PATH;
 
 module.exports = db;

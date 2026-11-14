@@ -3,7 +3,7 @@
 //! Com a janela escondida o app segue vivo: a call continua, as mensagens chegam e os sons tocam.
 //! O menu traz a janela de volta, troca o status (ativo/inativo, o mesmo do menu do avatar no site),
 //! liga/desliga "continuar rodando ao fechar", troca o servidor e tem o "Sair" de verdade.
-//! Linux com GNOME: o ícone só aparece com a extensão "AppIndicator" — sem ela, abrir o didiscord
+//! Linux com GNOME: o ícone só aparece com a extensão "AppIndicator" — sem ela, abrir o dusky
 //! de novo (pelo menu de apps) traz a janela escondida de volta (plugin single-instance).
 
 use crate::app::{self, AppState};
@@ -24,14 +24,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let st = app.state::<AppState>();
     let close_to_tray_on = st.prefs.lock().unwrap().close_to_tray;
 
-    let open = MenuItem::with_id(app, "open", "Abrir didiscord", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Abrir dusky", true, None::<&str>)?;
     let online = CheckMenuItem::with_id(app, "online", "🟢  Ativo", true, true, None::<&str>)?;
     let idle = CheckMenuItem::with_id(app, "idle", "🌙  Inativo", true, false, None::<&str>)?;
     let close_to_tray = CheckMenuItem::with_id(app, "closeToTray", "Continuar rodando ao fechar a janela", true, close_to_tray_on, None::<&str>)?;
     let reload = MenuItem::with_id(app, "reload", "Recarregar", true, None::<&str>)?;
     let change = MenuItem::with_id(app, "changeServer", "Mudar endereço do servidor…", !st.fixed_by_env, None::<&str>)?;
-    let version = MenuItem::with_id(app, "version", format!("didiscord {} (Tauri)", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Sair do didiscord", true, None::<&str>)?;
+    let version = MenuItem::with_id(app, "version", format!("dusky {} (Tauri)", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Sair do dusky", true, None::<&str>)?;
     let sep = || PredefinedMenuItem::separator(app);
     let menu = Menu::with_items(
         app,
@@ -39,7 +39,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     )?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("didiscord")
+        .tooltip("dusky")
         .menu(&menu)
         // Windows: clique esquerdo abre a janela, direito abre o menu (no Linux o clique sempre abre o menu)
         .show_menu_on_left_click(false)
@@ -107,5 +107,5 @@ pub fn refresh(app: &AppHandle) {
         n => format!("({n}) "),
     };
     let label = if status == "idle" { "inativo" } else { "ativo" };
-    let _ = t.icon.set_tooltip(Some(format!("{prefix}didiscord — {label}")));
+    let _ = t.icon.set_tooltip(Some(format!("{prefix}dusky — {label}")));
 }

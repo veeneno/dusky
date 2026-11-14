@@ -1,6 +1,6 @@
 'use strict';
 // Compartilhamento de tela "nativo": captura + codificação UMA vez, de preferência na placa de vídeo,
-// entregue pra cada pessoa da call pelo auxiliar didiscord-screencast (native/screencast/main.go).
+// entregue pra cada pessoa da call pelo auxiliar dusky-screencast (native/screencast/main.go).
 //
 // Por que: pelo Chromium, a tela é codificada no processador, uma vez POR PESSOA assistindo (a call é
 // em malha) — medido no Ryzen 7 5700X: ~1 núcleo por pessoa em 1080p60, derrubando o fps dos jogos.
@@ -25,7 +25,7 @@ const IS_WIN = process.platform === 'win32';
 const IS_LINUX = process.platform === 'linux';
 
 function helperPath() {
-  const exe = IS_WIN ? 'didiscord-screencast.exe' : 'didiscord-screencast';
+  const exe = IS_WIN ? 'dusky-screencast.exe' : 'dusky-screencast';
   return app.isPackaged
     ? path.join(process.resourcesPath, 'native', exe)
     : path.join(__dirname, 'native', 'bin', exe);
@@ -185,7 +185,7 @@ function buildGstArgs(info, src, opts) {
   return {
     kbps,
     size: finalSize,
-    args: ['-q', 'pipewiresrc', 'fd=3', 'path={node}', 'do-timestamp=true', 'keepalive-time=500', 'client-name=didiscord',
+    args: ['-q', 'pipewiresrc', 'fd=3', 'path={node}', 'do-timestamp=true', 'keepalive-time=500', 'client-name=dusky',
       // o portal só manda quadro quando a tela muda: o videorate repete o último pra manter o fps fixo
       // (quadro-chave no tempo certo, e quem entra no meio não espera a tela mudar)
       '!', 'video/x-raw', '!', 'videorate', '!', `video/x-raw,framerate=${fps}/1`,

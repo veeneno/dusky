@@ -1,4 +1,4 @@
-// didiscord — Eventos em tempo real e partida do app
+// dusky — Eventos em tempo real e partida do app
 // Parte 28 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -59,7 +59,7 @@ function wireRealtime() {
     if (!mine && message.user_id && (isDm || mentionsMe)) {
       playMessageSound();
     }
-    // notificação do sistema quando o didiscord não está na frente (ou é outro canal)
+    // notificação do sistema quando o dusky não está na frente (ou é outro canal)
     if (!mine && (!isOpen || !appIsInFront()) && shouldNotify(message, isDm, mentionsMe)) {
       showSystemNotification(message);
     }
@@ -325,7 +325,7 @@ function wireRealtime() {
     if (!voiceChannel || voiceChannel.server_id !== serverId) return;
     botServerVolume = volume;
     let hasPersonalPref = true;
-    try { hasPersonalPref = localStorage.getItem(`didiscord:volume:${BOT_USER_ID}`) !== null; } catch (_) { /* assume que tem, pra não sobrescrever à toa */ }
+    try { hasPersonalPref = localStorage.getItem(`dusky:volume:${BOT_USER_ID}`) !== null; } catch (_) { /* assume que tem, pra não sobrescrever à toa */ }
     if (!hasPersonalPref) {
       applyLocalOverridesToBotAudio();
       renderCallParticipants();
@@ -435,14 +435,14 @@ document.addEventListener('visibilitychange', readCurrentIfInFront);
   wireRealtime();
   initPresence();
   initPresenceStatus();
-  DidiTheme.load();
+  DuskyTheme.load();
   loadUnread();
   updateNotificationPermissionUi();
   await initBackgroundPush();
 
   // abre onde a pessoa estava da última vez (servidor ou tela de conversas)
   let last = null;
-  try { last = localStorage.getItem('didiscord:lastServer'); } catch (_) { /* ok */ }
+  try { last = localStorage.getItem('dusky:lastServer'); } catch (_) { /* ok */ }
   const lastId = Number(last);
   if (last && last !== 'home' && servers.some((s) => s.id === lastId)) await selectServer(lastId);
   else if (last !== 'home' && servers.length) await selectServer(servers[0].id);

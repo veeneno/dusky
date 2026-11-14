@@ -49,12 +49,28 @@ app.use(express.json({ limit: '1mb' })); // tema com CSS próprio passa dos 100k
 app.use(express.urlencoded({ extended: true }));
 
 app.use(cookieSession({
+  // nome antigo de propósito: trocar deslogaria todo mundo
   name: 'didiscord_session',
   secret: SESSION_SECRET,
   maxAge: 30 * 24 * 60 * 60 * 1000, // 30 dias
   httpOnly: true,
   sameSite: 'lax',
 }));
+
+// Endereço antigo (didiscord.veneno.space): o mesmo túnel atende os dois endereços, então tudo
+// continua funcionando nele — o app Electron já instalado só aceita navegar no endereço que tem
+// salvo, e o atualizador dele lê /downloads/latest*.yml de lá. Com LEGACY_HOST_REDIRECT=1 no .env,
+// quem abre o site ANTIGO num navegador comum (não o app) é mandado pro endereço novo. O login e as
+// preferências do navegador ficam por endereço, então a pessoa entra de novo uma vez lá.
+const LEGACY_HOST = /^didiscord\./i;
+const NEW_HOST = (h) => h.replace(LEGACY_HOST, 'dusky.');
+app.use((req, res, next) => {
+  if (process.env.LEGACY_HOST_REDIRECT !== '1' || req.method !== 'GET' || !LEGACY_HOST.test(req.hostname || '')) return next();
+  const ua = String(req.headers['user-agent'] || '');
+  if (/Electron|dusky-desktop|didiscord-desktop/i.test(ua)) return next(); // apps desktop: nada muda
+  if (/^\/(downloads|api|ws|livekit|uploads|vendor)(\/|$)/.test(req.path)) return next(); // atualizador, API, mídia
+  res.redirect(301, `https://${NEW_HOST(req.hostname)}${req.originalUrl}`);
+});
 
 // raiz redireciona pra login ou pro app, dependendo da sessão
 app.get('/', (req, res) => {
@@ -129,7 +145,7 @@ server.requestTimeout = 0;
 server.headersTimeout = 60000;
 
 server.listen(PORT, () => {
-  console.log(`didiscord rodando em http://localhost:${PORT}`);
+  console.log(`dusky rodando em http://localhost:${PORT}`);
   // deixa o yt-dlp/ffmpeg do bot de música prontos sem esperar o primeiro /play
   require('./bots/musicBot/binaries').warmUp();
   // servidor de mídia das calls (só com SFU=livekit no .env; sem isso as calls seguem em malha)

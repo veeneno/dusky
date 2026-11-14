@@ -1,4 +1,4 @@
-// didiscord — Mundinho 3D: a cola entre a call e o mundo (posições, áudio espacial, renderizador)
+// dusky — Mundinho 3D: a cola entre a call e o mundo (posições, áudio espacial, renderizador)
 // Parte 27 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -13,7 +13,7 @@
 // Este arquivo é pequeno de propósito: o Three.js e o código 3D (public/world/) só são baixados
 // com import() quando a pessoa abre uma call-mundo. Quem nunca entra num mundo não baixa nada.
 
-const WORLD_ASSET_VERSION = 5; // sobe quando mexer em public/world/ (os imports levam ?v=)
+const WORLD_ASSET_VERSION = 6; // sobe quando mexer em public/world/ (os imports levam ?v=)
 const WORLD_SEND_INTERVAL_MS = 100;
 const WORLD_HEAD_STANDING = 1.55;
 const WORLD_HEAD_SITTING = 1.15;

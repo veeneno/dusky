@@ -9,7 +9,7 @@ const router = express.Router();
 const BOTS = [
   {
     id: 'musicbot',
-    name: 'DJ didiscord',
+    name: 'DJ dusky',
     avatar_url: null, // sem avatar customizado ainda — cai no fallback de iniciais da UI
     description: 'toca música na call. comandos: /play /stop /shuffle /volume /queue',
   },

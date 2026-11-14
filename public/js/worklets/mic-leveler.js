@@ -1,4 +1,4 @@
-// Nivelador de volume do didiscord: roda DEPOIS do supressor de ruído, então mede só a voz.
+// Nivelador de volume do dusky: roda DEPOIS do supressor de ruído, então mede só a voz.
 // O ajuste automático do navegador roda antes do supressor e sobe o chiado nas pausas; aqui o
 // ganho só se mexe enquanto tem fala e fica parado no silêncio. Anda devagar (é um nivelador,
 // não um compressor): a dinâmica natural da voz fica, só o volume médio vai pro alvo.
@@ -75,4 +75,4 @@ class MicLeveler extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('didiscord-mic-leveler', MicLeveler);
+registerProcessor('dusky-mic-leveler', MicLeveler);

@@ -63,7 +63,7 @@ const STEAM_FOLDER_ALIASES = {
   'dota 2 beta': 'Dota 2',
 };
 // programas que rodam da pasta do usuário mas não são jogo (pra lista de "adicionar jogo")
-const NOT_GAME_EXES = /^(steam|steamwebhelper|steamservice|wineserver|wine|wine64|wine-preloader|wine64-preloader|services|explorer|winedevice|plugplay|rpcss|svchost|conhost|start|cmd|electron|didiscord|chrome|chromium|firefox|code|node|bash|zsh|fish|sh|python\d*|python3|java|javaw|discord|spotify|gamescope|mangohud|gamemoded|pressure-vessel.*|reaper|steam-launch-wrapper|crashhandler|crashpad_handler|easyanticheat.*|battleye.*|riotclientservices|riotclientux|riotclientuxrender|riotclientcrashhandler|epicgameslauncher|epicwebhelper|unitycrashhandler64|gldriverquery.*|vulkandriverquery.*|xdg-.*|dbus-.*|didiscord-.*)$/i;
+const NOT_GAME_EXES = /^(steam|steamwebhelper|steamservice|wineserver|wine|wine64|wine-preloader|wine64-preloader|services|explorer|winedevice|plugplay|rpcss|svchost|conhost|start|cmd|electron|dusky|chrome|chromium|firefox|code|node|bash|zsh|fish|sh|python\d*|python3|java|javaw|discord|spotify|gamescope|mangohud|gamemoded|pressure-vessel.*|reaper|steam-launch-wrapper|crashhandler|crashpad_handler|easyanticheat.*|battleye.*|riotclientservices|riotclientux|riotclientuxrender|riotclientcrashhandler|epicgameslauncher|epicwebhelper|unitycrashhandler64|gldriverquery.*|vulkandriverquery.*|xdg-.*|dbus-.*|dusky-.*)$/i;
 
 const exeKey = (p) => path.posix.basename(String(p || '').replace(/\\/g, '/')).toLowerCase().replace(/\.exe$/, '');
 

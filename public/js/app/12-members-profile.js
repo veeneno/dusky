@@ -1,4 +1,4 @@
-// didiscord — Usuários, painel de membros e perfil
+// dusky — Usuários, painel de membros e perfil
 // Parte 12 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -228,7 +228,7 @@ function renderProfileCard(el, user, opts = {}) {
           <p class="pc-bio"></p>
         </div>
         <div class="pc-section pc-since-wrap">
-          <h4>no didiscord desde</h4>
+          <h4>no dusky desde</h4>
           <p class="pc-since"></p>
         </div>
         <div class="pc-section pc-roles-wrap" hidden>

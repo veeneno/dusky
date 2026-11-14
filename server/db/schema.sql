@@ -1,4 +1,4 @@
--- Schema do banco didiscord
+-- Schema do banco dusky
 
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,

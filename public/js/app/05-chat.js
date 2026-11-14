@@ -1,4 +1,4 @@
-// didiscord — Chat: abrir canal, lista de mensagens e histórico
+// dusky — Chat: abrir canal, lista de mensagens e histórico
 // Parte 5 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -358,7 +358,7 @@ function buildMessageEl(m, continued) {
     ref.className = 'msg-reply-ref';
     const refName = m.reply_username || m.reply_bot_name || 'mensagem apagada';
     const refSnippet = m.reply_content
-      ? DidiMarkdown.plain(m.reply_content, mentionContext(m))
+      ? DuskyMarkdown.plain(m.reply_content, mentionContext(m))
       : (m.reply_attachment_type === 'video' ? 'vídeo' : m.reply_attachment_type === 'file' ? 'arquivo' : m.reply_attachment_type === 'image' ? 'imagem' : '');
     ref.innerHTML = `<span class="msg-reply-ref-icon">${MSG_REPLY_ICON}</span><span class="msg-reply-ref-name">${escapeHtml(refName)}</span><span class="msg-reply-ref-snippet"></span>`;
     ref.querySelector('.msg-reply-ref-snippet').textContent = refSnippet;
@@ -411,7 +411,7 @@ function buildMessageEl(m, continued) {
   reactBtn.className = 'msg-action-btn';
   reactBtn.title = 'reagir';
   reactBtn.innerHTML = REACT_ICON;
-  reactBtn.addEventListener('click', () => DidiEmoji.open({ anchor: reactBtn, onPick: (emoji) => toggleReaction(m, emoji) }));
+  reactBtn.addEventListener('click', () => DuskyEmoji.open({ anchor: reactBtn, onPick: (emoji) => toggleReaction(m, emoji) }));
   reactBtn.disabled = !currentChannelAllows('react');
   actions.appendChild(reactBtn);
 
@@ -547,7 +547,7 @@ function jumpToMessage(messageId) {
 function setReplyTarget(m) {
   const isBot = !m.user_id;
   const name = isBot ? (m.bot_name || 'bot') : m.username;
-  const snippet = m.content ? DidiMarkdown.plain(m.content, mentionContext(m)) : (m.attachment_type === 'video' ? 'vídeo' : m.attachment_type === 'file' ? 'arquivo' : m.attachment_type === 'image' ? 'imagem' : '');
+  const snippet = m.content ? DuskyMarkdown.plain(m.content, mentionContext(m)) : (m.attachment_type === 'video' ? 'vídeo' : m.attachment_type === 'file' ? 'arquivo' : m.attachment_type === 'image' ? 'imagem' : '');
   pendingReplyTo = { id: m.id, authorName: name, snippet };
   replyPreviewName.textContent = name;
   replyPreviewSnippet.textContent = snippet;

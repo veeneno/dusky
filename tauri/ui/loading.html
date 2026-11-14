@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-<title>didiscord</title>
+<title>dusky</title>
 <style>
   html, body { height: 100%; margin: 0; }
   body {
@@ -51,7 +51,7 @@
   <div id="connecting" hidden>
     <div style="display:flex;flex-direction:column;align-items:center;gap:18px">
       <div class="spinner"></div>
-      <h1>didiscord</h1>
+      <h1>dusky</h1>
       <p>conectando ao servidor…</p>
       <p class="url" id="connectingUrl"></p>
     </div>
@@ -65,11 +65,11 @@
   </div>
 
   <!-- escolher endereço -->
-  <h1 id="formTitle" hidden>didiscord</h1>
+  <h1 id="formTitle" hidden>dusky</h1>
   <form class="card" id="form" hidden autocomplete="off">
     <p id="formIntro">qual é o endereço do servidor? pede pra quem hospeda — aparece quando ele roda <code>npm start</code>.</p>
     <label for="addr">endereço do servidor</label>
-    <input id="addr" spellcheck="false" placeholder="didiscord.veneno.space">
+    <input id="addr" spellcheck="false" placeholder="dusky.veneno.space">
     <p class="hint">pode colar o link inteiro. também aceita IP (ex: 203.0.113.5:3000).</p>
     <p class="error" id="err"></p>
     <div class="row">
@@ -80,7 +80,7 @@
 
 <script>
   'use strict';
-  const api = window.didiscordShell;
+  const api = window.duskyShell;
   const $ = (id) => document.getElementById(id);
   let status = { phase: 'connecting', url: null, attempts: 0 };
   let formOpen = false; // a pessoa abriu o formulário no meio do "conectando"

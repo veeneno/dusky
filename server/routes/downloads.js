@@ -38,7 +38,7 @@ router.get('/api/downloads', (req, res) => {
   const win = readYml('latest.yml');
   const linux = readYml('latest-linux.yml');
   const version = (linux && linux.version) || (win && win.version) || null;
-  const deb = version ? fileInfo(`didiscord-${version}.deb`) : null;
+  const deb = version ? (fileInfo(`dusky-${version}.deb`) || fileInfo(`didiscord-${version}.deb`)) : null; // nome antigo dos arquivos
   res.set('Cache-Control', 'no-store');
   res.json({
     version,

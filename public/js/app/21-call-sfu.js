@@ -1,4 +1,4 @@
-// didiscord — Calls pelo servidor de mídia (LiveKit)
+// dusky — Calls pelo servidor de mídia (LiveKit)
 // Parte 21 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -272,8 +272,8 @@ function sfuDisconnect() {
 // O WebKitGTK (motor do app no Linux) não tem WebRTC. Então só o TRANSPORTE sai daqui — a conexão
 // com a sala do LiveKit roda no app (tauri/src-tauri/src/call.rs). Todo o resto continua igual:
 //   microfone: getUserMedia → supressão de ruído, gate, nivelador, limitador (o grafo de sempre)
-//              → worklet didiscord-pcm-tap → blocos de 20 ms pro app → sala
-//   quem fala: sala → app → call.pull() em laço → worklet didiscord-pcm-player → MediaStream →
+//              → worklet dusky-pcm-tap → blocos de 20 ms pro app → sala
+//   quem fala: sala → app → call.pull() em laço → worklet dusky-pcm-player → MediaStream →
 //              sfuTrackSubscribed, como se tivesse vindo do LiveKit do navegador (<audio>, volume
 //              por pessoa, reforço acima de 100%, áudio espacial, indicador de fala)
 //   tela dos outros: o app recebe o vídeo AINDA COMPRIMIDO (um assistente oculto "ver-<id>", ver
@@ -284,8 +284,8 @@ function sfuDisconnect() {
 //   minha câmera: <video> escondido → <canvas> → JPEG → call.pushCamera() → sala
 //   áudio da minha tela: o app manda direto pra sala (nem passa por aqui)
 //   qualidade: um "receiver" de mentira com getStats() que pergunta pro app (call.stats)
-const nativeCallApi = () => (window.didiscordDesktop && window.didiscordDesktop.call) || null;
-const PCM_BRIDGE_URL = '/js/worklets/pcm-bridge.js?v=1';
+const nativeCallApi = () => (window.duskyDesktop && window.duskyDesktop.call) || null;
+const PCM_BRIDGE_URL = '/js/worklets/pcm-bridge.js?v=2';
 
 // como o createMicWorklet, mas com mais paciência pra carregar o módulo: sem ele a call fica muda
 // (o createMicWorklet desiste em 1 s, o que no WebKitGTK às vezes não dá na primeira vez)
@@ -371,7 +371,7 @@ async function sfuNativeAddAudio(ctx, ev) {
   const entry = { identity: ev.identity, source: ev.source, node: null, track: null, pending: [] };
   ctx.players.set(ev.sid, entry);
   const audioCtx = getAudioCtx();
-  const node = await createPcmBridgeNode(audioCtx, 'didiscord-pcm-player', {
+  const node = await createPcmBridgeNode(audioCtx, 'dusky-pcm-player', {
     numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [channels], processorOptions: { channels },
   });
   if (sfu !== ctx || ctx.players.get(ev.sid) !== entry) {
@@ -435,14 +435,14 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
   canvas.height = 9;
   // WebGL: o quadro vai pra placa como textura e é desenhado lá. O canvas 2D do WebKitGTK copia a
   // imagem inteira pela memória a cada quadro, o que derrubava o ritmo da página em 1080p/60
-  // (dá pra forçar o canvas 2D com localStorage 'didiscord:nativeVideo2d' = '1', pra comparar)
+  // (dá pra forçar o canvas 2D com localStorage 'dusky:nativeVideo2d' = '1', pra comparar)
   let force2d = false;
-  try { force2d = localStorage.getItem('didiscord:nativeVideo2d') === '1'; } catch (_) { /* sem armazenamento */ }
+  try { force2d = localStorage.getItem('dusky:nativeVideo2d') === '1'; } catch (_) { /* sem armazenamento */ }
   const gl = force2d ? null : createNativeVideoGl(canvas);
   const g = gl ? null : canvas.getContext('2d');
   const track = canvas.captureStream().getVideoTracks()[0];
   if (!track) return;
-  track.didiscordCanvas = canvas; // 19-call-ui.js mostra o canvas direto no lugar do <video>
+  track.duskyCanvas = canvas; // 19-call-ui.js mostra o canvas direto no lugar do <video>
   const entry = {
     identity: ev.identity, source: 'screen_share', canvas, g, gl, track, encoded: true, codec, codecId: ev.codec,
     decoder: null, needKey: true, configured: '', // configurado pra que tamanho (só no 1º quadro-chave)
@@ -908,7 +908,7 @@ async function sfuNativeSetMic(ctx, track) {
   const mic = { track, src: null, node: null, sink: null };
   ctx.mic = mic;
   const audioCtx = getAudioCtx();
-  const node = await createPcmBridgeNode(audioCtx, 'didiscord-pcm-tap', {
+  const node = await createPcmBridgeNode(audioCtx, 'dusky-pcm-tap', {
     numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit', outputChannelCount: [1],
   });
   if (sfu !== ctx || ctx.mic !== mic) {

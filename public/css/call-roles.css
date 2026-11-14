@@ -609,7 +609,7 @@ body.is-viewing-media { overflow: hidden; }
 .noise-status:empty { display: none; }
 .noise-status { color: var(--online); }
 
-/* prévia da própria tela pausada enquanto o didiscord está sem foco (ex: jogando) */
+/* prévia da própria tela pausada enquanto o dusky está sem foco (ex: jogando) */
 .call-screenshare-tile.is-preview-paused::after {
   content: 'prévia pausada enquanto você está em outra janela — os outros continuam vendo normal';
   position: absolute;

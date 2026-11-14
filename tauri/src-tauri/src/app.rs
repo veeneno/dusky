@@ -25,13 +25,13 @@ pub const BRIDGE_JS: &str = include_str!("bridge.js");
 pub fn bridge_script() -> String {
     #[allow(unused_mut)]
     let mut s = format!(
-        "window.__DIDISCORD_NATIVE_CALL__ = {};\nwindow.__DIDISCORD_LOCAL_ORIGIN__ = {};\n{BRIDGE_JS}",
+        "window.__DUSKY_NATIVE_CALL__ = {};\nwindow.__DUSKY_LOCAL_ORIGIN__ = {};\n{BRIDGE_JS}",
         cfg!(target_os = "linux"),
         serde_json::to_string(&local_base().origin().ascii_serialization()).unwrap()
     );
-    // só no modo debug: DIDISCORD_INJECT_JS=arquivo.js roda um script extra em toda página (testes)
+    // só no modo debug: DUSKY_INJECT_JS=arquivo.js roda um script extra em toda página (testes)
     #[cfg(debug_assertions)]
-    if let Some(extra) = std::env::var_os("DIDISCORD_INJECT_JS").and_then(|p| std::fs::read_to_string(p).ok()) {
+    if let Some(extra) = server::env_var("INJECT_JS").and_then(|p| std::fs::read_to_string(p).ok()) {
         s.push('\n');
         s.push_str(&extra);
     }
@@ -129,11 +129,11 @@ pub fn local_webview_url(path: &str) -> WebviewUrl {
     }
 }
 
-/// manda um evento pra página (cai no window.__didiscordEmit do bridge.js)
+/// manda um evento pra página (cai no window.__duskyEmit do bridge.js)
 pub fn emit_js(name: &str, payload: &impl Serialize) -> String {
     let name = serde_json::to_string(name).unwrap();
     let payload = serde_json::to_string(payload).unwrap_or_else(|_| "null".into());
-    format!("window.__didiscordEmit&&window.__didiscordEmit({name},{payload})")
+    format!("window.__duskyEmit&&window.__duskyEmit({name},{payload})")
 }
 
 pub fn emit_to_main(app: &AppHandle, name: &str, payload: &impl Serialize) {
@@ -142,7 +142,7 @@ pub fn emit_to_main(app: &AppHandle, name: &str, payload: &impl Serialize) {
     }
 }
 
-/// o pedido veio do site do didiscord, na janela principal?
+/// o pedido veio do site do dusky, na janela principal?
 pub fn require_site(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     let st = app.state::<AppState>();
     match webview.url() {
@@ -212,14 +212,14 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
     #[allow(unused_mut)]
     let mut builder = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("loading.html".into()))
-        .title("didiscord")
+        .title("dusky")
         .inner_size(1280.0, 800.0)
         .min_inner_size(940.0, 560.0)
         .background_color(tauri::window::Color(30, 31, 34, 255))
         .initialization_script(bridge_script())
         // a call não pode "dormir" com a janela minimizada ou escondida na bandeja
         .background_throttling(BackgroundThrottlingPolicy::Disabled)
-        // navegação: só as telas locais e o domínio do didiscord; o resto abre no navegador do sistema.
+        // navegação: só as telas locais e o domínio do dusky; o resto abre no navegador do sistema.
         // No Linux o WebKitGTK passa por aqui também a navegação dos iframes (embeds do YouTube etc.)
         // sem dizer se é a página ou um iframe, então lá só bloqueia o que não é web.
         .on_navigation(move |url| {
@@ -310,8 +310,8 @@ fn show_tray_hint_once(app: &AppHandle) {
     let _ = app
         .notification()
         .builder()
-        .title("didiscord continua aberto")
-        .body("Ele continua rodando na bandeja (calls, mensagens e sons seguem funcionando). Pra fechar de vez: botão direito no ícone → Sair do didiscord.")
+        .title("dusky continua aberto")
+        .body("Ele continua rodando na bandeja (calls, mensagens e sons seguem funcionando). Pra fechar de vez: botão direito no ícone → Sair do dusky.")
         .show();
 }
 
@@ -398,7 +398,7 @@ async fn shell_set_server(app: AppHandle, webview: Webview, input: String) -> Se
     }
     let st = app.state::<AppState>();
     let Some(url) = server::normalize_server_input(&input) else {
-        return SetServerResult { ok: false, error: Some("endereço inválido — cole algo como didiscord.veneno.space".into()) };
+        return SetServerResult { ok: false, error: Some("endereço inválido — cole algo como dusky.veneno.space".into()) };
     };
     if !server::site_is_up(&st.http, &url).await {
         return SetServerResult {
@@ -462,14 +462,17 @@ fn status_report(app: AppHandle, webview: Webview, status: String) {
 // ---------- ciclo de vida ----------
 
 pub fn run() {
-    let dev = std::env::var("DIDISCORD_DEV").as_deref() == Ok("1");
-    let env_url = std::env::var("DIDISCORD_URL")
-        .ok()
+    let dev = server::env_var("DEV").as_deref() == Some("1");
+    let env_url = server::env_var("URL")
         .or_else(|| dev.then(|| "http://localhost:3000".to_string()))
         .and_then(|u| server::normalize_server_input(&u));
 
+    let context = tauri::generate_context!();
+    // identifier novo = pasta de dados nova: traz o que estava na antiga antes de abrir qualquer coisa
+    server::migrate_legacy_dirs(&context.config().identifier);
+
     let app = tauri::Builder::default()
-        // abrir o didiscord de novo (atalho, menu de apps) com ele escondido: traz a janela de volta
+        // abrir o dusky de novo (atalho, menu de apps) com ele escondido: traz a janela de volta
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .plugin(
             tauri_plugin_window_state::Builder::default()
@@ -484,7 +487,7 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             let site = env_url.clone().unwrap_or_else(|| server::saved_server_or_default(&data_dir));
             let http = reqwest::Client::builder()
-                .user_agent(concat!("didiscord-desktop/", env!("CARGO_PKG_VERSION")))
+                .user_agent(concat!("dusky-desktop/", env!("CARGO_PKG_VERSION")))
                 .build()?;
             app.manage(AppState {
                 prefs: Mutex::new(server::load_prefs(&data_dir)),
@@ -579,8 +582,8 @@ pub fn run() {
             picker::picker_choose_audio,
             picker::picker_cancel,
         ])
-        .build(tauri::generate_context!())
-        .expect("falha ao iniciar o didiscord");
+        .build(context)
+        .expect("falha ao iniciar o dusky");
 
     app.run(|app, event| {
         if let RunEvent::Exit = event {

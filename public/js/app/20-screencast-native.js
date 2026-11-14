@@ -1,4 +1,4 @@
-// didiscord — Compartilhamento de tela pela placa de vídeo (app desktop)
+// dusky — Compartilhamento de tela pela placa de vídeo (app desktop)
 // Parte 20 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -12,7 +12,7 @@
 // ===================================================================
 // Pelo navegador, a tela é codificada no processador UMA VEZ POR PESSOA assistindo (a call é em
 // malha) — ~1 núcleo por pessoa em 1080p60, o que derrubava o fps dos jogos. No app desktop, o
-// ffmpeg captura e codifica uma vez só (NVENC/AMF/QSV/VA-API) e o auxiliar didiscord-screencast
+// ffmpeg captura e codifica uma vez só (NVENC/AMF/QSV/VA-API) e o auxiliar dusky-screencast
 // manda o mesmo vídeo pra cada um, numa conexão própria por pessoa (ver electron/screencast.js).
 //
 // Sinalização (pelo mesmo rtc_signal das calls):
@@ -20,7 +20,7 @@
 //   quem assiste → quem compartilha:  sc-answer, sc-cand-v
 // O áudio da tela continua pelo caminho de sempre (transceiver de áudio da tela em cada conexão).
 
-const nativeApi = () => (window.didiscordDesktop && window.didiscordDesktop.screencast) || null;
+const nativeApi = () => (window.duskyDesktop && window.duskyDesktop.screencast) || null;
 
 // a Metered manda cada servidor com "urls" em TEXTO ("turn:..."); o auxiliar (Pion) só aceita LISTA
 // e recusava o comando "start" inteiro ("invalid ICEServer") — o ffmpeg nem ligava e quem assistia
@@ -213,9 +213,9 @@ async function startNativeScreenShare({ fps, width, height, wantAudio }) {
 
   // o som da tela vai pelo caminho de sempre (o main.js já preparou a captura pra fonte escolhida)
   localScreenAudioTrack = null;
-  if (wantAudio && window.didiscordDesktop.getScreenAudioPlan) {
+  if (wantAudio && window.duskyDesktop.getScreenAudioPlan) {
     try {
-      const plan = await window.didiscordDesktop.getScreenAudioPlan();
+      const plan = await window.duskyDesktop.getScreenAudioPlan();
       if (plan && plan.mode === 'pcm') localScreenAudioTrack = await capturePcmAudioTrack(plan);
     } catch (err) {
       console.warn('[screencast] sem som da tela:', err);

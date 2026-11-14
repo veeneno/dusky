@@ -1072,32 +1072,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "didiscord"
-version = "0.6.0"
-dependencies = [
- "base64 0.22.1",
- "futures-util",
- "image",
- "jpeg-encoder",
- "livekit",
- "reqwest 0.13.5",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-window-state",
- "tokio",
- "url",
- "webkit2gtk",
- "x11rb",
- "xcap",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1303,6 +1277,32 @@ name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
+name = "dusky"
+version = "0.6.0"
+dependencies = [
+ "base64 0.22.1",
+ "futures-util",
+ "image",
+ "jpeg-encoder",
+ "livekit",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-window-state",
+ "tokio",
+ "url",
+ "webkit2gtk",
+ "x11rb",
+ "xcap",
+]
 
 [[package]]
 name = "dyn-clone"

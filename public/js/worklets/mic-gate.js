@@ -129,4 +129,4 @@ class MicGate extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('didiscord-mic-gate', MicGate);
+registerProcessor('dusky-mic-gate', MicGate);

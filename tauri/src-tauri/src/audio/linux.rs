@@ -5,7 +5,7 @@
 //! o app continua tocando normal, a captura é só uma cópia.
 //!
 //!   janela escolhida -> só os streams do processo dessa janela (e dos filhos dele)
-//!   tela inteira     -> todos os streams MENOS os do próprio didiscord (senão a voz da call voltaria em eco)
+//!   tela inteira     -> todos os streams MENOS os do próprio dusky (senão a voz da call voltaria em eco)
 //!
 //! Streams novos (app que abriu depois) são ligados por uma verificação a cada ~0,8 s.
 
@@ -27,7 +27,7 @@ const POLL_MS: u64 = 800;
 
 /// quais streams entram
 pub enum Plan {
-    /// tudo menos o didiscord (e os processos filhos dele, onde roda a página)
+    /// tudo menos o dusky (e os processos filhos dele, onde roda a página)
     AllButOwn { raw: bool },
     /// só a árvore de processos de quem é dono da janela
     PidTree { pid: u32, raw: bool },
@@ -149,7 +149,7 @@ fn ports_of(dump: &[Value], node_id: u64, direction: &str) -> Vec<Port> {
     v
 }
 
-/// apps tocando áudio agora (menos o próprio didiscord) — pro seletor do Wayland
+/// apps tocando áudio agora (menos o próprio dusky) — pro seletor do Wayland
 pub async fn list_audio_apps() -> AudioApps {
     if !has_pipewire().await {
         return AudioApps { available: false, apps: Vec::new() };
@@ -254,10 +254,10 @@ pub fn start(plan: Plan, app: AppHandle, on_end: Box<dyn FnOnce() + Send>) -> Re
         log::info("pw-record sem --raw: confere se vem no formato AU e converte se precisar");
     }
     let own = std::process::id();
-    let node_name = format!("didiscord-share-{own}");
+    let node_name = format!("dusky-share-{own}");
     let mut cmd = child_command("pw-record");
     cmd.arg("-P")
-        .arg(format!("{{ node.autoconnect = false, node.name = {node_name}, node.description = didiscord-share, node.dont-reconnect = true }}"));
+        .arg(format!("{{ node.autoconnect = false, node.name = {node_name}, node.description = dusky-share, node.dont-reconnect = true }}"));
     if raw {
         cmd.arg("--raw");
     }

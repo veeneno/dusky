@@ -1,4 +1,4 @@
-// didiscord — Caixa de mensagem: menções, emojis e "está digitando"
+// dusky — Caixa de mensagem: menções, emojis e "está digitando"
 // Parte 7 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -67,7 +67,7 @@ function decodeMentions(text, m) {
 function encodeShortcodes(text) {
   if (!getPref('prefShortcodes')) return text;
   return text.replace(/(^|[^\w`]):([a-z0-9_+-]{2,40}):/gi, (all, pre, name) => {
-    const e = DidiEmoji.fromShortcode(name);
+    const e = DuskyEmoji.fromShortcode(name);
     return e ? pre + e : all;
   });
 }
@@ -116,7 +116,7 @@ function updateMentionOrEmojiPopup() {
     return true;
   }
   const mine = ++emojiSearchToken;
-  DidiEmoji.search(token.query, 8).then((found) => {
+  DuskyEmoji.search(token.query, 8).then((found) => {
     if (mine !== emojiSearchToken) return;
     const still = tokenBeforeCaret();
     if (!still || still.kind !== 'emoji' || still.query !== token.query) return;

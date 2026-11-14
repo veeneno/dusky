@@ -1,6 +1,6 @@
 'use strict';
 // Ponte entre o site (que roda no domínio remoto) e o processo principal do Electron.
-// Expõe só `window.didiscordDesktop` — o site (public/js/app/) usa isso pro áudio da tela
+// Expõe `window.duskyDesktop` (e o nome antigo `window.didiscordDesktop`) — o site (public/js/app/) usa isso pro áudio da tela
 // compartilhada. Nada de Node/ipcRenderer vaza pra página.
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -29,7 +29,7 @@ ipcRenderer.on('screencast:event', (_event, ev) => {
   }
 });
 
-ipcRenderer.on('didiscord:pcm', (_event, bytes) => {
+ipcRenderer.on('dusky:pcm', (_event, bytes) => {
   if (!pcmListeners.size) return;
   const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   for (const listener of pcmListeners) {
@@ -37,14 +37,14 @@ ipcRenderer.on('didiscord:pcm', (_event, bytes) => {
   }
 });
 
-contextBridge.exposeInMainWorld('didiscordDesktop', {
+const desktopApi = {
   platform: process.platform,
 
   // contador de menções não lidas no ícone do app (e piscar na barra de tarefas quando chega uma)
-  setBadge: (count) => ipcRenderer.send('didiscord:badge', Number(count) || 0),
+  setBadge: (count) => ipcRenderer.send('dusky:badge', Number(count) || 0),
   // traz a janela pra frente (clique numa notificação)
-  focusWindow: () => ipcRenderer.send('didiscord:focus'),
-  checkForUpdates: () => ipcRenderer.invoke('didiscord:checkUpdates'),
+  focusWindow: () => ipcRenderer.send('dusky:focus'),
+  checkForUpdates: () => ipcRenderer.invoke('dusky:checkUpdates'),
 
   // status ativo/inativo: o site avisa o atual (pra bandeja mostrar) e a bandeja pede pra trocar
   status: {
@@ -76,7 +76,7 @@ contextBridge.exposeInMainWorld('didiscordDesktop', {
   // Depois do getDisplayMedia: como o áudio da tela vai ser obtido.
   //   { mode: 'none' }                                             sem áudio
   //   { mode: 'pcm', sampleRate, channels, isFloat, bitsPerSample } PCM chega por onPcmChunk
-  getScreenAudioPlan: () => ipcRenderer.invoke('didiscord:getScreenAudioPlan'),
+  getScreenAudioPlan: () => ipcRenderer.invoke('dusky:getScreenAudioPlan'),
 
   // Recebe os pedaços de PCM (Uint8Array, float32 intercalado). Devolve a função que cancela.
   onPcmChunk: (callback) => {
@@ -86,8 +86,8 @@ contextBridge.exposeInMainWorld('didiscordDesktop', {
   },
 
   // Encerram a captura de áudio da tela (as duas são seguras de chamar mais de uma vez).
-  stopAppAudioCapture: () => ipcRenderer.invoke('didiscord:stopScreenAudio'),
-  notifyScreenShareStopped: () => ipcRenderer.invoke('didiscord:stopScreenAudio'),
+  stopAppAudioCapture: () => ipcRenderer.invoke('dusky:stopScreenAudio'),
+  notifyScreenShareStopped: () => ipcRenderer.invoke('dusky:stopScreenAudio'),
 
   // Compartilhamento de tela pela placa de vídeo (codifica UMA vez e manda o mesmo vídeo pra cada
   // pessoa — ver electron/screencast.js). O site cuida de repassar a sinalização de cada pessoa.
@@ -107,7 +107,10 @@ contextBridge.exposeInMainWorld('didiscordDesktop', {
       return () => screencastListeners.delete(callback);
     },
   },
-});
+};
+// nome novo + o antigo (site e páginas de versões anteriores ainda procuram window.didiscordDesktop)
+contextBridge.exposeInMainWorld('duskyDesktop', desktopApi);
+contextBridge.exposeInMainWorld('didiscordDesktop', desktopApi);
 
 // Tela local de "conectando…" / escolher servidor (shell/loading.html, carregada do disco).
 // Só existe nela — o site remoto nunca vê isso (e o processo principal confere de onde veio o pedido).
@@ -118,7 +121,7 @@ if (location.protocol === 'file:') {
       try { listener(st); } catch (_) { /* idem */ }
     }
   });
-  contextBridge.exposeInMainWorld('didiscordShell', {
+  contextBridge.exposeInMainWorld('duskyShell', {
     // { phase: 'setup'|'change'|'connecting'|'loading', url, attempts, since, fixedByEnv }
     getStatus: () => ipcRenderer.invoke('shell:getStatus'),
     onStatus: (callback) => {

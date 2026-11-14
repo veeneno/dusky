@@ -7,10 +7,10 @@
 //          ||spoiler|| · [texto](https://link) · links soltos · <https://link> (sem prévia)
 //          <@id> menção · @everyone / @here · \* escapa qualquer símbolo
 //
-// window.DidiMarkdown.render(texto, ctx) -> DocumentFragment
+// window.DuskyMarkdown.render(texto, ctx) -> DocumentFragment
 //   ctx.resolveUser(id) -> { username } | null     ctx.meId     ctx.onMention(id, el)
-// window.DidiMarkdown.plain(texto, ctx) -> string  (pra notificação, resposta, prévia)
-// window.DidiMarkdown.links(texto) -> [url]          (links que ganham prévia)
+// window.DuskyMarkdown.plain(texto, ctx) -> string  (pra notificação, resposta, prévia)
+// window.DuskyMarkdown.links(texto) -> [url]          (links que ganham prévia)
 (function () {
   'use strict';
 
@@ -410,5 +410,5 @@
     return out;
   }
 
-  window.DidiMarkdown = { render, plain, links, isEmojiOnly };
+  window.DuskyMarkdown = { render, plain, links, isEmojiOnly };
 })();

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "didiscord",
+  "productName": "dusky",
   "version": "0.6.0",
-  "identifier": "fun.sambalele.didiscord",
+  "identifier": "fun.sambalele.dusky",
   "build": {
     "frontendDist": "../ui"
   },

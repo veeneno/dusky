@@ -1,4 +1,4 @@
-// didiscord — Áudio da call: microfone, supressão de ruído, sons e bot de música
+// dusky — Áudio da call: microfone, supressão de ruído, sons e bot de música
 // Parte 18 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -515,10 +515,10 @@ async function buildMicProcessingGraph(rawStream, gainValue, noiseMode) {
   const wantsLeveler = usesOwnLeveler();
   const [ns, limiterWorklet, gateWorklet, levelerWorklet] = await Promise.all([
     createNoiseSuppressorNode(ctx, noiseMode),
-    createMicWorklet(ctx, 'didiscord-mic-limiter', '/js/worklets/mic-limiter.js?v=1'),
-    createMicWorklet(ctx, 'didiscord-mic-gate', '/js/worklets/mic-gate.js?v=2', { numberOfInputs: 2 }),
+    createMicWorklet(ctx, 'dusky-mic-limiter', '/js/worklets/mic-limiter.js?v=2'),
+    createMicWorklet(ctx, 'dusky-mic-gate', '/js/worklets/mic-gate.js?v=3', { numberOfInputs: 2 }),
     wantsLeveler
-      ? createMicWorklet(ctx, 'didiscord-mic-leveler', '/js/worklets/mic-leveler.js?v=1', { processorOptions: { initialGainDb: lastLevelerGainDb } })
+      ? createMicWorklet(ctx, 'dusky-mic-leveler', '/js/worklets/mic-leveler.js?v=2', { processorOptions: { initialGainDb: lastLevelerGainDb } })
       : null,
   ]);
   if (wantsLeveler && !levelerWorklet) console.warn('[call] nivelador de volume indisponível — o microfone segue sem ajuste automático');

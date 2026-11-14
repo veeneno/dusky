@@ -1,4 +1,4 @@
-// didiscord — Servidores: barra, menu, convites, configurações e conversas diretas
+// dusky — Servidores: barra, menu, convites, configurações e conversas diretas
 // Parte 13 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -62,7 +62,7 @@ function setMainEmpty(title, text, actions = []) {
 function showHomeEmpty() {
   if (servers.length === 0) {
     setMainEmpty(
-      'bem-vindo ao didiscord',
+      'bem-vindo ao dusky',
       'Você ainda não está em nenhum servidor. Crie o seu ou entre com o link de convite que um amigo te mandou.',
       [
         { label: 'criar servidor', primary: true, onClick: () => openAddServerModal('create') },
@@ -77,7 +77,7 @@ function showHomeEmpty() {
     );
   } else {
     setMainEmpty('suas conversas', 'Escolha uma conversa na lateral pra continuar de onde parou.',
-      window.didiscordDesktop ? [] : [{ label: 'baixar o app pro computador', onClick: () => window.open('/baixar', '_blank') }]);
+      window.duskyDesktop ? [] : [{ label: 'baixar o app pro computador', onClick: () => window.open('/baixar', '_blank') }]);
   }
 }
 
@@ -111,11 +111,11 @@ function dmUnreadCount() {
 }
 
 function rememberLastChannel(serverId, channelId) {
-  try { localStorage.setItem(`didiscord:lastChannel:${serverId}`, String(channelId)); } catch (_) { /* sem storage, sem memória */ }
+  try { localStorage.setItem(`dusky:lastChannel:${serverId}`, String(channelId)); } catch (_) { /* sem storage, sem memória */ }
 }
 
 function lastChannelOf(serverId) {
-  try { return Number(localStorage.getItem(`didiscord:lastChannel:${serverId}`)) || null; } catch (_) { return null; }
+  try { return Number(localStorage.getItem(`dusky:lastChannel:${serverId}`)) || null; } catch (_) { return null; }
 }
 
 // ---------- barra de servidores ----------
@@ -211,7 +211,7 @@ async function selectServer(serverId, opts = {}) {
   closeServerMenu();
   closeViewProfile();
   currentServerId = serverId;
-  try { localStorage.setItem('didiscord:lastServer', serverId == null ? 'home' : String(serverId)); } catch (_) { /* ok */ }
+  try { localStorage.setItem('dusky:lastServer', serverId == null ? 'home' : String(serverId)); } catch (_) { /* ok */ }
   currentChannel = null;
   channels = [];
   channelCategories = [];

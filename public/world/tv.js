@@ -10,8 +10,8 @@ import * as THREE from '/vendor/three/0.170.0/three.module.min.js';
 import { CSS3DRenderer, CSS3DObject } from '/vendor/three/0.170.0/CSS3DRenderer.js';
 
 const PX = 1280; // largura "virtual" do elemento da TV (o CSS3D escala pro tamanho da tela)
-const TV_VOLUME_KEY = 'didiscord:worldTvVolume';
-const TV_MUTED_KEY = 'didiscord:worldTvMuted';
+const TV_VOLUME_KEY = 'dusky:worldTvVolume';
+const TV_MUTED_KEY = 'dusky:worldTvMuted';
 
 function loadPref(key, fallback) {
   try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch (_) { return fallback; }

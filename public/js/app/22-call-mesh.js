@@ -1,4 +1,4 @@
-// didiscord — Calls em malha (conexão direta) e qualidade do áudio
+// dusky — Calls em malha (conexão direta) e qualidade do áudio
 // Parte 22 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -584,7 +584,7 @@ async function setLocalVoiceDescription(peer, type) {
   } catch (err) {
     if (pc.signalingState !== (offer ? 'stable' : 'have-remote-offer')) throw err;
     // Se a preferência ou o remapeamento não funcionar nesta implementação, volta
-    // ao SDP compatível que o didiscord usava antes.
+    // ao SDP compatível que o dusky usava antes.
     if (peer.micRedCapable) peer.mic.setCodecPreferences([]);
     peer.micRedCapable = false;
     const desc = withStartBitrate(await create());

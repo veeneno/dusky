@@ -43,6 +43,6 @@ test('clique reutiliza aba aberta e manda a localização da mensagem',async()=>
 });
 test('Web Push gera requisição assinada e criptografada sem enviar para a rede',()=>{
   const webpush=require('web-push'),crypto=require('node:crypto');const ecdh=crypto.createECDH('prime256v1');ecdh.generateKeys();
-  const request=webpush.generateRequestDetails({endpoint:'https://fcm.googleapis.com/fcm/send/test',keys:{p256dh:ecdh.getPublicKey().toString('base64url'),auth:crypto.randomBytes(16).toString('base64url')}},JSON.stringify({messageId:20,userId:2}),{vapidDetails:{subject:'https://didiscord.veneno.space',...webpush.generateVAPIDKeys()},TTL:300});
+  const request=webpush.generateRequestDetails({endpoint:'https://fcm.googleapis.com/fcm/send/test',keys:{p256dh:ecdh.getPublicKey().toString('base64url'),auth:crypto.randomBytes(16).toString('base64url')}},JSON.stringify({messageId:20,userId:2}),{vapidDetails:{subject:'https://dusky.veneno.space',...webpush.generateVAPIDKeys()},TTL:300});
   assert.ok(request.headers.Authorization);assert.equal(request.headers['Content-Encoding'],'aes128gcm');assert.ok(request.body.length>0);
 });

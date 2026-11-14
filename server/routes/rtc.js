@@ -48,7 +48,7 @@ router.get('/ice-servers', requireAuth, async (req, res) => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expiryInSeconds: 3600, label: 'didiscord-shared' }),
+        body: JSON.stringify({ expiryInSeconds: 3600, label: 'dusky-shared' }),
       }
     );
     if (!credRes.ok) throw new Error(`credencial TURN: HTTP ${credRes.status}`);

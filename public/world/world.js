@@ -14,9 +14,9 @@
 // Convenções: ry = 0 olha pro +z, a frente de quem tem ry é (sin ry, cos ry). Estado de cada boneco:
 // { x, y, z, ry, action, seat } — y é a altura do PISO onde ele está (andar de baixo 0, mezanino 3.6).
 import * as THREE from '/vendor/three/0.170.0/three.module.min.js';
-import { createAvatar, AVATAR_HEAD_TOP } from './avatar.js?v=5';
-import { buildRoom, buildProps } from './props.js?v=5';
-import { createTv } from './tv.js?v=5';
+import { createAvatar, AVATAR_HEAD_TOP } from './avatar.js?v=6';
+import { buildRoom, buildProps } from './props.js?v=6';
+import { createTv } from './tv.js?v=6';
 
 const WALK_SPEED = 3.0;
 const RUN_SPEED = 5.4;
@@ -27,10 +27,10 @@ const CAM_MIN = 2.6;
 const CAM_MAX = 14;
 const EYE_STANDING = 1.28;
 const EYE_SITTING = 0.98;
-const CAMERA_PREF_KEY = 'didiscord:worldCamera';
-const HINT_PREF_KEY = 'didiscord:worldHintSeen';
-const CROSSHAIR_PREF_KEY = 'didiscord:worldCrosshair';
-const ASSET_V = 5; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
+const CAMERA_PREF_KEY = 'dusky:worldCamera';
+const HINT_PREF_KEY = 'dusky:worldHintSeen';
+const CROSSHAIR_PREF_KEY = 'dusky:worldCrosshair';
+const ASSET_V = 6; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
 
 function lerpAngle(a, b, k) {
   const d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;

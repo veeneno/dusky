@@ -1,5 +1,5 @@
 {
-  "name": "didiscord",
+  "name": "dusky",
   "version": "0.1.0",
   "description": "Discord privado pra dois",
   "main": "server/index.js",

@@ -1,4 +1,4 @@
-// didiscord — Player de vídeo próprio
+// dusky — Player de vídeo próprio
 // Parte 10 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -14,7 +14,7 @@
 // lembrado, velocidade, tela cheia e abrir no visualizador. No chat, passar o mouse toca uma
 // prévia sem som (dá pra desligar em configurações → chat).
 
-const VIDEO_VOLUME_KEY = 'didiscord:videoVolume';
+const VIDEO_VOLUME_KEY = 'dusky:videoVolume';
 const VIDEO_SPEEDS = [1, 1.25, 1.5, 2, 0.5, 0.75];
 const VP_ICONS = {
   play: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',

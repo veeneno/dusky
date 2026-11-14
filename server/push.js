@@ -35,7 +35,7 @@ async function notifyMessage(message) {
     try {
       await transport.send(JSON.parse(sub.subscription), JSON.stringify({ messageId: message.id, userId: sub.user_id }), {
         TTL: 300, timeout: 10000,
-        vapidDetails: { subject: process.env.WEB_PUSH_SUBJECT || 'https://didiscord.veneno.space', ...vapid },
+        vapidDetails: { subject: process.env.WEB_PUSH_SUBJECT || 'https://dusky.veneno.space', ...vapid },
       });
     } catch (err) {
       if ([404, 410].includes(err.statusCode)) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND subscription = ?').run(sub.endpoint, sub.subscription);

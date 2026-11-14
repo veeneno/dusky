@@ -2,17 +2,17 @@
 // Os dados (~1900 emojis, nomes em português) vêm de /vendor/emoji/emoji-data.js, carregado só na
 // primeira vez que alguém abre o seletor ou digita ":".
 //
-// DidiEmoji.open({ anchor, onPick, placement })   abre o seletor perto de `anchor`
-// DidiEmoji.close()
-// DidiEmoji.search(texto, limite) -> Promise<[{ emoji, name, codes }]>
-// DidiEmoji.fromShortcode(nome) -> emoji | null    (só depois de carregado)
-// DidiEmoji.load() -> Promise
+// DuskyEmoji.open({ anchor, onPick, placement })   abre o seletor perto de `anchor`
+// DuskyEmoji.close()
+// DuskyEmoji.search(texto, limite) -> Promise<[{ emoji, name, codes }]>
+// DuskyEmoji.fromShortcode(nome) -> emoji | null    (só depois de carregado)
+// DuskyEmoji.load() -> Promise
 (function () {
   'use strict';
 
-  const DATA_URL = '/vendor/emoji/emoji-data.js?v=18';
-  const RECENT_KEY = 'didiscord:recentEmojis';
-  const TONE_KEY = 'didiscord:emojiTone';
+  const DATA_URL = '/vendor/emoji/emoji-data.js?v=19';
+  const RECENT_KEY = 'dusky:recentEmojis';
+  const TONE_KEY = 'dusky:emojiTone';
   const RECENT_MAX = 27;
   const TONES = ['', '🏻', '🏼', '🏽', '🏾', '🏿'];
   const TONE_SWATCH = ['✋', '✋🏻', '✋🏼', '✋🏽', '✋🏾', '✋🏿'];
@@ -28,7 +28,7 @@
       const s = document.createElement('script');
       s.src = DATA_URL;
       s.onload = () => {
-        data = window.DIDI_EMOJI;
+        data = window.DUSKY_EMOJI || window.DIDI_EMOJI; // nome antigo (arquivo velho no cache)
         for (const e of data.list) for (const c of (e[5] || '').split(' ')) if (c && !byCode.has(c)) byCode.set(c, e);
         resolve(data);
       };
@@ -286,5 +286,5 @@
 
   function isOpen() { return !!root && !root.hidden; }
 
-  window.DidiEmoji = { open, close, isOpen, search, fromShortcode, load };
+  window.DuskyEmoji = { open, close, isOpen, search, fromShortcode, load };
 })();

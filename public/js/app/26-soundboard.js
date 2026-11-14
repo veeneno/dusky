@@ -1,4 +1,4 @@
-// didiscord — Soundboard: tocar sons na call, seletor e editor de som
+// dusky — Soundboard: tocar sons na call, seletor e editor de som
 // Parte 26 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -14,7 +14,7 @@
 // de áudio dos sons (getSfxCtx, 18-call-audio.js), com o volume do soundboard de cada um. O som
 // não passa pela call — funciona igual em malha e com o servidor de mídia.
 
-const SOUNDBOARD_VOLUME_KEY = 'didiscord:soundboardVolume';
+const SOUNDBOARD_VOLUME_KEY = 'dusky:soundboardVolume';
 const SOUNDBOARD_COOLDOWN_MS = 1500; // igual ao do servidor
 const soundboardPopup = document.getElementById('soundboardPopup');
 const soundboardBody = document.getElementById('soundboardBody');
@@ -460,7 +460,7 @@ soundEditorVolume.addEventListener('input', () => {
   document.getElementById('soundEditorVolumeValue').textContent = `${soundEditorVolume.value}%`;
 });
 soundEditorEmojiBtn.addEventListener('click', () => {
-  DidiEmoji.open({ anchor: soundEditorEmojiBtn, onPick: (emoji) => {
+  DuskyEmoji.open({ anchor: soundEditorEmojiBtn, onPick: (emoji) => {
     if (!soundEditor) return;
     soundEditor.emoji = emoji;
     soundEditorEmojiBtn.textContent = emoji;

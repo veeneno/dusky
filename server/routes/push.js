@@ -41,7 +41,7 @@ router.get('/message/:id', (req, res) => {
     const mentioned = names.get(Number(id));
     return mentioned ? '@' + mentioned.username : '@alguém';
   }).replace(/\s+/g, ' ').trim();
-  const author = message.username || message.bot_name || 'didiscord'; // mensagem de bot não tem usuário
+  const author = message.username || message.bot_name || 'dusky'; // mensagem de bot não tem usuário
   res.json({ title: author + (message.server_id == null ? ' · mensagem direta' : ' · #' + message.channel_name),
     body: (content || (message.attachment_url ? 'enviou um anexo' : 'nova mensagem')).slice(0, 220),
     channelId: message.channel_id, serverId: message.server_id, messageId: message.id, userId: req.user.id });

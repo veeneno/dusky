@@ -1,6 +1,6 @@
 'use strict';
 // `npm run release`: depois do electron-builder gerar os instaladores em electron/dist/, copia a
-// versão nova pra pasta downloads/ do servidor (servida em https://didiscord.veneno.space/downloads/).
+// versão nova pra pasta downloads/ do servidor (servida em https://dusky.veneno.space/downloads/).
 // Dali saem a página de instalação (/baixar) e a atualização automática do app.
 //
 // Mantém só a versão nova e a anterior (a anterior serve pra atualização baixar só a diferença).

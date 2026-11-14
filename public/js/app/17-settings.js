@@ -1,4 +1,4 @@
-// didiscord — Carregamento inicial e tela de configurações
+// dusky — Carregamento inicial e tela de configurações
 // Parte 17 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -314,7 +314,7 @@ function refreshVoiceSettings() {
 
 // ---- abas das configurações ----
 // o microfone/câmera só ligam nas abas que mostram o medidor ou a prévia (voz e câmera)
-const SETTINGS_TAB_KEY = 'didiscord:settingsTab';
+const SETTINGS_TAB_KEY = 'dusky:settingsTab';
 let settingsEditorMounted = false;
 let currentSettingsTab = null;
 
@@ -331,7 +331,7 @@ function switchSettingsTab(tabName) {
   settingsModalBackdrop.querySelector('.settings-content').scrollTop = 0;
   if (tabName === 'aparencia' && !settingsEditorMounted) {
     settingsEditorMounted = true;
-    DidiTheme.mountEditor(document.getElementById('themeEditor'), { toast });
+    DuskyTheme.mountEditor(document.getElementById('themeEditor'), { toast });
   }
   if (tabName === 'app') renderSettingsAppCard();
   if (!settingsModalBackdrop.hidden) {
@@ -378,9 +378,9 @@ function syncPrefControls() {
 const SITE_VERSION = '0.6.4';
 function renderSettingsAppCard() {
   const card = document.getElementById('settingsAppCard');
-  const desk = window.didiscordDesktop;
+  const desk = window.duskyDesktop;
   card.innerHTML = '<span class="settings-card-icon"><svg width="26" height="13" viewBox="0 0 56 28"><path d="M 10 14 C 20 2, 36 26, 46 14" stroke="currentColor" stroke-width="2.5" fill="none" opacity="0.6"/><circle cx="10" cy="14" r="6" fill="currentColor"/><circle cx="46" cy="14" r="6" fill="currentColor"/></svg></span><span class="settings-card-text"><strong></strong><span></span></span>';
-  card.querySelector('strong').textContent = desk ? 'app desktop do didiscord' : 'didiscord no navegador';
+  card.querySelector('strong').textContent = desk ? 'app desktop do dusky' : 'dusky no navegador';
   card.querySelector('.settings-card-text span').textContent = desk
     ? `site ${SITE_VERSION} · ${desk.platform === 'win32' ? 'Windows' : desk.platform === 'linux' ? 'Linux' : desk.platform}`
     : `site ${SITE_VERSION} · instale o app pra compartilhar tela pela placa de vídeo e receber atualizações sozinho`;
@@ -389,7 +389,7 @@ function renderSettingsAppCard() {
   document.getElementById('settingsDownloadBtn').textContent = desk ? 'página de download' : 'baixar o app';
 }
 document.getElementById('settingsCheckUpdatesBtn').addEventListener('click', () => {
-  if (window.didiscordDesktop && window.didiscordDesktop.checkForUpdates) window.didiscordDesktop.checkForUpdates();
+  if (window.duskyDesktop && window.duskyDesktop.checkForUpdates) window.duskyDesktop.checkForUpdates();
 });
 
 async function openSettingsModal(tab) {

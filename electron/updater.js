@@ -1,5 +1,5 @@
 'use strict';
-// Atualização automática do app desktop. As versões novas ficam no próprio servidor do didiscord,
+// Atualização automática do app desktop. As versões novas ficam no próprio servidor do dusky,
 // em <servidor>/downloads/ (o `npm run release` da pasta electron/ gera e copia pra lá). O app
 // confere ao abrir e a cada 3 horas; quando acha, baixa em segundo plano e, terminando, pergunta
 // se quer reiniciar agora (se não, instala sozinho ao fechar).
@@ -32,7 +32,7 @@ function createUpdater({ log, getWindow, getSiteUrl, onQuitForUpdate }) {
     autoUpdater.allowDowngrade = false;
 
     autoUpdater.on('update-not-available', () => {
-      if (manualCheck) dialog.showMessageBox(getWindow() || undefined, { type: 'info', message: 'O didiscord já está na versão mais nova.', detail: `versão ${app.getVersion()}` });
+      if (manualCheck) dialog.showMessageBox(getWindow() || undefined, { type: 'info', message: 'O dusky já está na versão mais nova.', detail: `versão ${app.getVersion()}` });
       manualCheck = false;
     });
     autoUpdater.on('update-available', (info) => {
@@ -54,8 +54,8 @@ function createUpdater({ log, getWindow, getSiteUrl, onQuitForUpdate }) {
         buttons: ['Reiniciar agora', 'Depois'],
         defaultId: 0,
         cancelId: 1,
-        title: 'didiscord',
-        message: `A versão ${info.version} do didiscord está pronta.`,
+        title: 'dusky',
+        message: `A versão ${info.version} do dusky está pronta.`,
         detail: 'Reinicia agora pra usar, ou ela é instalada sozinha quando você sair do app (ícone da bandeja → Sair).',
       });
       if (response === 0) {
@@ -66,7 +66,7 @@ function createUpdater({ log, getWindow, getSiteUrl, onQuitForUpdate }) {
     return autoUpdater;
   }
 
-  // o endereço das atualizações acompanha o servidor escolhido (didiscord.veneno.space, ou outro)
+  // o endereço das atualizações acompanha o servidor escolhido (dusky.veneno.space, ou outro)
   function feedUrl() {
     const site = getSiteUrl();
     if (!site || !/^https?:/.test(site)) return null;

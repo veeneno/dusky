@@ -8,7 +8,7 @@
 // uma cópia. O PCM sai pelo stdout (float32 intercalado, 48 kHz, estéreo) e vai pro site pelo IPC.
 //
 //   janela escolhida -> só os streams de áudio do processo dessa janela (e dos filhos dele)
-//   tela inteira     -> todos os streams, MENOS os do próprio didiscord (senão a voz de quem está
+//   tela inteira     -> todos os streams, MENOS os do próprio dusky (senão a voz de quem está
 //                       na call voltaria pra ele mesmo, em eco)
 //
 // Streams novos (app que abriu depois) são ligados por um laço de verificação a cada ~0,8 s.
@@ -138,7 +138,7 @@ function appKeyOf(p) {
   return String(p['application.process.binary'] || p['application.name'] || '').trim();
 }
 
-// apps tocando áudio agora (menos o próprio didiscord) — pro seletor do Wayland, onde não dá pra
+// apps tocando áudio agora (menos o próprio dusky) — pro seletor do Wayland, onde não dá pra
 // descobrir de quem é a janela escolhida e a pessoa escolhe o app do som numa lista
 async function listAudioApps(ownPid) {
   if (!(await hasPipeWire())) return { available: false, apps: [] };
@@ -166,7 +166,7 @@ async function listAudioApps(ownPid) {
 // capturar áudio (sem PipeWire, ou janela de um app que não conseguimos identificar).
 //
 // audioChoice (Wayland): a pessoa escolheu o som à parte, no nosso seletor —
-//   { mode: 'system' }               todo o som do PC menos o didiscord
+//   { mode: 'system' }               todo o som do PC menos o dusky
 //   { mode: 'app', appKey }          só os streams desse app (inclusive os que começarem depois)
 //   { mode: 'none' }                 sem som
 async function prepare({ source, ownPid, log, audioChoice }) {
@@ -203,9 +203,9 @@ async function prepare({ source, ownPid, log, audioChoice }) {
 
 function startCapture({ accepts, onChunk, onEnd, log, raw }) {
   if (!raw) log('pw-record sem --raw: convertendo o formato AU na mão');
-  const nodeName = `didiscord-share-${process.pid}`;
+  const nodeName = `dusky-share-${process.pid}`;
   const rec = spawn('pw-record', [
-    '-P', `{ node.autoconnect = false, node.name = ${nodeName}, node.description = didiscord-share, node.dont-reconnect = true }`,
+    '-P', `{ node.autoconnect = false, node.name = ${nodeName}, node.description = dusky-share, node.dont-reconnect = true }`,
     ...(raw ? ['--raw'] : []),
     '--format', 'f32', '--rate', '48000', '--channels', '2', '--latency', '20ms', '-',
   ], { env: pwEnv(), stdio: ['ignore', 'pipe', 'pipe'] });

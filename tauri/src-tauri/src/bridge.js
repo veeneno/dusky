@@ -1,21 +1,21 @@
 // Ponte entre as páginas e o processo em Rust (o equivalente do electron/preload.js).
 // Roda no começo de TODA página da janela (initialization_script) e decide o que expor pelo endereço:
-//   site do didiscord  -> window.didiscordDesktop   (mesma API do app Electron)
-//   ui/loading.html    -> window.didiscordShell
+//   site do dusky  -> window.duskyDesktop   (mesma API do app Electron)
+//   ui/loading.html    -> window.duskyShell
 //   ui/picker.html     -> window.pickerApi
 // O Rust confere de novo de onde veio cada pedido (o site só chama o que é do site, etc).
 (function () {
   'use strict';
-  if (window.__didiscordBridge) return;
-  window.__didiscordBridge = true;
+  if (window.__duskyBridge) return;
+  window.__duskyBridge = true;
 
   const T = window.__TAURI_INTERNALS__;
   if (!T || typeof T.invoke !== 'function') return;
   const invoke = (cmd, args) => T.invoke(cmd, args || {});
   // "manda e esquece" (o Electron usava ipcRenderer.send): erro não vira unhandledrejection
-  const fire = (cmd, args) => { invoke(cmd, args).catch((err) => console.warn('[didiscord]', cmd, err)); };
+  const fire = (cmd, args) => { invoke(cmd, args).catch((err) => console.warn('[dusky]', cmd, err)); };
 
-  // eventos que o Rust manda com webview.eval("window.__didiscordEmit(nome, dados)")
+  // eventos que o Rust manda com webview.eval("window.__duskyEmit(nome, dados)")
   const listeners = new Map(); // nome -> Set<função>
   function on(name, callback) {
     if (typeof callback !== 'function') return () => {};
@@ -23,12 +23,12 @@
     listeners.get(name).add(callback);
     return () => listeners.get(name).delete(callback);
   }
-  Object.defineProperty(window, '__didiscordEmit', {
+  Object.defineProperty(window, '__duskyEmit', {
     value: (name, payload) => {
       const set = listeners.get(name);
       if (!set || !set.size) return;
       for (const fn of [...set]) {
-        try { fn(payload); } catch (err) { console.error('[didiscord]', name, err); }
+        try { fn(payload); } catch (err) { console.error('[dusky]', name, err); }
       }
     },
     writable: false,
@@ -36,9 +36,9 @@
   });
 
   // páginas do próprio app (ui/): tauri://localhost, http://tauri.localhost ou, no npm run dev, o
-  // servidor de desenvolvimento do Tauri (o Rust diz qual em __DIDISCORD_LOCAL_ORIGIN__)
+  // servidor de desenvolvimento do Tauri (o Rust diz qual em __DUSKY_LOCAL_ORIGIN__)
   const isLocal = location.protocol === 'tauri:' || location.hostname === 'tauri.localhost'
-    || (!!window.__DIDISCORD_LOCAL_ORIGIN__ && location.origin === window.__DIDISCORD_LOCAL_ORIGIN__);
+    || (!!window.__DUSKY_LOCAL_ORIGIN__ && location.origin === window.__DUSKY_LOCAL_ORIGIN__);
   const platform = navigator.userAgent.includes('Windows') ? 'win32' : 'linux';
 
   if (isLocal && location.pathname.endsWith('/picker.html')) {
@@ -54,7 +54,7 @@
   }
 
   if (isLocal) {
-    window.didiscordShell = {
+    window.duskyShell = {
       getStatus: () => invoke('shell_get_status'),
       onStatus: (cb) => on('shell:status', cb),
       setServer: (input) => invoke('shell_set_server', { input: String(input || '') }),
@@ -63,7 +63,7 @@
     return;
   }
 
-  // ---------- site do didiscord ----------
+  // ---------- site do dusky ----------
 
   // PCM do áudio da tela chega em base64 (pedaços de ~20-40 ms); vira Uint8Array aqui
   function b64ToBytes(b64) {
@@ -81,7 +81,7 @@
     }
   });
 
-  window.didiscordDesktop = {
+  window.duskyDesktop = {
     platform,
     shell: 'tauri',
 
@@ -111,10 +111,13 @@
     },
   };
 
+  // nome antigo: páginas de antes do "dusky" procuravam window.didiscordDesktop
+  window.didiscordDesktop = window.duskyDesktop;
+
   // Linux: a call pelo servidor de mídia vai pelo Rust (o WebKitGTK não tem RTCPeerConnection).
   // O site (21-call-sfu.js) usa isto no lugar do LiveKit do navegador quando existe.
-  if (window.__DIDISCORD_NATIVE_CALL__) {
-    window.didiscordDesktop.call = {
+  if (window.__DUSKY_NATIVE_CALL__) {
+    window.duskyDesktop.call = {
       // { path, token, micBitrate } -> { ok, reason? }
       join: (opts) => invoke('call_join', { opts: opts || {} }),
       leave: () => { fire('call_leave'); },

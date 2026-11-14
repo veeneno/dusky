@@ -1,4 +1,4 @@
-// didiscord — Tela da call: atalhos, participantes, telas compartilhadas e estatísticas
+// dusky — Tela da call: atalhos, participantes, telas compartilhadas e estatísticas
 // Parte 19 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -7,7 +7,7 @@
 // Neste arquivo:
 //   - atalhos da call na barra lateral: supressão de ruído e compartilhar tela
 //   - telas compartilhadas
-//   - prévia da MINHA tela só roda com o didiscord em foco
+//   - prévia da MINHA tela só roda com o dusky em foco
 //   - estatísticas REAIS da transmissão de tela (resolução, fps, bitrate medidos pelo WebRTC)
 
 // ---------- atalhos da call na barra lateral: supressão de ruído e compartilhar tela ----------
@@ -93,7 +93,7 @@ function openNoisePopup() {
     }
     if (micLevelerSelect) {
       quickMirrorSelect(el, 'volume automático', micLevelerSelect, getSavedMicLeveler(),
-        { browser: 'do navegador (padrão)', own: 'do didiscord (novo)' });
+        { browser: 'do navegador (padrão)', own: 'do dusky (novo)' });
     }
     // mesmo aviso das configurações ("aplicando…", "ativa nesta call: …")
     const status = document.createElement('div');
@@ -199,7 +199,7 @@ function botPseudoUser() {
   const b = bots.find((x) => x.id === 'musicbot');
   return {
     id: BOT_USER_ID,
-    username: b ? b.name : 'DJ didiscord',
+    username: b ? b.name : 'DJ dusky',
     avatar_url: b ? b.avatar_url : null,
     accent_color: '#A855F7', // mesmo roxo usado nos embeds do bot (server/bots/musicBot/embeds.js)
   };
@@ -462,7 +462,7 @@ function renderScreenShareArea() {
     // app do Linux: a tela já vem desenhada num canvas (21-call-sfu.js, sfuNativeAddEncodedVideo) —
     // mostra o próprio canvas, sem passar pelo <video> (menos processador e um quadro a menos de
     // atraso); o <video> fica escondido, só tocando o som da tela
-    const nativeCanvas = t.kind === 'remote' ? (t.stream.getVideoTracks()[0] || {}).didiscordCanvas : null;
+    const nativeCanvas = t.kind === 'remote' ? (t.stream.getVideoTracks()[0] || {}).duskyCanvas : null;
     video.srcObject = nativeCanvas ? new MediaStream(t.stream.getAudioTracks()) : t.stream;
     if (nativeCanvas) {
       video.style.display = 'none';
@@ -525,7 +525,7 @@ function renderScreenShareArea() {
   updateOwnPreviewPlayback();
 }
 
-// ---------- prévia da MINHA tela só roda com o didiscord em foco ----------
+// ---------- prévia da MINHA tela só roda com o dusky em foco ----------
 // desenhar a própria tela em tamanho grande, a cada quadro, custa processador/placa de vídeo — e
 // enquanto a pessoa está no jogo ninguém está olhando essa prévia. No X11 o sistema nem avisa o
 // app que a janela está coberta, então ela continuava sendo desenhada atrás do jogo. Pausar a

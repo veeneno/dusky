@@ -2,7 +2,7 @@
 //!
 //! Linux (X11): RandR pros monitores, _NET_CLIENT_LIST pras janelas, GetImage pras miniaturas.
 //! Wayland não deixa nenhum app listar nada — lá o seletor do sistema (portal) é aberto pelo auxiliar
-//! didiscord-screencast e este módulo nem é usado.
+//! dusky-screencast e este módulo nem é usado.
 //! Windows: crate xcap (lista e captura uma imagem de cada).
 
 use base64::Engine;
@@ -182,7 +182,7 @@ mod platform {
             }
             let pid = prop_u32s(&conn, win, net_wm_pid).first().copied();
             if pid == Some(own_pid) {
-                continue; // o próprio didiscord (inclusive o seletor)
+                continue; // o próprio dusky (inclusive o seletor)
             }
             let title = prop_bytes(&conn, win, net_wm_name, utf8)
                 .or_else(|| prop_bytes(&conn, win, AtomEnum::WM_NAME.into(), AtomEnum::STRING.into()))

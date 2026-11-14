@@ -1,4 +1,4 @@
-// didiscord — Menu de comandos ("/") e envio de mensagem
+// dusky — Menu de comandos ("/") e envio de mensagem
 // Parte 11 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -38,7 +38,7 @@ let playSearchQuery = '';
 
 function botIdentity() {
   const b = bots.find((x) => x.id === 'musicbot');
-  return { name: b ? b.name : 'DJ didiscord', avatar: b ? b.avatar_url : null };
+  return { name: b ? b.name : 'DJ dusky', avatar: b ? b.avatar_url : null };
 }
 
 function hideCommandPopup() {
@@ -283,7 +283,7 @@ chatInput.addEventListener('keydown', (e) => {
 const emojiBtn = document.getElementById('emojiBtn');
 if (emojiBtn) {
   emojiBtn.addEventListener('click', () => {
-    DidiEmoji.open({
+    DuskyEmoji.open({
       anchor: emojiBtn,
       onPick: (emoji) => {
         const start = chatInput.selectionStart ?? chatInput.value.length;

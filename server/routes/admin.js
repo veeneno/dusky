@@ -41,7 +41,7 @@ function dirSizeMB(dir) {
 router.get('/overview', (req, res) => {
   const count = (sql) => db.prepare(sql).get().c;
   const occupancy = realtime.voiceOccupancyAll();
-  const dbFile = path.join(__dirname, '..', 'db', 'didiscord.db');
+  const dbFile = db.DB_PATH;
   let dbMB = 0;
   for (const f of [dbFile, dbFile + '-wal']) { try { dbMB += fs.statSync(f).size / 1024 / 1024; } catch (_) { /* ok */ } }
   res.json({

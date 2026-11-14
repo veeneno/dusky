@@ -1,6 +1,6 @@
 // Modo "watch": assistir a tela dos outros SEM decodificar (app desktop no Linux).
 //
-//	didiscord-screencast watch
+//	dusky-screencast watch
 //
 // O WebKitGTK (motor do app Tauri no Linux) não tem WebRTC, e o SDK do LiveKit em Rust sempre
 // decodifica o vídeo que chega. Aqui o Pion entrega o vídeo ainda comprimido (H.264/VP8/VP9/AV1):

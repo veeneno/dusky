@@ -1,4 +1,4 @@
-// didiscord — Barra lateral: canais, conversas diretas e criar canal
+// dusky — Barra lateral: canais, conversas diretas e criar canal
 // Parte 4 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -41,7 +41,7 @@ function renderChannels() {
     labelRow.className = 'channel-group-label';
     const heading = document.createElement('button');
     heading.type = 'button'; heading.className = 'category-heading';
-    const collapseKey = `didiscord:category:${currentServerId}:${group.id || group.type}`;
+    const collapseKey = `dusky:category:${currentServerId}:${group.id || group.type}`;
     let collapsed = false; try { collapsed = localStorage.getItem(collapseKey) === '1'; } catch (_) {}
     const updateCollapse = () => {
       heading.textContent = (collapsed ? '▸ ' : '▾ ') + group.label;

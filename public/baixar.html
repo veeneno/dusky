@@ -2,11 +2,12 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <script src="/js/themes.js?v=21"></script>
-  <script>DidiTheme.boot();</script>
+  <script src="/js/compat.js?v=1"></script>
+  <script src="/js/themes.js?v=22"></script>
+  <script>DuskyTheme.boot();</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>baixar o didiscord</title>
-  <meta name="description" content="App do didiscord pra Windows e Linux">
+  <title>baixar o dusky</title>
+  <meta name="description" content="App do dusky pra Windows e Linux">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/theme.css?v=20">
@@ -64,7 +65,7 @@
           <circle cx="46" cy="14" r="6"></circle>
         </svg>
       </div>
-      <h1 class="display">baixar o didiscord</h1>
+      <h1 class="display">baixar o dusky</h1>
       <p class="dl-lead">O app pro computador: compartilha a tela pela placa de vídeo (sem pesar no jogo), pega o som de um app só, avisa quando te chamam e se atualiza sozinho.</p>
 
       <section class="dl-main card" id="dlMain">
@@ -85,7 +86,7 @@
           <ol>
             <li>Baixa o instalador e abre.</li>
             <li>Se aparecer <strong>"O Windows protegeu o computador"</strong>, clica em <strong>Mais informações</strong> e depois em <strong>Executar assim mesmo</strong> — o aviso aparece porque o app não tem assinatura paga da Microsoft.</li>
-            <li>Escolhe onde instalar e pronto: o didiscord abre direto no servidor.</li>
+            <li>Escolhe onde instalar e pronto: o dusky abre direto no servidor.</li>
           </ol>
           <p class="dl-note">As próximas versões chegam sozinhas: o app baixa em segundo plano e pergunta se quer reiniciar.</p>
         </div>
@@ -93,8 +94,8 @@
         <div class="dl-panel" data-panel="appimage" hidden>
           <ol>
             <li>Baixa o arquivo <code>.AppImage</code>.</li>
-            <li>Deixa ele executável: botão direito → Propriedades → "permitir executar", ou no terminal: <code id="chmodCmd">chmod +x didiscord-*.AppImage</code></li>
-            <li>Abre com dois cliques (ou <code>./didiscord-*.AppImage</code>). Pra ele aparecer no menu de apps, dá pra usar o <strong>Gear Lever</strong> ou o <strong>AppImageLauncher</strong>.</li>
+            <li>Deixa ele executável: botão direito → Propriedades → "permitir executar", ou no terminal: <code id="chmodCmd">chmod +x dusky-*.AppImage</code></li>
+            <li>Abre com dois cliques (ou <code>./dusky-*.AppImage</code>). Pra ele aparecer no menu de apps, dá pra usar o <strong>Gear Lever</strong> ou o <strong>AppImageLauncher</strong>.</li>
           </ol>
           <p class="dl-note">É o jeito recomendado no Linux: se atualiza sozinho, sem pedir senha.<br>
             Compartilhar a tela pela placa no <strong>Wayland</strong> (Hyprland, GNOME, KDE) precisa do GStreamer:<br>
@@ -105,14 +106,14 @@
         <div class="dl-panel" data-panel="deb" hidden>
           <ol>
             <li>Baixa o arquivo <code>.deb</code>.</li>
-            <li>Instala pelo terminal: <code id="debCmd">sudo apt install ./didiscord-*.deb</code></li>
-            <li>O didiscord aparece no menu de apps.</li>
+            <li>Instala pelo terminal: <code id="debCmd">sudo apt install ./dusky-*.deb</code></li>
+            <li>O dusky aparece no menu de apps.</li>
           </ol>
           <p class="dl-note">Também se atualiza sozinho, mas pede a senha de administrador a cada versão nova. Sem esse incômodo, use o AppImage.</p>
         </div>
       </section>
 
-      <p class="dl-foot">Prefere não instalar nada? Dá pra usar direto no navegador: <a href="/">entrar no didiscord</a>.<br>
+      <p class="dl-foot">Prefere não instalar nada? Dá pra usar direto no navegador: <a href="/">entrar no dusky</a>.<br>
         No celular, use pelo navegador mesmo.</p>
     </main>
   </div>

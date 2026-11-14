@@ -15,7 +15,7 @@ Depois (fora do escopo da primeira etapa): **atividades/jogos** nas mesas — xa
 um jogo de cartas tipo Uno (com nome/visual próprios), truco, etc. — e uma **TV** que mostra a tela
 compartilhada. Ver "Próximas etapas".
 
-## Regra de ouro: não pesar o didiscord
+## Regra de ouro: não pesar o dusky
 
 - Nada do 3D é baixado por quem não entra num mundo. O Three.js (`public/vendor/three/0.170.0/`) e
   o código do mundo (`public/world/`) só são carregados com `import()` dinâmico quando a pessoa abre
@@ -24,7 +24,7 @@ compartilhada. Ver "Próximas etapas".
   como o resto do site — por isso os imports internos de `public/world/` levam `?v=N` (suba junto
   com o `?v=` do `app.html`).
 - O mundo **só desenha quando está visível** (aba visível, call view aberta). Sem foco na janela,
-  limita o fps (o pessoal joga com o didiscord aberto: não pode roubar GPU do jogo).
+  limita o fps (o pessoal joga com o dusky aberto: não pode roubar GPU do jogo).
 - Visual low-poly feito em código (sem modelos .glb por enquanto), sem sombras em tempo real,
   `pixelRatio` limitado.
 
@@ -91,8 +91,8 @@ compartilhada. Ver "Próximas etapas".
   móveis podem ser fixas; as da interface por cima, não).
 - Permissão de verdade é sempre do servidor (`server/access.js`).
 - Testes: `npm test` (SQLite em memória, nunca o banco real). Pra testar com navegador use outro
-  banco: `DIDISCORD_DB_PATH=/tmp/x.db PORT=3100 node server/index.js`.
-  **Nunca abra o banco real (`server/db/didiscord.db`) com o servidor de produção rodando.**
+  banco: `DUSKY_DB_PATH=/tmp/x.db PORT=3100 node server/index.js`.
+  **Nunca abra o banco real (`server/db/dusky.db`) com o servidor de produção rodando.**
 
 ## Status
 

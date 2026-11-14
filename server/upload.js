@@ -75,7 +75,7 @@ const themeBackgroundUpload = multer({
 const soundUpload = multer({
   storage: multer.diskStorage({
     destination: require('os').tmpdir(),
-    filename: (req, file, cb) => cb(null, 'didiscord-som-' + crypto.randomBytes(12).toString('hex')),
+    filename: (req, file, cb) => cb(null, 'dusky-som-' + crypto.randomBytes(12).toString('hex')),
   }),
   limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, /^(audio|video)\//.test(file.mimetype) || file.mimetype === 'application/ogg'),

@@ -1,13 +1,24 @@
 //! Endereço do servidor e preferências do app (server.json / prefs.json na pasta de dados).
 //! Mesma regra do electron/main.js: endereço fixo por padrão, dá pra trocar pela tela de
-//! "conectando…", e DIDISCORD_URL força um endereço (bom pra teste).
+//! "conectando…", e DUSKY_URL força um endereço (bom pra teste).
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use url::Url;
 
-pub const DEFAULT_URL: &str = "https://didiscord.veneno.space";
+pub const DEFAULT_URL: &str = "https://dusky.veneno.space";
+/// endereço de antes de o projeto virar "dusky" (continua no ar, mas o app passa a usar o novo)
+pub const LEGACY_DEFAULT_URL: &str = "https://didiscord.veneno.space";
+/// identifier do app Tauri até a 0.6 (a pasta de dados tinha esse nome)
+pub const LEGACY_IDENTIFIER: &str = "fun.sambalele.didiscord";
+
+/// variável de ambiente pelo nome novo (DUSKY_X) ou pelo antigo (DIDISCORD_X)
+pub fn env_var(name: &str) -> Option<String> {
+    std::env::var(format!("DUSKY_{name}"))
+        .ok()
+        .or_else(|| std::env::var(format!("DIDISCORD_{name}")).ok())
+}
 
 /// O que a pessoa digitou -> origem (https://host ou http://ip:porta), ou None se não dá.
 pub fn normalize_server_input(input: &str) -> Option<String> {
@@ -74,6 +85,8 @@ pub fn save_server(dir: &Path, url: &str) {
 /// Endereço salvo (menos túneis rápidos antigos, que mudavam a cada reinício) ou o padrão.
 pub fn saved_server_or_default(dir: &Path) -> String {
     match load_saved_server(dir) {
+        // o endereço padrão antigo vira o novo (o antigo segue funcionando, mas não é mais o oficial)
+        Some(saved) if saved == LEGACY_DEFAULT_URL => DEFAULT_URL.into(),
         Some(saved) if !Url::parse(&saved).ok().and_then(|u| u.host_str().map(|h| h.ends_with(".trycloudflare.com"))).unwrap_or(false) => saved,
         _ => DEFAULT_URL.into(),
     }
@@ -85,6 +98,84 @@ pub async fn site_is_up(client: &reqwest::Client, url: &str) -> bool {
         Ok(res) => res.status().as_u16() < 500,
         Err(_) => false,
     }
+}
+
+// ---------- pastas do nome antigo ----------
+
+/// Pastas onde o sistema guarda os dados do app: (base, nome antigo, nome novo).
+/// Windows: %APPDATA% e %LOCALAPPDATA% (o WebView2 guarda login/localStorage do site em
+/// %LOCALAPPDATA%\<identifier>\EBWebView). Linux: ~/.local/share e ~/.config pelo identifier, e
+/// ~/.local/share/<nome do programa>, onde o WebKitGTK guarda cookies/localStorage.
+fn legacy_dir_pairs(identifier: &str) -> Vec<(PathBuf, String, String)> {
+    let mut out = Vec::new();
+    let env_dir = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    #[cfg(windows)]
+    {
+        for k in ["APPDATA", "LOCALAPPDATA"] {
+            if let Some(base) = env_dir(k) {
+                out.push((base, LEGACY_IDENTIFIER.to_string(), identifier.to_string()));
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let home = env_dir("HOME");
+        let data = env_dir("XDG_DATA_HOME").or_else(|| home.as_ref().map(|h| h.join(".local/share")));
+        let config = env_dir("XDG_CONFIG_HOME").or_else(|| home.as_ref().map(|h| h.join(".config")));
+        if let Some(d) = data {
+            out.push((d.clone(), LEGACY_IDENTIFIER.to_string(), identifier.to_string()));
+            out.push((d, "didiscord".to_string(), "dusky".to_string()));
+        }
+        if let Some(c) = config {
+            // ~/.config/didiscord é do app Electron: esse não entra (é outro formato)
+            out.push((c, LEGACY_IDENTIFIER.to_string(), identifier.to_string()));
+        }
+    }
+    out
+}
+
+/// O identifier mudou (fun.sambalele.didiscord -> o atual), então a pasta de dados também. Na
+/// primeira vez copia a antiga pra nova: endereço do servidor, preferências, tamanho/posição da
+/// janela e o login do site. Copia (não move) pra versão antiga continuar abrindo se ainda estiver
+/// instalada. Roda antes de qualquer janela existir.
+pub fn migrate_legacy_dirs(identifier: &str) {
+    if identifier == LEGACY_IDENTIFIER {
+        return;
+    }
+    for (base, old, new) in legacy_dir_pairs(identifier) {
+        let (from, to) = (base.join(&old), base.join(&new));
+        if !from.is_dir() || to.exists() {
+            continue;
+        }
+        match copy_dir(&from, &to) {
+            Ok(()) => log::info(&format!("dados copiados de {} pra {}", from.display(), to.display())),
+            Err(err) => log::warn(&format!("não consegui copiar {} pra {}: {err}", from.display(), to.display())),
+        }
+    }
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    // cache do motor web: grande e refeito sozinho
+    const SKIP: &[&str] = &["Cache", "Code Cache", "GPUCache", "ShaderCache", "GrShaderCache", "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "Crashpad"];
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if SKIP.iter().any(|s| name == *s) {
+            continue;
+        }
+        let ty = entry.file_type()?;
+        let dest = to.join(&name);
+        if ty.is_dir() {
+            copy_dir(&entry.path(), &dest)?;
+        } else if ty.is_file() {
+            // arquivo travado (o app antigo aberto) não impede o resto
+            if let Err(err) = std::fs::copy(entry.path(), &dest) {
+                log::warn(&format!("pulei {}: {err}", entry.path().display()));
+            }
+        }
+    }
+    Ok(())
 }
 
 // ---------- preferências ----------
@@ -118,10 +209,10 @@ pub fn save_prefs(dir: &Path, prefs: &Prefs) {
 
 pub mod log {
     pub fn info(msg: &str) {
-        eprintln!("[didiscord] {msg}");
+        eprintln!("[dusky] {msg}");
     }
     pub fn warn(msg: &str) {
-        eprintln!("[didiscord] aviso: {msg}");
+        eprintln!("[dusky] aviso: {msg}");
     }
 }
 
@@ -131,8 +222,8 @@ mod tests {
 
     #[test]
     fn normaliza_enderecos() {
-        assert_eq!(n("didiscord.veneno.space").as_deref(), Some("https://didiscord.veneno.space"));
-        assert_eq!(n(" https://didiscord.veneno.space/canal/1 ").as_deref(), Some("https://didiscord.veneno.space"));
+        assert_eq!(n("dusky.veneno.space").as_deref(), Some("https://dusky.veneno.space"));
+        assert_eq!(n(" https://dusky.veneno.space/canal/1 ").as_deref(), Some("https://dusky.veneno.space"));
         assert_eq!(n("203.0.113.5").as_deref(), Some("http://203.0.113.5:3000"));
         assert_eq!(n("203.0.113.5:8080").as_deref(), Some("http://203.0.113.5:8080"));
         assert_eq!(n("localhost").as_deref(), Some("http://localhost:3000"));

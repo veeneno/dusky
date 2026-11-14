@@ -13,7 +13,7 @@ const CACHE_MAX = 800;
 const MAX_HTML_BYTES = 1024 * 1024;
 const TIMEOUT_MS = 6000;
 // muitos sites só mandam as tags de prévia (og:*) pra robôs conhecidos de chat
-const USER_AGENT = 'Mozilla/5.0 (compatible; didiscord/1.0; +https://didiscord.veneno.space; like Discordbot/2.0)';
+const USER_AGENT = 'Mozilla/5.0 (compatible; dusky/1.0; +https://dusky.veneno.space; like Discordbot/2.0)';
 
 const cache = new Map(); // url -> { at, data }
 const inflight = new Map(); // url -> Promise

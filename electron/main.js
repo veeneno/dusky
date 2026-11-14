@@ -1,5 +1,5 @@
 'use strict';
-// App desktop do didiscord (Electron).
+// App desktop do dusky (Electron).
 //
 // Não sobe servidor nenhum: só abre uma janela nativa (Chromium completo) apontando pro site
 // hospedado. O que o app adiciona em relação a abrir no navegador:
@@ -18,20 +18,20 @@ const { createScreencast } = require('./screencast');
 const { createUpdater } = require('./updater');
 const { createPresence } = require('./presence');
 
-const DEV = process.env.DIDISCORD_DEV === '1';
+const DEV = (process.env.DUSKY_DEV || process.env.DIDISCORD_DEV) === '1';
 
 // ---------- endereço do servidor ----------
 //
-// Endereço fixo: https://didiscord.veneno.space (túnel nomeado do Cloudflare, ver scripts/start.js).
+// Endereço fixo: https://dusky.veneno.space (túnel nomeado do Cloudflare, ver scripts/start.js).
 // O app já abre nele. Dá pra trocar pela tela de "conectando…" ou pelo menu Servidor (fica salvo em
 // server.json na pasta de dados do app). Endereços antigos de túnel rápido (*.trycloudflare.com,
 // que mudavam a cada reinício) salvos de antes são ignorados — voltam pro endereço fixo.
 // Também aceita IP (ex: 203.0.113.5:3000) — aí é HTTP puro, e o app marca só esse endereço como
 // "seguro" pro Chromium (senão o microfone/câmera/tela ficam bloqueados).
-// DIDISCORD_URL (variável de ambiente) força um endereço sem perguntar nada — bom pra teste.
+// DUSKY_URL (variável de ambiente) força um endereço sem perguntar nada — bom pra teste.
 
-const ENV_URL = process.env.DIDISCORD_URL || (DEV ? 'http://localhost:3000' : '');
-const DEFAULT_URL = 'https://didiscord.veneno.space';
+const ENV_URL = process.env.DUSKY_URL || process.env.DIDISCORD_URL || (DEV ? 'http://localhost:3000' : '');
+const DEFAULT_URL = 'https://dusky.veneno.space';
 const serverFile = () => path.join(app.getPath('userData'), 'server.json');
 
 // o que a pessoa digitou -> URL de origem (https://host ou http://ip:porta), ou null se não dá
@@ -66,7 +66,7 @@ function saveServer(url) {
     fs.mkdirSync(path.dirname(serverFile()), { recursive: true });
     fs.writeFileSync(serverFile(), JSON.stringify({ url }));
   } catch (err) {
-    console.warn('[didiscord] não consegui salvar o endereço do servidor:', err && err.message);
+    console.warn('[dusky] não consegui salvar o endereço do servidor:', err && err.message);
   }
 }
 
@@ -87,7 +87,7 @@ const SHELL_PATH = path.join(__dirname, 'shell', 'loading.html');
 const PICKER_PATH = path.join(__dirname, 'picker', 'picker.html');
 const PICKER_PRELOAD = path.join(__dirname, 'picker', 'pickerPreload.js');
 
-const log = (...args) => console.log('[didiscord]', ...args);
+const log = (...args) => console.log('[dusky]', ...args);
 
 function isAllowedUrl(url) {
   if (!SITE_URL) return false;
@@ -122,8 +122,8 @@ if (IS_WAYLAND) {
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
 }
-if (process.platform === 'win32') app.setAppUserModelId('fun.sambalele.didiscord');
-if (process.platform === 'linux') app.setDesktopName('didiscord.desktop');
+if (process.platform === 'win32') app.setAppUserModelId('fun.sambalele.didiscord'); // identidade da instalação antiga: não mudar
+if (process.platform === 'linux') app.setDesktopName('didiscord.desktop'); // idem (nome do .desktop instalado)
 
 // ---------- estado da janela (tamanho/posição) ----------
 
@@ -208,7 +208,7 @@ function createMainWindow() {
     ...state,
     minWidth: 940,
     minHeight: 560,
-    title: 'didiscord',
+    title: 'dusky',
     backgroundColor: '#1e1f22',
     autoHideMenuBar: true,
     icon: ICON_PATH,
@@ -243,7 +243,7 @@ function createMainWindow() {
 
   const wc = win.webContents;
 
-  // navegação: só o shell local e o domínio do didiscord; o resto abre no navegador do sistema
+  // navegação: só o shell local e o domínio do dusky; o resto abre no navegador do sistema
   wc.on('will-navigate', (event, url) => {
     if (isShellUrl(url) || isAllowedUrl(url)) return;
     event.preventDefault();
@@ -339,7 +339,7 @@ ipcMain.handle('shell:getStatus', (event) => (shellSender(event) ? { ...connectS
 ipcMain.handle('shell:setServer', async (event, input) => {
   if (!shellSender(event)) return { ok: false, error: 'não permitido' };
   const url = normalizeServerInput(input);
-  if (!url) return { ok: false, error: 'endereço inválido — cole algo como didiscord.veneno.space' };
+  if (!url) return { ok: false, error: 'endereço inválido — cole algo como dusky.veneno.space' };
   if (!(await siteIsUp(url))) {
     return { ok: false, error: `não consegui falar com ${url} — confere se o servidor está ligado e se o endereço é o atual` };
   }
@@ -520,17 +520,17 @@ function trustedSender(event) {
   return !!url && isAllowedUrl(url);
 }
 
-ipcMain.handle('didiscord:getScreenAudioPlan', (event) => {
+ipcMain.handle('dusky:getScreenAudioPlan', (event) => {
   if (!trustedSender(event)) return { mode: 'none' };
   const sender = event.sender;
   return screenAudio.start((chunk) => {
     if (sender.isDestroyed()) return;
     // cópia com ArrayBuffer próprio: o serializador do IPC mandaria o buffer inteiro por baixo do Buffer
-    sender.send('didiscord:pcm', new Uint8Array(chunk));
+    sender.send('dusky:pcm', new Uint8Array(chunk));
   });
 });
 
-ipcMain.handle('didiscord:stopScreenAudio', (event) => {
+ipcMain.handle('dusky:stopScreenAudio', (event) => {
   if (trustedSender(event)) screenAudio.stop();
 });
 
@@ -619,7 +619,7 @@ ipcMain.handle('screencast:stop', (event) => {
 // Com a janela escondida o app segue vivo: a call continua, as mensagens chegam e os sons tocam
 // (backgroundThrottling: false na janela). O ícone traz a janela de volta, troca o status
 // (ativo/inativo, o mesmo do menu do avatar no site) e tem o "Sair" de verdade.
-// Linux com GNOME: o ícone só aparece com a extensão "AppIndicator" — sem ela, abrir o didiscord de
+// Linux com GNOME: o ícone só aparece com a extensão "AppIndicator" — sem ela, abrir o dusky de
 // novo (pelo menu de apps) traz a janela escondida de volta (ver second-instance).
 
 let tray = null;
@@ -653,7 +653,7 @@ function trayIcon() {
 function updateTrayTooltip() {
   if (!tray) return;
   const prefix = mentionCount ? `(${mentionCount > 99 ? '99+' : mentionCount}) ` : '';
-  tray.setToolTip(`${prefix}didiscord — ${STATUS_LABELS[currentStatus].toLowerCase()}`);
+  tray.setToolTip(`${prefix}dusky — ${STATUS_LABELS[currentStatus].toLowerCase()}`);
 }
 
 function buildTrayMenu() {
@@ -664,7 +664,7 @@ function buildTrayMenu() {
     buildTrayMenu();
   };
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Abrir didiscord', click: showMainWindow },
+    { label: 'Abrir dusky', click: showMainWindow },
     { type: 'separator' },
     { label: '🟢  Ativo', type: 'radio', checked: currentStatus === 'online', click: () => setStatus('online') },
     { label: '🌙  Inativo', type: 'radio', checked: currentStatus === 'idle', click: () => setStatus('idle') },
@@ -676,7 +676,7 @@ function buildTrayMenu() {
       click: (item) => { prefs.closeToTray = item.checked; savePrefs(); buildMenu(); },
     },
     { type: 'separator' },
-    { label: 'Sair do didiscord', click: quitForReal },
+    { label: 'Sair do dusky', click: quitForReal },
   ]));
   updateTrayTooltip();
 }
@@ -690,7 +690,7 @@ function createTray() {
     tray = null;
     return;
   }
-  // Windows/macOS: clique no ícone abre (no Linux o clique abre o menu, que tem "Abrir didiscord")
+  // Windows/macOS: clique no ícone abre (no Linux o clique abre o menu, que tem "Abrir dusky")
   tray.on('click', showMainWindow);
   tray.on('double-click', showMainWindow);
   buildTrayMenu();
@@ -702,10 +702,10 @@ function showTrayHintOnce() {
   prefs.trayHintShown = true;
   savePrefs();
   const body = tray
-    ? 'Ele continua rodando na bandeja (calls, mensagens e sons seguem funcionando). Pra fechar de vez: botão direito no ícone → Sair do didiscord.'
-    : 'Ele continua rodando em segundo plano. Abra o didiscord de novo pra ver a janela, ou use o menu didiscord → Sair.';
+    ? 'Ele continua rodando na bandeja (calls, mensagens e sons seguem funcionando). Pra fechar de vez: botão direito no ícone → Sair do dusky.'
+    : 'Ele continua rodando em segundo plano. Abra o dusky de novo pra ver a janela, ou use o menu dusky → Sair.';
   try {
-    if (Notification.isSupported()) new Notification({ title: 'didiscord continua aberto', body, icon: ICON_PATH, silent: true }).show();
+    if (Notification.isSupported()) new Notification({ title: 'dusky continua aberto', body, icon: ICON_PATH, silent: true }).show();
   } catch (_) { /* sem notificação do sistema: tudo bem */ }
 }
 
@@ -720,7 +720,7 @@ ipcMain.on('status:report', (event, status) => {
 // ---------- avisos: contador de menções no ícone e trazer a janela pra frente ----------
 
 let lastBadge = 0;
-ipcMain.on('didiscord:badge', (event, count) => {
+ipcMain.on('dusky:badge', (event, count) => {
   if (!trustedSender(event)) return;
   const n = Math.max(0, Math.min(999, Number(count) || 0));
   try { app.setBadgeCount(n); } catch (_) { /* nem todo sistema tem contador no ícone */ }
@@ -733,7 +733,7 @@ ipcMain.on('didiscord:badge', (event, count) => {
   updateTrayTooltip();
 });
 
-ipcMain.on('didiscord:focus', (event) => {
+ipcMain.on('dusky:focus', (event) => {
   if (!trustedSender(event)) return;
   showMainWindow(); // funciona com a janela escondida na bandeja também
 });
@@ -748,7 +748,7 @@ ipcMain.on('presence:configure', (event, cfg) => {
 ipcMain.handle('presence:candidates', async (event) => (trustedSender(event) ? presence.listCandidates() : []));
 ipcMain.handle('presence:current', (event) => (trustedSender(event) ? presence.getCurrent() : null));
 
-ipcMain.handle('didiscord:checkUpdates', (event) => {
+ipcMain.handle('dusky:checkUpdates', (event) => {
   if (trustedSender(event)) updater.check(true);
 });
 
@@ -757,7 +757,7 @@ ipcMain.handle('didiscord:checkUpdates', (event) => {
 function buildMenu() {
   const template = [
     {
-      label: 'didiscord',
+      label: 'dusky',
       submenu: [
         {
           label: 'Continuar rodando ao fechar a janela',
@@ -766,7 +766,7 @@ function buildMenu() {
           click: (item) => { prefs.closeToTray = item.checked; savePrefs(); buildTrayMenu(); },
         },
         { type: 'separator' },
-        { label: 'Sair do didiscord', accelerator: 'CmdOrCtrl+Q', click: quitForReal },
+        { label: 'Sair do dusky', accelerator: 'CmdOrCtrl+Q', click: quitForReal },
       ],
     },
     {
@@ -799,7 +799,7 @@ function buildMenu() {
       submenu: [
         { label: 'Procurar atualizações…', click: () => updater.check(true) },
         { type: 'separator' },
-        { label: `didiscord ${app.getVersion()}`, enabled: false },
+        { label: `dusky ${app.getVersion()}`, enabled: false },
       ],
     },
   ];
@@ -811,7 +811,7 @@ function buildMenu() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  // abrir o didiscord de novo (atalho, menu de apps) com ele escondido: traz a janela de volta
+  // abrir o dusky de novo (atalho, menu de apps) com ele escondido: traz a janela de volta
   app.on('second-instance', () => {
     if (app.isReady()) showMainWindow();
   });

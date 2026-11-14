@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 ZIG="${ZIG:-zig}"
 mkdir -p bin
 "$ZIG" c++ -target x86_64-windows-gnu -O2 -std=c++17 -static \
-  audiocap.cpp -o bin/didiscord-audiocap.exe \
+  audiocap.cpp -o bin/dusky-audiocap.exe \
   -lole32 -lmmdevapi -lavrt -lversion
-rm -f bin/didiscord-audiocap.pdb
-echo "ok: $(pwd)/bin/didiscord-audiocap.exe ($(du -h bin/didiscord-audiocap.exe | cut -f1))"
+rm -f bin/dusky-audiocap.pdb
+echo "ok: $(pwd)/bin/dusky-audiocap.exe ($(du -h bin/dusky-audiocap.exe | cut -f1))"

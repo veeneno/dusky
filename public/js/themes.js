@@ -1,17 +1,17 @@
-// Temas do didiscord: cada pessoa monta o seu (cores, vidro/transparência, imagem de fundo, fonte,
+// Temas do dusky: cada pessoa monta o seu (cores, vidro/transparência, imagem de fundo, fonte,
 // cantos, densidade e até CSS próprio). O tema fica salvo na conta (vale no navegador e no app) e
 // também no navegador, pra já abrir com ele sem piscar o tema padrão.
 //
-// DidiTheme.apply(tema)            aplica na hora (variáveis CSS no <html>)
-// DidiTheme.boot()                 aplica o tema guardado no navegador (chamado no <head>)
-// DidiTheme.load()                 busca o tema da conta e aplica
-// DidiTheme.mountEditor(el, ctx)   monta o editor (aba "aparência" das configurações)
+// DuskyTheme.apply(tema)            aplica na hora (variáveis CSS no <html>)
+// DuskyTheme.boot()                 aplica o tema guardado no navegador (chamado no <head>)
+// DuskyTheme.load()                 busca o tema da conta e aplica
+// DuskyTheme.mountEditor(el, ctx)   monta o editor (aba "aparência" das configurações)
 (function () {
   'use strict';
 
-  const CACHE_KEY = 'didiscord:theme';
+  const CACHE_KEY = 'dusky:theme';
   const VERSION = 1;
-  const CODE_PREFIX = 'didiscord-tema:';
+  const CODE_PREFIX = 'dusky-tema:';
   const MAX_CSS = 20000;
 
   // ------------------------------------------------------------------ temas prontos
@@ -282,9 +282,9 @@
     ensureFont(t.text.font);
     if (t.text.heading !== 'same') ensureFont(t.text.heading);
 
-    let style = document.getElementById('didiUserCss');
+    let style = document.getElementById('duskyUserCss');
     if (t.css) {
-      if (!style) { style = document.createElement('style'); style.id = 'didiUserCss'; document.head.appendChild(style); }
+      if (!style) { style = document.createElement('style'); style.id = 'duskyUserCss'; document.head.appendChild(style); }
       style.textContent = t.css;
     } else if (style) {
       style.remove();
@@ -304,7 +304,7 @@
     apply(cached || BASE);
     // no <head> o CSS próprio entrou antes das folhas de estilo; joga pro fim pra ele ganhar delas
     document.addEventListener('DOMContentLoaded', () => {
-      const style = document.getElementById('didiUserCss');
+      const style = document.getElementById('duskyUserCss');
       if (style) document.head.appendChild(style);
     }, { once: true });
   }
@@ -341,7 +341,7 @@
     return CODE_PREFIX + btoa(unescape(encodeURIComponent(json)));
   }
   function fromCode(code) {
-    const raw = String(code || '').trim().replace(/^didiscord-tema:/, '');
+    const raw = String(code || '').trim().replace(/^(dusky|didiscord)-tema:/, ''); // aceita códigos do nome antigo
     const json = decodeURIComponent(escape(atob(raw)));
     return normalize(JSON.parse(json));
   }
@@ -550,7 +550,7 @@
     const transferLabel = h('span', { text: 'código do tema' });
     const transferInput = h('textarea', {
       class: 'theme-css', rows: '4', spellcheck: 'false',
-      placeholder: 'didiscord-tema:', 'aria-label': 'código do tema',
+      placeholder: 'dusky-tema:', 'aria-label': 'código do tema',
     });
     const transferError = h('p', { class: 'field-help', role: 'alert', hidden: true });
     const closeTransfer = () => {
@@ -565,7 +565,7 @@
           if (!transferInput.value.trim()) throw new Error('empty');
           t = fromCode(transferInput.value);
         } catch (_) {
-          transferError.textContent = 'Código inválido. Cole o código completo, começando com didiscord-tema:.';
+          transferError.textContent = 'Código inválido. Cole o código completo, começando com dusky-tema: (ou didiscord-tema:).';
           transferError.hidden = false;
           transferInput.setAttribute('aria-invalid', 'true');
           transferInput.focus();
@@ -655,5 +655,5 @@
     return { refresh: syncControls };
   }
 
-  window.DidiTheme = { apply, boot, load, mountEditor, presets: PRESETS, normalize, toCode, fromCode, current: () => current };
+  window.DuskyTheme = { apply, boot, load, mountEditor, presets: PRESETS, normalize, toCode, fromCode, current: () => current };
 })();

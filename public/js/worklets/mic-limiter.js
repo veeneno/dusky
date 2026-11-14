@@ -58,4 +58,4 @@ class MicLimiter extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('didiscord-mic-limiter', MicLimiter);
+registerProcessor('dusky-mic-limiter', MicLimiter);

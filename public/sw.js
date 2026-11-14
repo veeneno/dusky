@@ -13,7 +13,7 @@ self.addEventListener('push', event => {
     if (data.userId !== payload.userId) return;
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (windows.some(w => w.focused && new URL(w.url).pathname === '/app.html')) return;
-    await self.registration.showNotification(data.title, { body: data.body, tag: `didiscord-${data.channelId}`, data });
+    await self.registration.showNotification(data.title, { body: data.body, tag: `dusky-${data.channelId}`, data });
   })());
 });
 self.addEventListener('notificationclick', event => {

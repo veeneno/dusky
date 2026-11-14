@@ -1,5 +1,5 @@
 //! Compartilhamento de tela "nativo": captura + codificação UMA vez, de preferência na placa de vídeo,
-//! entregue pra cada pessoa da call (ou pro servidor de mídia) pelo auxiliar didiscord-screencast
+//! entregue pra cada pessoa da call (ou pro servidor de mídia) pelo auxiliar dusky-screencast
 //! (electron/native/screencast, em Go). Porte direto do electron/screencast.js.
 //!
 //! Por que: pelo navegador a tela é codificada no processador, uma vez POR PESSOA assistindo, e o
@@ -328,7 +328,7 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
     if !IS_LINUX && !IS_WIN {
         return unavailable("só Linux e Windows por enquanto");
     }
-    if native_bin(app, "didiscord-screencast").is_none() {
+    if native_bin(app, "dusky-screencast").is_none() {
         return unavailable("auxiliar de compartilhamento não encontrado");
     }
     if is_wayland() {
@@ -538,7 +538,7 @@ fn build_gst_args(info: &ProbeInfo, picked: &Value, o: &ShareOpts) -> Built {
     }
     let size = scale.unwrap_or((w, h));
     let kbps = kbps_of(o, size.0, size.1, fps);
-    let mut args = sv(&["-q", "pipewiresrc", "fd=3", "path={node}", "do-timestamp=true", "keepalive-time=500", "client-name=didiscord"]);
+    let mut args = sv(&["-q", "pipewiresrc", "fd=3", "path={node}", "do-timestamp=true", "keepalive-time=500", "client-name=dusky"]);
     // o portal só manda quadro quando a tela muda: o videorate repete o último pra manter o fps fixo
     args.extend(sv(&["!", "video/x-raw", "!", "videorate", "!"]));
     args.push(format!("video/x-raw,framerate={fps}/1"));
@@ -606,7 +606,7 @@ impl Screencast {
 async fn spawn_helper(app: &AppHandle) -> Result<(u64, broadcast::Receiver<Value>), String> {
     let st = app.state::<AppState>();
     st.screencast.stop();
-    let helper = native_bin(app, "didiscord-screencast").ok_or("auxiliar de compartilhamento não encontrado")?;
+    let helper = native_bin(app, "dusky-screencast").ok_or("auxiliar de compartilhamento não encontrado")?;
     let mut cmd = child_command(&helper);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| format!("o auxiliar de compartilhamento não iniciou: {e}"))?;

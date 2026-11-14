@@ -1,4 +1,4 @@
-// didiscord — Menus de contexto (botão direito)
+// dusky — Menus de contexto (botão direito)
 // Parte 3 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -174,7 +174,7 @@ function micConstraints(micId) {
   const base = {
     noiseSuppression: false,
     echoCancellation: mode === 'speakers',
-    // com o nivelador do didiscord ligado, o do navegador sai: dois ajustes brigando deixam a voz "bombeando"
+    // com o nivelador do dusky ligado, o do navegador sai: dois ajustes brigando deixam a voz "bombeando"
     autoGainControl: mode !== 'studio' && !usesOwnLeveler(),
     sampleRate: { ideal: 48000 },
     channelCount: { ideal: 1 },
@@ -189,11 +189,11 @@ function micConstraints(micId) {
 // peer connection). Detectamos esse ambiente pra pular esse processamento só na track que é
 // realmente enviada, e mandar o áudio cru do mic direto — no navegador normal nada muda.
 // app ANTIGO em Tauri (call pelo WebRTC do próprio WebKit, que não aceitava o áudio processado).
-// O app novo (pasta tauri/) se identifica com didiscordDesktop.shell === 'tauri' e leva a call pro
+// O app novo (pasta tauri/) se identifica com duskyDesktop.shell === 'tauri' e leva a call pro
 // Rust — aí o microfone passa pelo processamento normal (supressão de ruído, gate, nivelador…).
 function isTauriApp() {
   if (typeof window === 'undefined') return false;
-  if (window.didiscordDesktop && window.didiscordDesktop.shell === 'tauri') return false;
+  if (window.duskyDesktop && window.duskyDesktop.shell === 'tauri') return false;
   return window.__TAURI__ !== undefined || window.__TAURI_INTERNALS__ !== undefined;
 }
 

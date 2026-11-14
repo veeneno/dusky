@@ -4,8 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e1f22">
-  <script src="/js/themes.js?v=21"></script>
-  <script>DidiTheme.boot();</script>
+  <script src="/js/compat.js?v=1"></script>
+  <script src="/js/themes.js?v=22"></script>
+  <script>DuskyTheme.boot();</script>
   <title>concord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -939,7 +940,7 @@
           <div class="settings-nav-group">avisos</div>
           <button type="button" class="settings-tab" data-settings-tab="notificacoes">notificações</button>
           <div class="settings-nav-sep"></div>
-          <div class="settings-nav-group">didiscord</div>
+          <div class="settings-nav-group">dusky</div>
           <button type="button" class="settings-tab" data-settings-tab="app">app e versão</button>
           <div class="settings-nav-sep"></div>
           <button type="button" class="settings-tab is-danger" data-settings-action="logout">sair da conta</button>
@@ -950,7 +951,7 @@
         <div class="settings-content-inner">
         <section class="settings-tab-panel" data-settings-panel="aparencia" hidden>
           <h2 class="settings-title">temas</h2>
-          <p class="settings-lead">Deixe o didiscord com a sua cara. Só você vê o seu tema — cada amigo escolhe o dele.</p>
+          <p class="settings-lead">Deixe o dusky com a sua cara. Só você vê o seu tema — cada amigo escolhe o dele.</p>
           <div id="themeEditor"></div>
         </section>
 
@@ -1072,10 +1073,10 @@
             <div class="field" id="micLevelerField">
               <label for="micLevelerSelect">volume automático</label>
               <select id="micLevelerSelect">
-                <option value="own">do didiscord — ajusta depois da supressão (padrão)</option>
+                <option value="own">do dusky — ajusta depois da supressão (padrão)</option>
                 <option value="browser">do navegador — age antes da supressão</option>
               </select>
-              <span class="field-help">deixa sua voz sempre no mesmo volume pra quem ouve. O do navegador age antes da supressão de ruído e pode subir o chiado nas pausas; o do didiscord age depois, só enquanto você fala. Compare os dois com o "testar microfone". No modo estúdio nenhum dos dois é usado. Dá pra trocar com a call aberta.</span>
+              <span class="field-help">deixa sua voz sempre no mesmo volume pra quem ouve. O do navegador age antes da supressão de ruído e pode subir o chiado nas pausas; o do dusky age depois, só enquanto você fala. Compare os dois com o "testar microfone". No modo estúdio nenhum dos dois é usado. Dá pra trocar com a call aberta.</span>
             </div>
 
             <div class="field">
@@ -1202,7 +1203,7 @@
                 </select>
                 <button type="button" class="btn btn-ghost" id="notificationPermissionBtn" hidden>permitir</button>
               </div>
-              <span class="field-help" id="notificationHelp">aparecem no canto da tela quando o didiscord não está na sua frente. Quem escreve <strong>@seu nome</strong> ou <strong>@everyone</strong> conta como menção.</span>
+              <span class="field-help" id="notificationHelp">aparecem no canto da tela quando o dusky não está na sua frente. Quem escreve <strong>@seu nome</strong> ou <strong>@everyone</strong> conta como menção.</span>
             </div>
 
 
@@ -1233,37 +1234,37 @@
     </div>
   </div>
 
-  <script src="/js/realtime.js?v=20"></script>
-  <script src="/js/markdown.js?v=20"></script>
-  <script src="/js/emoji.js?v=20"></script>
+  <script src="/js/realtime.js?v=21"></script>
+  <script src="/js/markdown.js?v=21"></script>
+  <script src="/js/emoji.js?v=21"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=44"></script>
-  <script src="/js/app/02-preferences.js?v=44"></script>
-  <script src="/js/app/03-context-menus.js?v=44"></script>
-  <script src="/js/app/04-sidebar.js?v=44"></script>
-  <script src="/js/app/05-chat.js?v=44"></script>
-  <script src="/js/app/06-message-content.js?v=44"></script>
-  <script src="/js/app/07-composer.js?v=44"></script>
-  <script src="/js/app/08-notifications.js?v=44"></script>
-  <script src="/js/app/09-panels-attachments.js?v=44"></script>
-  <script src="/js/app/10-video-player.js?v=44"></script>
-  <script src="/js/app/11-slash-commands.js?v=44"></script>
-  <script src="/js/app/12-members-profile.js?v=44"></script>
-  <script src="/js/app/13-servers.js?v=44"></script>
-  <script src="/js/app/14-roles.js?v=44"></script>
-  <script src="/js/app/15-media-viewer.js?v=44"></script>
-  <script src="/js/app/16-site-admin.js?v=44"></script>
-  <script src="/js/app/17-settings.js?v=44"></script>
-  <script src="/js/app/18-call-audio.js?v=44"></script>
-  <script src="/js/app/19-call-ui.js?v=44"></script>
-  <script src="/js/app/20-screencast-native.js?v=44"></script>
-  <script src="/js/app/21-call-sfu.js?v=44"></script>
-  <script src="/js/app/22-call-mesh.js?v=44"></script>
-  <script src="/js/app/23-call-media.js?v=44"></script>
-  <script src="/js/app/24-presence.js?v=44"></script>
-  <script src="/js/app/25-server-settings.js?v=44"></script>
-  <script src="/js/app/26-soundboard.js?v=44"></script>
-  <script src="/js/app/27-world.js?v=44"></script>
-  <script src="/js/app/28-realtime.js?v=44"></script>
+  <script src="/js/app/01-state.js?v=45"></script>
+  <script src="/js/app/02-preferences.js?v=45"></script>
+  <script src="/js/app/03-context-menus.js?v=45"></script>
+  <script src="/js/app/04-sidebar.js?v=45"></script>
+  <script src="/js/app/05-chat.js?v=45"></script>
+  <script src="/js/app/06-message-content.js?v=45"></script>
+  <script src="/js/app/07-composer.js?v=45"></script>
+  <script src="/js/app/08-notifications.js?v=45"></script>
+  <script src="/js/app/09-panels-attachments.js?v=45"></script>
+  <script src="/js/app/10-video-player.js?v=45"></script>
+  <script src="/js/app/11-slash-commands.js?v=45"></script>
+  <script src="/js/app/12-members-profile.js?v=45"></script>
+  <script src="/js/app/13-servers.js?v=45"></script>
+  <script src="/js/app/14-roles.js?v=45"></script>
+  <script src="/js/app/15-media-viewer.js?v=45"></script>
+  <script src="/js/app/16-site-admin.js?v=45"></script>
+  <script src="/js/app/17-settings.js?v=45"></script>
+  <script src="/js/app/18-call-audio.js?v=45"></script>
+  <script src="/js/app/19-call-ui.js?v=45"></script>
+  <script src="/js/app/20-screencast-native.js?v=45"></script>
+  <script src="/js/app/21-call-sfu.js?v=45"></script>
+  <script src="/js/app/22-call-mesh.js?v=45"></script>
+  <script src="/js/app/23-call-media.js?v=45"></script>
+  <script src="/js/app/24-presence.js?v=45"></script>
+  <script src="/js/app/25-server-settings.js?v=45"></script>
+  <script src="/js/app/26-soundboard.js?v=45"></script>
+  <script src="/js/app/27-world.js?v=45"></script>
+  <script src="/js/app/28-realtime.js?v=45"></script>
 </body>
 </html>

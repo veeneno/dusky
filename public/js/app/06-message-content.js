@@ -1,4 +1,4 @@
-// didiscord — Conteúdo das mensagens: Markdown, reações, fixar e prévia de links
+// dusky — Conteúdo das mensagens: Markdown, reações, fixar e prévia de links
 // Parte 6 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -36,7 +36,7 @@ function messageMentionsMe(m) {
 function messagePlain(m, fallback = '') {
   if (!m) return fallback;
   if (m.system_type === 'member_join') return `${m.system_username || 'alguém'} entrou no servidor`;
-  const t = DidiMarkdown.plain(m.content || '', mentionContext(m));
+  const t = DuskyMarkdown.plain(m.content || '', mentionContext(m));
   if (t) return t;
   if (m.attachment_type === 'gif') return 'mandou um gif';
   if (m.attachment_type === 'image') return 'mandou uma imagem';
@@ -48,8 +48,8 @@ function messagePlain(m, fallback = '') {
 // escreve o texto da mensagem (Markdown) no elemento — nada de innerHTML, ver js/markdown.js
 function renderMessageText(target, text, edited, m) {
   target.textContent = '';
-  target.classList.toggle('is-jumbo', getPref('prefJumboEmoji') && DidiMarkdown.isEmojiOnly(text));
-  target.appendChild(DidiMarkdown.render(text, mentionContext(m)));
+  target.classList.toggle('is-jumbo', getPref('prefJumboEmoji') && DuskyMarkdown.isEmojiOnly(text));
+  target.appendChild(DuskyMarkdown.render(text, mentionContext(m)));
   if (edited) {
     const tag = document.createElement('span');
     tag.className = 'msg-edited';
@@ -109,7 +109,7 @@ function buildReactionsEl(m) {
     add.className = 'msg-reaction msg-reaction-add';
     add.title = 'adicionar reação';
     add.innerHTML = REACT_ICON;
-    add.addEventListener('click', () => DidiEmoji.open({ anchor: add, onPick: (emoji) => toggleReaction(m, emoji) }));
+    add.addEventListener('click', () => DuskyEmoji.open({ anchor: add, onPick: (emoji) => toggleReaction(m, emoji) }));
     wrap.appendChild(add);
   }
   return wrap;
@@ -222,7 +222,7 @@ function buildLinkEmbedEl(e, m) {
 
 function attachLinkEmbeds(el, m) {
   if (m.attachment_type === 'gif' || !getPref('prefLinkPreviews')) return;
-  const urls = DidiMarkdown.links(m.content || '');
+  const urls = DuskyMarkdown.links(m.content || '');
   if (!urls.length) return;
   const holder = document.createElement('div');
   holder.className = 'msg-embeds';

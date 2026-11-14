@@ -1,5 +1,5 @@
 // HTTP real + SQLite em memória: nunca lê ou altera o banco do servidor em uso.
-process.env.DIDISCORD_DB_PATH = ':memory:';
+process.env.DUSKY_DB_PATH = ':memory:';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');

@@ -2,18 +2,18 @@
   "name": "didiscord-desktop",
   "productName": "didiscord",
   "version": "0.5.4",
-  "description": "App desktop do didiscord (janela nativa que carrega o site hospedado)",
+  "description": "App desktop ANTIGO do dusky (Electron). name/productName/appId continuam \"didiscord\" de propósito: são a identidade da instalação (pasta, dados, desinstalador) — trocar quebraria o atualizador e a migração pro app novo (tauri/)",
   "main": "main.js",
   "author": {
     "name": "veneno",
-    "email": "veneno@didiscord.local"
+    "email": "veneno@dusky.local"
   },
-  "homepage": "https://didiscord.veneno.space",
+  "homepage": "https://dusky.veneno.space",
   "license": "UNLICENSED",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dev": "DIDISCORD_DEV=1 electron .",
+    "dev": "DUSKY_DEV=1 electron .",
     "icon": "node build/make-icon.js",
     "build:linux": "electron-builder --linux",
     "build:win": "electron-builder --win",
@@ -54,11 +54,11 @@
       ],
       "extraResources": [
         {
-          "from": "native/bin/didiscord-screencast",
-          "to": "native/didiscord-screencast"
+          "from": "native/bin/dusky-screencast",
+          "to": "native/dusky-screencast"
         }
       ],
-      "artifactName": "didiscord-${version}.${ext}"
+      "artifactName": "dusky-${version}.${ext}"
     },
     "win": {
       "target": [
@@ -68,12 +68,12 @@
       "signAndEditExecutable": false,
       "extraResources": [
         {
-          "from": "native/bin/didiscord-audiocap.exe",
-          "to": "audiocap/didiscord-audiocap.exe"
+          "from": "native/bin/dusky-audiocap.exe",
+          "to": "audiocap/dusky-audiocap.exe"
         },
         {
-          "from": "native/bin/didiscord-screencast.exe",
-          "to": "native/didiscord-screencast.exe"
+          "from": "native/bin/dusky-screencast.exe",
+          "to": "native/dusky-screencast.exe"
         }
       ]
     },
@@ -81,12 +81,12 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "artifactName": "didiscord-setup-${version}.${ext}"
+      "artifactName": "dusky-setup-${version}.${ext}"
     },
     "publish": [
       {
         "provider": "generic",
-        "url": "https://didiscord.veneno.space/downloads/"
+        "url": "https://dusky.veneno.space/downloads/"
       }
     ]
   },

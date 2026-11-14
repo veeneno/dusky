@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# configura uma VM Ubuntu (24.04) do zero pra rodar o didiscord:
+# configura uma VM Ubuntu (24.04) do zero pra rodar o dusky:
 #   - swap de 2GB (a B1s só tem 1GB de RAM — sem swap o npm install pode morrer compilando bcrypt/sqlite)
 #   - Node 22, ffmpeg e yt-dlp (bot de música)
 #   - serviço systemd (sobe sozinho no boot e reinicia se cair)
 #   - Caddy na frente fazendo HTTPS automático (Let's Encrypt) — HTTPS é obrigatório pro
 #     navegador liberar microfone/câmera, então sem isso as calls não funcionam
 #
-# uso (dentro da VM, com o projeto já copiado pra ~/didiscord):
-#   bash ~/didiscord/deploy/setup-vm.sh seu.dominio.com
+# uso (dentro da VM, com o projeto já copiado pra ~/dusky):
+#   bash ~/dusky/deploy/setup-vm.sh seu.dominio.com
 #
 # pode rodar de novo sem medo (ex: depois de atualizar o código) — ele reaproveita o que já existe.
 set -euo pipefail
@@ -16,7 +16,7 @@ DOMAIN="${1:?uso: bash setup-vm.sh seu.dominio.com}"
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_USER="$(whoami)"
 
-echo "==> didiscord em $APP_DIR, usuário $APP_USER, domínio $DOMAIN"
+echo "==> dusky em $APP_DIR, usuário $APP_USER, domínio $DOMAIN"
 
 # --- swap -------------------------------------------------------------------
 if ! swapon --show | grep -q '/swapfile'; then
@@ -58,7 +58,7 @@ if ! command -v caddy >/dev/null; then
 fi
 
 # --- dependências do app ----------------------------------------------------
-echo "==> instalando dependências do didiscord"
+echo "==> instalando dependências do dusky"
 cd "$APP_DIR"
 npm ci --omit=dev
 mkdir -p public/uploads/attachments public/uploads/avatars public/uploads/banners public/uploads/server
@@ -72,10 +72,16 @@ fi
 chmod 600 .env
 
 # --- serviço systemd --------------------------------------------------------
-echo "==> configurando serviço didiscord"
-sudo tee /etc/systemd/system/didiscord.service >/dev/null <<EOF
+# o serviço se chamava "didiscord": se ainda existir, desliga e remove (senão os dois brigam pela porta)
+if [ -f /etc/systemd/system/didiscord.service ]; then
+  echo "==> removendo o serviço antigo didiscord"
+  sudo systemctl disable --now didiscord || true
+  sudo rm -f /etc/systemd/system/didiscord.service
+fi
+echo "==> configurando serviço dusky"
+sudo tee /etc/systemd/system/dusky.service >/dev/null <<EOF
 [Unit]
-Description=didiscord
+Description=dusky
 After=network-online.target
 Wants=network-online.target
 
@@ -93,8 +99,8 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable didiscord
-sudo systemctl restart didiscord
+sudo systemctl enable dusky
+sudo systemctl restart dusky
 
 # --- Caddy (HTTPS + proxy, WebSocket incluso) -------------------------------
 echo "==> configurando Caddy pra $DOMAIN"
@@ -109,5 +115,5 @@ sudo systemctl restart caddy
 
 echo
 echo "pronto! abre https://$DOMAIN no navegador."
-echo "logs do app:   journalctl -u didiscord -f"
+echo "logs do app:   journalctl -u dusky -f"
 echo "logs do Caddy: journalctl -u caddy -f"

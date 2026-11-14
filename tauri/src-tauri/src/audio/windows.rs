@@ -1,9 +1,9 @@
-//! Áudio do compartilhamento de tela no Windows, via didiscord-audiocap.exe (WASAPI Process Loopback,
+//! Áudio do compartilhamento de tela no Windows, via dusky-audiocap.exe (WASAPI Process Loopback,
 //! electron/native/audiocap.cpp). O helper escreve PCM cru no stdout (float32 intercalado, 48 kHz,
 //! estéreo) e para sozinho quando o stdin fecha.
 //!
 //!   janela escolhida -> --capture include <pid da janela>   (só aquele app e os filhos)
-//!   tela inteira     -> --capture exclude <pid do didiscord> (tudo menos o didiscord — o WebView2
+//!   tela inteira     -> --capture exclude <pid do dusky> (tudo menos o dusky — o WebView2
 //!                       roda como processo filho do app, então a voz da call fica de fora)
 
 use super::{AudioApps, Running, Target};
@@ -23,8 +23,8 @@ pub struct Plan {
 }
 
 pub async fn prepare(target: Target, app: &AppHandle) -> Option<Plan> {
-    let Some(helper) = native_bin(app, "didiscord-audiocap") else {
-        log::info("didiscord-audiocap.exe não encontrado — compartilhando sem áudio");
+    let Some(helper) = native_bin(app, "dusky-audiocap") else {
+        log::info("dusky-audiocap.exe não encontrado — compartilhando sem áudio");
         return None;
     };
     match target {

@@ -1,8 +1,8 @@
-# didiscord
+# dusky
 
 Um Discord próprio, feito pra mim e pros meus amigos. Tem servidores com convite, canais de texto e voz, DMs, cargos, chamadas de voz/vídeo, compartilhamento de tela pela placa de vídeo, bot de música e um app desktop. Tudo roda num PC de casa, com banco SQLite e um front-end em JavaScript puro (sem framework, sem build).
 
-O site fica em **https://didiscord.veneno.space**, por um túnel do Cloudflare. O repositório é privado: [`veeneno/didiscord`](https://github.com/veeneno/didiscord).
+O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O repositório é privado: [`veeneno/dusky`](https://github.com/veeneno/dusky).
 
 ## O que tem
 
@@ -13,7 +13,7 @@ O site fica em **https://didiscord.veneno.space**, por um túnel do Cloudflare. 
 
 **Servidores**
 - Criar servidor, trocar nome e ícone, apagar, sair.
-- Convites por link (`https://didiscord.veneno.space/invite/CODIGO`), com limite de usos e validade.
+- Convites por link (`https://dusky.veneno.space/invite/CODIGO`), com limite de usos e validade.
 - Cargos com permissões independentes: gerenciar canais/categorias, apagar mensagens de outros, expulsar membros e moderar calls. Administrador mantém acesso completo.
 - Restrições por canal e cargo: ver, entrar na call, enviar mensagens, anexar/GIFs, reagir e fixar. Sem restrição, mantém o comportamento anterior.
 - Categorias com nome, posição e recolhimento lembrado no aparelho. Texto e voz podem ficar juntos; apagar categoria conserva canais e histórico.
@@ -88,7 +88,7 @@ O áudio sempre vem do YouTube (a API do Spotify só dá o nome, o artista e a c
 - Servidores: ver e apagar.
 - Aviso geral que aparece pra todo mundo conectado.
 
-**App desktop** (Electron, Linux e Windows): abre direto no site, compartilha a tela pela placa de vídeo, mostra o contador de menções no ícone e **se atualiza sozinho**. Os amigos instalam pela página **https://didiscord.veneno.space/baixar**. Detalhes mais abaixo.
+**App desktop** (Electron, Linux e Windows): abre direto no site, compartilha a tela pela placa de vídeo, mostra o contador de menções no ícone e **se atualiza sozinho**. Os amigos instalam pela página **https://dusky.veneno.space/baixar**. Detalhes mais abaixo.
 
 ## Como rodar
 
@@ -96,27 +96,35 @@ Precisa do **Node 22 ou mais novo** e do **ffmpeg** (pro bot de música). O `yt-
 
 ```bash
 npm install
-npm start          # servidor + túnel do Cloudflare (didiscord.veneno.space)
+npm start          # servidor + túnel do Cloudflare (dusky.veneno.space)
 npm run start:local  # só o servidor, em http://localhost:3000
 npm run dev          # só o servidor, reiniciando sozinho a cada arquivo salvo
 ```
 
-O banco SQLite é criado sozinho na primeira vez (`server/db/didiscord.db`), a partir de `server/db/schema.sql` e das migrações leves em `server/db/index.js`.
+O banco SQLite é criado sozinho na primeira vez (`server/db/dusky.db`), a partir de `server/db/schema.sql` e das migrações leves em `server/db/index.js`.
 
 `bcrypt` e `better-sqlite3` são compilados na instalação. O npm novo bloqueia isso por padrão: os dois já estão liberados em `allowScripts` no `package.json`. Se trocar a versão do Node e o servidor reclamar de `NODE_MODULE_VERSION`, roda `npm rebuild bcrypt better-sqlite3`.
 
 ### Túnel do Cloudflare
 
-O `npm start` sobe o servidor e o `cloudflared` juntos. Com o `.env` configurado pro túnel nomeado, o site fica no endereço fixo e o terminal mostra `túnel no ar: https://didiscord.veneno.space` quando conecta. O site só fica no ar enquanto esse terminal estiver aberto.
+O `npm start` sobe o servidor e o `cloudflared` juntos. Com o `.env` configurado pro túnel nomeado, o site fica no endereço fixo e o terminal mostra `túnel no ar: https://dusky.veneno.space` quando conecta. O site só fica no ar enquanto esse terminal estiver aberto.
 
 As credenciais do túnel ficam em `~/.cloudflared` (fora do projeto). Pra montar em outro PC:
 
 ```bash
 cloudflared tunnel login
 # ou copia ~/.cloudflared/<id>.json deste PC, ou cria outro túnel:
-cloudflared tunnel create didiscord-veneno
-cloudflared tunnel route dns didiscord-veneno didiscord.veneno.space
+cloudflared tunnel create dusky-veneno
+cloudflared tunnel route dns dusky-veneno dusky.veneno.space
 ```
+
+O túnel deste PC ainda se chama `didiscord-veneno` (nome de antes do projeto virar dusky; não precisa trocar). Ele atende **os dois endereços**: `dusky.veneno.space` (o oficial) e `didiscord.veneno.space` (o antigo, que precisa continuar no ar pros apps Electron já instalados e pro atualizador deles, que lê `/downloads/latest*.yml` de lá). Basta cada endereço ter uma rota DNS pro mesmo túnel:
+
+```bash
+cloudflared tunnel route dns didiscord-veneno dusky.veneno.space   # o antigo já tem
+```
+
+`CLOUDFLARE_TUNNEL_HOSTNAME` aceita os dois separados por vírgula (só muda o que aparece no terminal). Com `LEGACY_HOST_REDIRECT=1` no `.env`, quem abre o endereço antigo num navegador comum é mandado pro novo (apps desktop, `/downloads`, `/api` e mídia continuam no antigo).
 
 Nunca rode o servidor em dois PCs com o mesmo túnel ao mesmo tempo: o Cloudflare divide as visitas entre os dois, cada um com o próprio banco.
 
@@ -147,7 +155,7 @@ Em **configurações → notificações → com o site fechado**, clique em **at
 
 Requer HTTPS (localhost serve para desenvolvimento), navegador com Web Push e execução em segundo plano permitida pelo sistema. Fechar a aba funciona; encerrar totalmente o navegador ou bloquear sua execução em segundo plano pode impedir entrega. O Electron continua com as notificações da janela; o botão de Web Push é para navegadores compatíveis. Provedores aceitos: Google/Chromium, Mozilla e Apple.
 
-As chaves VAPID são geradas uma vez e persistidas em `app_secrets` no SQLite, fora do Git. Inclua o banco nos backups para preservar inscrições. `WEB_PUSH_SUBJECT` opcional muda o endereço público de contato VAPID (padrão: `https://didiscord.veneno.space`). O worker (`public/sw.js`) não faz cache de páginas privadas. O push leva apenas IDs; a leitura do conteúdo exige a sessão e as permissões atuais. Inscrições expiradas (404/410) são removidas. Senha redefinida, suspensão ou perda de acesso impedem novos avisos daquele conteúdo.
+As chaves VAPID são geradas uma vez e persistidas em `app_secrets` no SQLite, fora do Git. Inclua o banco nos backups para preservar inscrições. `WEB_PUSH_SUBJECT` opcional muda o endereço público de contato VAPID (padrão: `https://dusky.veneno.space`). O worker (`public/sw.js`) não faz cache de páginas privadas. O push leva apenas IDs; a leitura do conteúdo exige a sessão e as permissões atuais. Inscrições expiradas (404/410) são removidas. Senha redefinida, suspensão ou perda de acesso impedem novos avisos daquele conteúdo.
 
 Não exige chave externa nem alteração manual no `.env`. Depois de atualizar, rode `npm install`, reinicie o servidor e recarregue a página. A migração do banco é automática e conserva o histórico.
 
@@ -155,12 +163,12 @@ Referências de implementação: [Web Push](https://github.com/web-push-libs/web
 
 ## Verificação
 
-`npm test` executa testes HTTP com SQLite em memória, cobrindo permissões, isolamento entre servidores, categorias e push. Nenhum teste usa o banco real. `DIDISCORD_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/didiscord.db`). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
+`npm test` executa testes HTTP com SQLite em memória, cobrindo permissões, isolamento entre servidores, categorias e push. Nenhum teste usa o banco real. `DUSKY_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/dusky.db`; o nome antigo `DIDISCORD_DB_PATH` também vale, e um `didiscord.db` antigo é renomeado sozinho pra `dusky.db` na primeira vez). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
 
 ## Estrutura do projeto
 
 ```
-didiscord/
+dusky/
 ├── server/
 │   ├── index.js            # liga o Express, a sessão, as rotas, o HTTP e o WebSocket
 │   ├── config.js           # chaves de serviços externos lidas do .env
@@ -273,7 +281,7 @@ O app **não roda o servidor**: é uma janela do Chromium que abre o site. Saiu 
 ```bash
 cd electron
 npm install
-npm start          # abre em https://didiscord.veneno.space
+npm start          # abre em https://dusky.veneno.space
 npm run dev        # abre em http://localhost:3000 (servidor local)
 npm run build      # gera AppImage + .deb (Linux) e instalador .exe (Windows) em electron/dist/
 npm run release    # gera tudo E publica em downloads/ (página /baixar + atualização automática)
@@ -287,7 +295,7 @@ npm run release    # gera tudo E publica em downloads/ (página /baixar + atuali
 
 A atualização funciona no instalador do Windows e no AppImage. No `.deb` também, mas pede a senha de administrador. Quem ainda tem a versão 0.4.0 ou anterior precisa instalar a 0.5.0 uma vez pela página: as antigas não sabiam se atualizar.
 
-- **Endereço**: já abre em `https://didiscord.veneno.space`. Dá pra trocar pela tela de "conectando…" ou pelo menu **Servidor** (aparece apertando Alt). `DIDISCORD_URL` força um endereço.
+- **Endereço**: já abre em `https://dusky.veneno.space`. Dá pra trocar pela tela de "conectando…" ou pelo menu **Servidor** (aparece apertando Alt). `DUSKY_URL` força um endereço.
 - **Segurança da janela**: só navega pro servidor escolhido; links de fora abrem no navegador do sistema. Mic, câmera e tela são liberados sem perguntar, só pra esse endereço.
 - **Seletor de tela**: no X11/Windows é um seletor próprio com miniaturas (`electron/picker/`). No Wayland quem mostra é o próprio sistema (o seletor do Hyprland, GNOME ou KDE).
 
@@ -322,9 +330,9 @@ O Electron não sabe capturar o som de um app só, então cada sistema tem um ca
 
 - **Linux** (`electron/audio/linux.js`): um `pw-record` desligado de tudo, e o app liga nele (com `pw-link`) só as saídas de som certas.
   - Compartilhando uma janela: só o som do processo daquela janela.
-  - Compartilhando a tela inteira: todo o som do PC, menos o do próprio didiscord (senão quem assiste ouviria a própria voz de volta).
-  - No Wayland o sistema não diz de qual app é a janela escolhida, então o som é escolhido antes, num seletor do didiscord (tudo, um app específico, ou nada).
-- **Windows** (`electron/native/audiocap.cpp`): WASAPI Process Loopback, com a mesma regra (incluir só o app da janela, ou excluir o didiscord).
+  - Compartilhando a tela inteira: todo o som do PC, menos o do próprio dusky (senão quem assiste ouviria a própria voz de volta).
+  - No Wayland o sistema não diz de qual app é a janela escolhida, então o som é escolhido antes, num seletor do dusky (tudo, um app específico, ou nada).
+- **Windows** (`electron/native/audiocap.cpp`): WASAPI Process Loopback, com a mesma regra (incluir só o app da janela, ou excluir o dusky).
 
 ### Recompilar os auxiliares
 
@@ -333,8 +341,8 @@ Os executáveis prontos ficam em `electron/native/bin/` (dentro do git, porque s
 ```bash
 # compartilhamento de tela (Go 1.26+; usa a biblioteca do LiveKit pra mandar a tela pelo servidor de mídia)
 cd electron/native/screencast
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/didiscord-screencast .
-GOOS=windows CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/didiscord-screencast.exe .
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/dusky-screencast .
+GOOS=windows CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/dusky-screencast.exe .
 
 # som da tela no Windows (precisa do zig)
 electron/native/build-cross.sh

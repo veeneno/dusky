@@ -1,4 +1,4 @@
-// didiscord — Câmera, compartilhar tela e entrar/sair da call
+// dusky — Câmera, compartilhar tela e entrar/sair da call
 // Parte 23 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -109,9 +109,9 @@ async function startScreenShare(opts = {}) {
   // PipeWire), o localScreenStream nunca vem com faixa de áudio — o Electron não aceita apontar
   // getDisplayMedia pra um device/monitor arbitrário, só 'loopback' (sistema inteiro) ou nada.
   // Nesse caso buscamos o áudio à parte, por um getUserMedia mirando o monitor isolado.
-  if (window.didiscordDesktop) {
+  if (window.duskyDesktop) {
     try {
-      const plan = await window.didiscordDesktop.getScreenAudioPlan();
+      const plan = await window.duskyDesktop.getScreenAudioPlan();
       if (plan && plan.mode === 'app') {
         audioTrack = await captureIsolatedAppAudioTrack(plan.deviceLabelHint);
       } else if (plan && plan.mode === 'pcm') {
@@ -133,7 +133,7 @@ async function startScreenShare(opts = {}) {
 
 // busca, entre os dispositivos de entrada de áudio, o monitor PipeWire isolado que o main.js
 // (electron/main.js, startAppAudioCapture) preparou pro app escolhido no seletor de janela —
-// identificado pela descrição do sink (device.description=didiscord-app-share, ver main.js), que
+// identificado pela descrição do sink (device.description=dusky-app-share, ver main.js), que
 // aparece como parte do label do dispositivo depois que alguma permissão de mic já foi concedida
 // (é o caso aqui, já que a call já pediu getUserMedia de áudio antes). Devolve null se não achar
 // (ex: sistema sem PipeWire, ou o label vier diferente do esperado) — nesse caso a tela é
@@ -181,9 +181,9 @@ async function captureIsolatedAppAudioTrack(labelHint) {
 }
 
 // monta a MediaStreamTrack de áudio da tela a partir do PCM cru que o helper nativo Windows
-// (didiscord-audio-helper.exe, via WASAPI Process Loopback — ver electron/main.js e
+// (dusky-audio-helper.exe, via WASAPI Process Loopback — ver electron/main.js e
 // electron/native/audio-helper/AudioHelper.cpp) despeja pro processo principal e repassa aqui
-// por IPC (window.didiscordDesktop.onPcmChunk, ver electron/preload.js). Usa
+// por IPC (window.duskyDesktop.onPcmChunk, ver electron/preload.js). Usa
 // MediaStreamTrackGenerator (WebCodecs Insertable Streams) pra transformar cada pedaço de PCM
 // num AudioData de verdade, que vira uma MediaStreamTrack normal — o resto do pipeline
 // (screenAudioTransceiver, RTCPeerConnection) não sabe nem precisa saber que essa track não veio
@@ -193,7 +193,7 @@ async function capturePcmAudioTrack(plan) {
     console.warn('[call] este Chromium não suporta MediaStreamTrackGenerator/AudioData — sem áudio da tela (Windows)');
     return null;
   }
-  if (!window.didiscordDesktop || typeof window.didiscordDesktop.onPcmChunk !== 'function') {
+  if (!window.duskyDesktop || typeof window.duskyDesktop.onPcmChunk !== 'function') {
     console.warn('[call] app desktop não expõe onPcmChunk — sem áudio da tela (Windows)');
     return null;
   }
@@ -213,7 +213,7 @@ async function capturePcmAudioTrack(plan) {
   pcmAudioGenerator = generator;
   pcmAudioWriter = writer;
 
-  pcmAudioUnsubscribe = window.didiscordDesktop.onPcmChunk((bytes) => {
+  pcmAudioUnsubscribe = window.duskyDesktop.onPcmChunk((bytes) => {
     let data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     if (pcmAudioLeftover.length > 0) {
       const merged = new Uint8Array(pcmAudioLeftover.length + data.length);
@@ -325,10 +325,10 @@ function stopScreenShare() {
   if (appAudioCaptureStream) {
     appAudioCaptureStream.getTracks().forEach((t) => t.stop());
     appAudioCaptureStream = null;
-    if (window.didiscordDesktop) {
+    if (window.duskyDesktop) {
       // devolve o stream daquele app pro sink de áudio padrão do sistema (senão ele continua
       // mudo/isolado depois que a gente para de compartilhar) — não bloqueia o resto da limpeza
-      window.didiscordDesktop.stopAppAudioCapture().catch((err) => console.warn('[call] falha ao devolver o roteamento de áudio do app:', err));
+      window.duskyDesktop.stopAppAudioCapture().catch((err) => console.warn('[call] falha ao devolver o roteamento de áudio do app:', err));
     }
   }
   // no-op se o plano não era 'pcm' (Linux/mac, ou compartilhamento sem áudio) — só desmonta o
@@ -336,10 +336,10 @@ function stopScreenShare() {
   stopPcmAudioCapture();
   // sempre avisa o processo principal que o compartilhamento acabou, independente do modo —
   // no modo 'system' (tela inteira) isso encerra o recheck periódico que mantém o próprio
-  // didiscord fora do sink padrão (ver startSelfAwayWatch em electron/main.js); nos outros
+  // dusky fora do sink padrão (ver startSelfAwayWatch em electron/main.js); nos outros
   // modos é um no-op inofensivo.
-  if (window.didiscordDesktop) {
-    window.didiscordDesktop.notifyScreenShareStopped().catch((err) => console.warn('[call] falha ao avisar o fim do compartilhamento pro processo principal:', err));
+  if (window.duskyDesktop) {
+    window.duskyDesktop.notifyScreenShareStopped().catch((err) => console.warn('[call] falha ao avisar o fim do compartilhamento pro processo principal:', err));
   }
   localScreenAudioTrack = null;
   replaceOnAllPeers('screen', null);

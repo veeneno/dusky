@@ -6,7 +6,7 @@ const realtime = require('../../realtime');
 const { MESSAGE_SELECT_BY_ID } = require('../../db/messageQueries');
 const { decorateMessage } = require('../../chatExtras');
 
-const BOT_NAME = 'DJ didiscord';
+const BOT_NAME = 'DJ dusky';
 
 // `embed` (opcional): { title, description, thumbnail, color, fields: [{name, value}], footer }
 function postBotMessage(channelId, content, embed) {

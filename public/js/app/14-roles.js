@@ -1,4 +1,4 @@
-// didiscord — Cargos, permissões de canal e moderação de voz
+// dusky — Cargos, permissões de canal e moderação de voz
 // Parte 14 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -376,7 +376,7 @@ function appendVoiceModerationItems(menu, userId) {
 }
 
 // arrastar alguém da lista de quem está em call e soltar em outro canal de voz (administradores)
-const DRAG_MIME = 'application/x-didiscord-user';
+const DRAG_MIME = 'application/x-dusky-user';
 
 function makeVoiceRowDraggable(row, userId) {
   if (!canModerateMember(userId, 'moderate_voice')) return;

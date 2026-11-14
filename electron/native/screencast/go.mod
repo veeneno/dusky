@@ -1,4 +1,4 @@
-module didiscord/screencast
+module dusky/screencast
 
 go 1.26.9
 

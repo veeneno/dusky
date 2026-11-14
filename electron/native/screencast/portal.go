@@ -62,7 +62,7 @@ func (p *portalSession) close() {
 func randomToken() string {
 	b := make([]byte, 8)
 	rand.Read(b)
-	return "didiscord_" + hex.EncodeToString(b)
+	return "dusky_" + hex.EncodeToString(b)
 }
 
 // chama um método do portal que responde por um objeto Request (sinal Response) e espera a resposta

@@ -1,4 +1,4 @@
-// didiscord — Notificações do sistema, não lidas e pular pra uma mensagem
+// dusky — Notificações do sistema, não lidas e pular pra uma mensagem
 // Parte 8 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -13,7 +13,7 @@
 // notificações do sistema
 // ===================================================================
 
-const NOTIFY_KEY = 'didiscord:notificationLevel';
+const NOTIFY_KEY = 'dusky:notificationLevel';
 const notificationLevelSelect = document.getElementById('notificationLevelSelect');
 const notificationPermissionBtn = document.getElementById('notificationPermissionBtn');
 
@@ -71,7 +71,7 @@ function showSystemNotification(message) {
   if (!notificationsSupported() || Notification.permission !== 'granted') return;
   if (pushDeviceEnabled && !appIsInFront()) return;
   const isDm = message.server_id == null;
-  const author = message.username || message.bot_name || (message.system_type ? 'didiscord' : 'alguém');
+  const author = message.username || message.bot_name || (message.system_type ? 'dusky' : 'alguém');
   let title = author;
   if (!isDm) {
     const s = servers.find((x) => x.id === message.server_id);
@@ -83,11 +83,11 @@ function showSystemNotification(message) {
     const n = new Notification(title, {
       body: messagePlain(message).slice(0, 220),
       icon: message.avatar_url || '/favicon.ico',
-      tag: `didiscord-${message.channel_id}`,
-      silent: true, // o som é o do próprio didiscord
+      tag: `dusky-${message.channel_id}`,
+      silent: true, // o som é o do próprio dusky
     });
     n.onclick = () => {
-      if (window.didiscordDesktop && window.didiscordDesktop.focusWindow) window.didiscordDesktop.focusWindow();
+      if (window.duskyDesktop && window.duskyDesktop.focusWindow) window.duskyDesktop.focusWindow();
       window.focus();
       n.close();
       openMessageLocation(message);
@@ -148,10 +148,10 @@ function totalMentions() {
 
 function updateUnreadTitle() {
   const n = totalMentions();
-  const base = 'didiscord';
+  const base = 'dusky';
   document.title = n ? `(${n > 99 ? '99+' : n}) ${base}` : (unreadChannels.size ? `• ${base}` : base);
-  if (window.didiscordDesktop && typeof window.didiscordDesktop.setBadge === 'function') {
-    try { window.didiscordDesktop.setBadge(n); } catch (_) { /* app antigo */ }
+  if (window.duskyDesktop && typeof window.duskyDesktop.setBadge === 'function') {
+    try { window.duskyDesktop.setBadge(n); } catch (_) { /* app antigo */ }
   }
 }
 
@@ -226,7 +226,7 @@ function highlightMessage(messageId) {
 }
 
 let pushDeviceEnabled = false;
-function supportsBackgroundPush() { return window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && notificationsSupported() && !window.didiscordDesktop; }
+function supportsBackgroundPush() { return window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && notificationsSupported() && !window.duskyDesktop; }
 function setPushUi(message) {
   document.getElementById('pushStatus').textContent = message;
   document.getElementById('pushEnableBtn').hidden = pushDeviceEnabled;

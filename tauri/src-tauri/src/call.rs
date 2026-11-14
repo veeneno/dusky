@@ -4,12 +4,12 @@
 //! não consegue falar com o LiveKit. Aqui só o TRANSPORTE sai da página; o resto continua no site:
 //!
 //!   microfone:  getUserMedia → supressão de ruído/gate/nivelador/limitador (worklets do site)
-//!               → worklet "didiscord-pcm-tap" → call_push_mic (PCM float32, 48 kHz mono)
+//!               → worklet "dusky-pcm-tap" → call_push_mic (PCM float32, 48 kHz mono)
 //!               → NativeAudioSource → LiveKit
 //!   quem fala:  LiveKit → NativeAudioStream (por faixa) → fila aqui → call_pull (a página busca em laço)
-//!               → worklet "didiscord-pcm-player" → MediaStream → o MESMO caminho de sempre do site
+//!               → worklet "dusky-pcm-player" → MediaStream → o MESMO caminho de sempre do site
 //!               (<audio>, volume por pessoa, reforço >100%, áudio espacial, indicador de fala)
-//!   tela dos outros: o auxiliar didiscord-screencast em modo "watch" (Pion, em Go) entra na sala
+//!   tela dos outros: o auxiliar dusky-screencast em modo "watch" (Pion, em Go) entra na sala
 //!               como participante oculto "ver-<id>" e entrega o vídeo AINDA COMPRIMIDO
 //!               (H.264/VP8/VP9/AV1) → call_pull_video → a página decodifica com o WebCodecs
 //!               (VideoDecoder, na placa de vídeo quando dá) → <canvas>.captureStream() → o <video>
@@ -324,11 +324,11 @@ fn spawn_video_reader(track: RemoteVideoTrack, sid: String, video: Arc<VideoHub>
 
 // ---------- telas pelo auxiliar (vídeo comprimido) ----------
 
-/// Sobe o didiscord-screencast em modo "watch". Se ele não existir ou cair, as telas voltam a vir
+/// Sobe o dusky-screencast em modo "watch". Se ele não existir ou cair, as telas voltam a vir
 /// pelo libwebrtc (JPEG, até 30 fps) — a call continua funcionando.
 fn start_watcher(app: &AppHandle, session_id: u64, url: &str, token: &str, me: &str, slot: Arc<Mutex<Option<Watcher>>>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let Some(helper) = crate::screencast::native_bin(app, "didiscord-screencast") else {
+    let Some(helper) = crate::screencast::native_bin(app, "dusky-screencast") else {
         log::info("call: auxiliar de tela não encontrado — telas vão pelo caminho em JPEG");
         return;
     };

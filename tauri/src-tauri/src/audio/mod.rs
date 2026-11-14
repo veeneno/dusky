@@ -2,7 +2,7 @@
 //!
 //! O navegador só sabe pegar o áudio do sistema inteiro, o que devolveria a voz de quem está na call
 //! pra própria call. Então cada sistema usa um captador próprio que entrega PCM cru (float32
-//! intercalado, 48 kHz, estéreo), e o Rust repassa pro site (window.didiscordDesktop.onPcmChunk).
+//! intercalado, 48 kHz, estéreo), e o Rust repassa pro site (window.duskyDesktop.onPcmChunk).
 //! O site (public/js/app/23-call-media.js, capturePcmAudioTrack) monta uma MediaStreamTrack com isso.
 //!
 //! Fluxo:
@@ -44,7 +44,7 @@ use tauri::{AppHandle, Manager, Webview};
 
 /// o que vai ter áudio
 pub enum Target {
-    /// X11/Windows: a fonte escolhida no nosso seletor (janela = só aquele app; tela = tudo menos o didiscord)
+    /// X11/Windows: a fonte escolhida no nosso seletor (janela = só aquele app; tela = tudo menos o dusky)
     Source(Source),
     /// Wayland: o som escolhido à parte no seletor (system | app | none)
     Choice(AudioChoice),

@@ -1,8 +1,8 @@
-# didiscord — app desktop em Rust (Tauri 2)
+# dusky — app desktop em Rust (Tauri 2)
 
 Substituto do app Electron (`../electron`). Mesma ideia: abre uma janela nativa apontando pro site
 hospedado e adiciona o que o navegador não faz. O site não precisa mudar nada: a ponte
-`window.didiscordDesktop` tem a mesma API do `electron/preload.js`.
+`window.duskyDesktop` tem a mesma API do `electron/preload.js`.
 
 ## O que já funciona
 
@@ -14,7 +14,7 @@ hospedado e adiciona o que o navegador não faz. O site não precisa mudar nada:
 | Contador de menções e piscar na barra de tarefas | ✅ | ✅ (contador só no texto da bandeja) |
 | Mic/câmera/notificações liberados só pro servidor | ✅ | ✅ |
 | Compartilhar tela pela placa de vídeo (helper em Go, seletor com miniaturas) | ✅ X11 e Wayland | ✅ |
-| Áudio da tela (só o app escolhido ou tudo menos o didiscord) | ✅ PipeWire | ✅ audiocap |
+| Áudio da tela (só o app escolhido ou tudo menos o dusky) | ✅ PipeWire | ✅ audiocap |
 | Call: voz (falar, ouvir, mudo/surdo, volume por pessoa, "falando") | ✅ pelo Rust (ver abaixo) | ✅ |
 | Call: supressão de ruído, gate, nivelador, limitador | ✅ | ✅ |
 | Call: assistir tela/câmera dos outros, mandar câmera | ✅ pelo Rust | ✅ |
@@ -30,10 +30,10 @@ existe. Então no Linux só o **transporte** da call sai da página e vai pro Ru
 
 ```
 microfone   → getUserMedia → supressão de ruído / gate / nivelador / limitador (os do site)
-            → worklet didiscord-pcm-tap → call_push_mic → LiveKit
-quem fala   → LiveKit → call_pull (a página busca em laço) → worklet didiscord-pcm-player
+            → worklet dusky-pcm-tap → call_push_mic → LiveKit
+quem fala   → LiveKit → call_pull (a página busca em laço) → worklet dusky-pcm-player
             → MediaStream → o caminho de sempre do site (<audio>, volume, reforço, áudio espacial)
-tela deles  → o didiscord-screencast em modo "watch" (Pion, Go) entra oculto ("ver-<id>") e
+tela deles  → o dusky-screencast em modo "watch" (Pion, Go) entra oculto ("ver-<id>") e
             entrega o vídeo AINDA COMPRIMIDO → call_pull_video → VideoDecoder (WebCodecs, na
             placa de vídeo quando dá) → <canvas> mostrado direto no lugar do <video>.
             Sem limite de fps: 15 → 15, 60 → 60, 120 → 120 (o monitor ainda manda no que aparece)
@@ -106,10 +106,10 @@ npm run build        # gera o instalador em src-tauri\target\release\bundle\nsis
 
 ### Variáveis úteis
 
-- `DIDISCORD_URL=https://outro.endereco` força um servidor (não pergunta nada).
-- `DIDISCORD_DEV=1` aponta pra `http://localhost:3000` (o `npm run dev` do servidor).
+- `DUSKY_URL=https://outro.endereco` força um servidor (não pergunta nada). As variáveis antigas `DIDISCORD_*` continuam valendo.
+- `DUSKY_DEV=1` aponta pra `http://localhost:3000` (o `npm run dev` do servidor).
 - `FFMPEG_PATH=/caminho/ffmpeg` usa um ffmpeg específico no compartilhamento de tela.
-- `DIDISCORD_INJECT_JS=arquivo.js` (só no modo debug) roda um script extra em toda página — foi
+- `DUSKY_INJECT_JS=arquivo.js` (só no modo debug) roda um script extra em toda página — foi
   assim que a call foi testada de ponta a ponta (app + Chromium na mesma sala).
 
 ## Como é organizado
@@ -118,19 +118,19 @@ npm run build        # gera o instalador em src-tauri\target\release\bundle\nsis
 tauri/
   ui/loading.html, ui/picker.html   telas locais (copiadas do electron/, sem mudança)
   src-tauri/
-    src/bridge.js       ponte JS: window.didiscordDesktop / didiscordShell / pickerApi
+    src/bridge.js       ponte JS: window.duskyDesktop / duskyShell / pickerApi
     src/app.rs          janela, conexão com o servidor, comandos do site, ciclo de vida
     src/tray.rs         ícone da bandeja
     src/picker.rs       janela de escolher tela/janela (ou só o som, no Wayland)
     src/sources.rs      lista telas e janelas com miniatura (X11 / Windows)
-    src/screencast.rs   detecta o codificador e conversa com o didiscord-screencast
+    src/screencast.rs   detecta o codificador e conversa com o dusky-screencast
     src/deps.rs         baixa o ffmpeg (versão fixa + SHA-256)
     src/audio/          áudio da tela: linux.rs (PipeWire), windows.rs (audiocap)
     src/call.rs         call pelo LiveKit no Rust (só Linux; no Windows é o call_stub.rs)
     capabilities/       quem pode chamar o quê (o site ganha a dele em tempo de execução)
 ```
 
-Os binários `didiscord-screencast` e `didiscord-audiocap.exe` vêm de `../electron/native/bin` e
+Os binários `dusky-screencast` e `dusky-audiocap.exe` vêm de `../electron/native/bin` e
 vão junto no instalador (ver `tauri.linux.conf.json` / `tauri.windows.conf.json`).
 
 No Windows o **ffmpeg vai dentro do instalador** (+~27 MB comprimido): o `npm run dev`/`build`

@@ -1,4 +1,4 @@
-// didiscord-audiocap — captura de áudio por processo no Windows
+// dusky-audiocap — captura de áudio por processo no Windows
 // ===================================================================
 //
 // O que faz
@@ -6,7 +6,7 @@
 // Usa a captura "process loopback" do WASAPI (Windows 10 21H2+/11), que deixa pedir ao Windows o
 // áudio de UM processo (e dos filhos dele) — ou o áudio de TUDO MENOS um processo. Nada disso é
 // exposto pelo Chromium/Electron: o `audio: 'loopback'` do Electron pega a mistura inteira do PC,
-// inclusive a voz de quem está na call tocando no próprio didiscord, e devolve pra call (eco).
+// inclusive a voz de quem está na call tocando no próprio dusky, e devolve pra call (eco).
 //
 // O áudio sai no stdout como PCM cru: float32 intercalado, 48 kHz, estéreo — exatamente o formato
 // que o site (public/js/app.js, capturePcmAudioTrack) monta numa MediaStreamTrack.
@@ -14,7 +14,7 @@
 // Modos
 // -----
 //   --capture include <pid>   só o áudio desse processo e dos filhos (compartilhar um app)
-//   --capture exclude <pid>   tudo menos esse processo e os filhos (tela inteira sem o didiscord)
+//   --capture exclude <pid>   tudo menos esse processo e os filhos (tela inteira sem o dusky)
 //   --list-sessions           JSON por linha: processos que têm uma sessão de áudio agora
 //   --window-info <hwnd>...   JSON por linha: de qual processo/programa é cada janela
 //
@@ -58,11 +58,11 @@
 #if defined(__has_include)
 #if __has_include(<audioclientactivationparams.h>)
 #include <audioclientactivationparams.h>
-#define DIDISCORD_HAS_ACTIVATION_PARAMS 1
+#define DUSKY_HAS_ACTIVATION_PARAMS 1
 #endif
 #endif
 
-#ifndef DIDISCORD_HAS_ACTIVATION_PARAMS
+#ifndef DUSKY_HAS_ACTIVATION_PARAMS
 typedef enum AUDIOCLIENT_ACTIVATION_TYPE {
   AUDIOCLIENT_ACTIVATION_TYPE_DEFAULT = 0,
   AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK = 1,
@@ -494,10 +494,10 @@ static int capture(DWORD pid, bool include) {
 static int usage() {
   fputs(
       "uso:\n"
-      "  didiscord-audiocap --capture include <pid>\n"
-      "  didiscord-audiocap --capture exclude <pid>\n"
-      "  didiscord-audiocap --list-sessions\n"
-      "  didiscord-audiocap --window-info <hwnd> [hwnd...]\n",
+      "  dusky-audiocap --capture include <pid>\n"
+      "  dusky-audiocap --capture exclude <pid>\n"
+      "  dusky-audiocap --list-sessions\n"
+      "  dusky-audiocap --window-info <hwnd> [hwnd...]\n",
       stderr);
   return EXIT_BAD_ARGS;
 }

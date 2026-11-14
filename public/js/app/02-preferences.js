@@ -1,4 +1,4 @@
-// didiscord — Preferências salvas neste aparelho
+// dusky — Preferências salvas neste aparelho
 // Parte 2 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -16,7 +16,7 @@
 //   - estado de voz por canal (pra pré-visualização na sidebar)
 
 // ---------- preferências de dispositivo (mic / saída / câmera) ----------
-const DEVICE_PREF_KEYS = { mic: 'didiscord:device:mic', speaker: 'didiscord:device:speaker', camera: 'didiscord:device:camera' };
+const DEVICE_PREF_KEYS = { mic: 'dusky:device:mic', speaker: 'dusky:device:speaker', camera: 'dusky:device:camera' };
 const SUPPORTS_SINK_ID = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
 let settingsStream = null; // captura que pertence ao modal, separada da call
 let settingsMicGraph = null;
@@ -33,10 +33,10 @@ function saveDeviceId(kind, id) {
 }
 
 // ---------- sensibilidade do microfone (gate de ruído) e supressão de ruído ----------
-const MIC_GATE_MODE_KEY = 'didiscord:micGateMode';
-const MIC_SENSITIVITY_KEY = 'didiscord:micSensitivity';
-const NOISE_SUPPRESSION_KEY = 'didiscord:noiseSuppression';
-const NOISE_SUPPRESSION_LEVEL_KEY = 'didiscord:noiseSuppressionLevel';
+const MIC_GATE_MODE_KEY = 'dusky:micGateMode';
+const MIC_SENSITIVITY_KEY = 'dusky:micSensitivity';
+const NOISE_SUPPRESSION_KEY = 'dusky:noiseSuppression';
+const NOISE_SUPPRESSION_LEVEL_KEY = 'dusky:noiseSuppressionLevel';
 // limites de atenuação do DeepFilterNet3 em dB, os mesmos do CleanMic (que usa os padrões do
 // EasyEffects): 35 leve, 50 média, 100 forte (100 = sem limite: o ruído some de vez, e liga o
 // pós-filtro). Os antigos 20/40/60 deixavam o chiado passar (no máximo 40 dB a menos, por padrão).
@@ -45,7 +45,7 @@ const NOISE_SUPPRESSION_LEGACY_LEVELS = { 20: 35, 40: 50, 60: 100 };
 // pós-filtro do DeepFilterNet (beta): limpa o resto de ruído entre as palavras. Só no "forte",
 // como o CleanMic — em excesso ele abafa a voz.
 function noiseSuppressionPostFilterBeta(level) { return level >= 100 ? 0.05 : 0; }
-const MIC_GAIN_KEY = 'didiscord:micGain';
+const MIC_GAIN_KEY = 'dusky:micGain';
 
 function getSavedMicGain() {
   try {
@@ -59,7 +59,7 @@ function saveMicGain(v) {
   try { localStorage.setItem(MIC_GAIN_KEY, String(v)); } catch (_) { /* segue sem persistir */ }
 }
 
-const SELF_MONITOR_KEY = 'didiscord:selfMonitor';
+const SELF_MONITOR_KEY = 'dusky:selfMonitor';
 function getSavedSelfMonitor() {
   try { return localStorage.getItem(SELF_MONITOR_KEY) === '1'; } catch (_) { return false; }
 }
@@ -68,7 +68,7 @@ function saveSelfMonitor(v) {
 }
 
 // ---------- sons de notificação (entrar/sair de call, mensagem recebida) ----------
-const NOTIFICATION_SOUNDS_KEY = 'didiscord:notificationSounds';
+const NOTIFICATION_SOUNDS_KEY = 'dusky:notificationSounds';
 function getSavedNotificationSounds() {
   try {
     const v = localStorage.getItem(NOTIFICATION_SOUNDS_KEY);
@@ -107,7 +107,7 @@ function micDbToPercent(db) {
 const NOISE_MODES = ['deepfilter', 'rnnoise', 'off'];
 // processamento da voz no navegador: 'speakers' (cancela eco + volume automático), 'headphones'
 // (sem cancelar eco — o que mais estraga a voz, e com fone não precisa), 'studio' (nada)
-const VOICE_PROCESSING_KEY = 'didiscord:voiceProcessing';
+const VOICE_PROCESSING_KEY = 'dusky:voiceProcessing';
 const VOICE_PROCESSING_MODES = ['speakers', 'headphones', 'studio'];
 function getSavedVoiceProcessing() {
   try {
@@ -118,11 +118,11 @@ function getSavedVoiceProcessing() {
 function saveVoiceProcessing(v) {
   try { localStorage.setItem(VOICE_PROCESSING_KEY, VOICE_PROCESSING_MODES.includes(v) ? v : 'speakers'); } catch (_) { /* ok */ }
 }
-// volume automático: 'own' (o nivelador do didiscord, depois do supressor — padrão, ver
+// volume automático: 'own' (o nivelador do dusky, depois do supressor — padrão, ver
 // worklets/mic-leveler.js) ou 'browser' (o do navegador, que age ANTES do supressor e sobe o chiado
 // nas pausas — o supressor recebe um ruído que "respira" e deixa resto passar). O CleanMic entrega
 // o mic cru pro DeepFilterNet; aqui é o mais perto disso. No modo estúdio não tem nenhum.
-const MIC_LEVELER_KEY = 'didiscord:micLeveler';
+const MIC_LEVELER_KEY = 'dusky:micLeveler';
 function getSavedMicLeveler() {
   try { return localStorage.getItem(MIC_LEVELER_KEY) === 'browser' ? 'browser' : 'own'; } catch (_) { return 'own'; }
 }
@@ -138,13 +138,13 @@ const PREF_DEFAULTS = {
 };
 function getPref(key) {
   try {
-    const v = localStorage.getItem(`didiscord:${key}`);
+    const v = localStorage.getItem(`dusky:${key}`);
     if (v === null) return PREF_DEFAULTS[key];
     return typeof PREF_DEFAULTS[key] === 'number' ? Number(v) : v === '1';
   } catch (_) { return PREF_DEFAULTS[key]; }
 }
 function setPref(key, value) {
-  try { localStorage.setItem(`didiscord:${key}`, typeof value === 'number' ? String(value) : (value ? '1' : '0')); } catch (_) { /* ok */ }
+  try { localStorage.setItem(`dusky:${key}`, typeof value === 'number' ? String(value) : (value ? '1' : '0')); } catch (_) { /* ok */ }
   applyPrefs();
 }
 // as que mudam o visual viram atributos no <html> (o CSS faz o resto)
@@ -182,10 +182,10 @@ function getSavedNoiseSuppressionLevel() {
 
 
 // ---------- qualidade do compartilhamento de tela (resolução + fps + bitrate + com/sem áudio) ----------
-const SCREEN_RESOLUTION_KEY = 'didiscord:screenResolution';
-const SCREEN_FPS_KEY = 'didiscord:screenFps';
-const SCREEN_BITRATE_KEY = 'didiscord:screenBitrateKbps';
-const SCREEN_AUDIO_KEY = 'didiscord:screenAudioEnabled';
+const SCREEN_RESOLUTION_KEY = 'dusky:screenResolution';
+const SCREEN_FPS_KEY = 'dusky:screenFps';
+const SCREEN_BITRATE_KEY = 'dusky:screenBitrateKbps';
+const SCREEN_AUDIO_KEY = 'dusky:screenAudioEnabled';
 
 const SCREEN_RESOLUTIONS = ['1280x720', '1920x1080', '2560x1440', '3840x2160'];
 const SCREEN_FPS_VALUES = [15, 30, 60, 120];
@@ -227,7 +227,7 @@ function saveScreenBitrateKbps(v) {
 // segura o fps, que é o que o Discord faz pra jogo/vídeo.
 //   contentHint: diz ao navegador que tipo de imagem é ('motion' = movimento, 'detail' = texto)
 //   degradation: degradationPreference do RTCRtpSender
-const SCREEN_PRIORITY_KEY = 'didiscord:screenPriority';
+const SCREEN_PRIORITY_KEY = 'dusky:screenPriority';
 const SCREEN_PRIORITIES = {
   balanced: { contentHint: 'motion', degradation: 'balanced' },
   smooth: { contentHint: 'motion', degradation: 'maintain-framerate' },
@@ -261,25 +261,25 @@ function saveScreenAudioEnabled(v) {
 // uma vez, a preferência dela passa a mandar, igual todo resto do app (sempre local, nunca sincroniza).
 function getSavedVolume(userId) {
   try {
-    const raw = localStorage.getItem(`didiscord:volume:${userId}`);
+    const raw = localStorage.getItem(`dusky:volume:${userId}`);
     if (raw === null) return userId === BOT_USER_ID ? botServerVolume : 100;
     const v = parseInt(raw, 10);
     return Number.isFinite(v) ? Math.min(200, Math.max(0, v)) : 100;
   } catch (_) { return userId === BOT_USER_ID ? botServerVolume : 100; }
 }
 function saveVolume(userId, val) {
-  try { localStorage.setItem(`didiscord:volume:${userId}`, String(val)); } catch (_) { /* segue sem persistir */ }
+  try { localStorage.setItem(`dusky:volume:${userId}`, String(val)); } catch (_) { /* segue sem persistir */ }
 }
 
 // ---------- volume do ÁUDIO DA TELA compartilhada por participante (0–200%), separado do volume do mic ----------
 function getSavedScreenVolume(userId) {
   try {
-    const v = parseInt(localStorage.getItem(`didiscord:screenVolume:${userId}`), 10);
+    const v = parseInt(localStorage.getItem(`dusky:screenVolume:${userId}`), 10);
     return Number.isFinite(v) ? Math.min(200, Math.max(0, v)) : 100;
   } catch (_) { return 100; }
 }
 function saveScreenVolume(userId, val) {
-  try { localStorage.setItem(`didiscord:screenVolume:${userId}`, String(val)); } catch (_) { /* segue sem persistir */ }
+  try { localStorage.setItem(`dusky:screenVolume:${userId}`, String(val)); } catch (_) { /* segue sem persistir */ }
 }
 
 // ---------- mostrar/ocultar as informações (resolução/fps/bitrate) da tile de compartilhamento de
@@ -288,12 +288,12 @@ function saveScreenVolume(userId, val) {
 // escolhe se quer ver essas infos na própria tile de preview (key fixa 'local') ----------
 function getSavedScreenStatsVisible(key) {
   try {
-    const v = localStorage.getItem(`didiscord:screenStatsVisible:${key}`);
+    const v = localStorage.getItem(`dusky:screenStatsVisible:${key}`);
     return v === null ? true : v === '1'; // visível por padrão, igual já era
   } catch (_) { return true; }
 }
 function saveScreenStatsVisible(key, val) {
-  try { localStorage.setItem(`didiscord:screenStatsVisible:${key}`, val ? '1' : '0'); } catch (_) { /* segue sem persistir */ }
+  try { localStorage.setItem(`dusky:screenStatsVisible:${key}`, val ? '1' : '0'); } catch (_) { /* segue sem persistir */ }
 }
 
 // ---------- ajustes locais por participante (silenciar/ocultar vídeo só pro meu lado) ----------
@@ -303,8 +303,8 @@ function getLocalOverride(userId) {
   let mutedLocal = false;
   let hideVideo = false;
   try {
-    mutedLocal = localStorage.getItem(`didiscord:localMute:${userId}`) === '1';
-    hideVideo = localStorage.getItem(`didiscord:hideVideo:${userId}`) === '1';
+    mutedLocal = localStorage.getItem(`dusky:localMute:${userId}`) === '1';
+    hideVideo = localStorage.getItem(`dusky:hideVideo:${userId}`) === '1';
   } catch (_) { /* segue com os padrões (false, false) */ }
   o = { mutedLocal, hideVideo };
   localVoiceOverrides.set(userId, o);
@@ -313,8 +313,8 @@ function getLocalOverride(userId) {
 function saveLocalOverride(userId, o) {
   localVoiceOverrides.set(userId, o);
   try {
-    localStorage.setItem(`didiscord:localMute:${userId}`, o.mutedLocal ? '1' : '0');
-    localStorage.setItem(`didiscord:hideVideo:${userId}`, o.hideVideo ? '1' : '0');
+    localStorage.setItem(`dusky:localMute:${userId}`, o.mutedLocal ? '1' : '0');
+    localStorage.setItem(`dusky:hideVideo:${userId}`, o.hideVideo ? '1' : '0');
   } catch (_) { /* segue sem persistir */ }
 }
 

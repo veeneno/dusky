@@ -1,4 +1,4 @@
-// didiscord — Rich presence ("jogando X")
+// dusky — Rich presence ("jogando X")
 // Parte 24 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -12,9 +12,9 @@
 // site repassa pro servidor (activity_set), que mostra pros amigos. No navegador não tem detecção.
 // A opção e os jogos cadastrados ficam neste aparelho (localStorage): o que está aberto é coisa
 // do computador, não da conta.
-const PRESENCE_ENABLED_KEY = 'didiscord:presenceEnabled';
-const PRESENCE_GAMES_KEY = 'didiscord:presenceGames';
-const presenceApi = () => (window.didiscordDesktop && window.didiscordDesktop.presence) || null;
+const PRESENCE_ENABLED_KEY = 'dusky:presenceEnabled';
+const PRESENCE_GAMES_KEY = 'dusky:presenceGames';
+const presenceApi = () => (window.duskyDesktop && window.duskyDesktop.presence) || null;
 let myActivity = null; // { name, startedAt } — o que o app detectou agora
 
 function getPresenceEnabled() {
@@ -105,7 +105,7 @@ function renderPresenceSettings() {
   host.append(toggle);
 
   if (!api) {
-    host.append(make('p', 'field-help', window.didiscordDesktop
+    host.append(make('p', 'field-help', window.duskyDesktop
       ? 'este app é de uma versão antiga: atualize pra 0.5.1 ou mais nova pra ele detectar os jogos.'
       : 'a detecção só funciona no app do computador (o navegador não enxerga os programas abertos).'));
     return;
@@ -250,7 +250,7 @@ function sendMyPresenceStatus() {
 
 // app desktop: a bandeja mostra o status e deixa trocar por lá (electron/main.js)
 function reportStatusToDesktop() {
-  const api = window.didiscordDesktop && window.didiscordDesktop.status;
+  const api = window.duskyDesktop && window.duskyDesktop.status;
   if (api && typeof api.report === 'function') {
     try { api.report(myPresenceStatus()); } catch (_) { /* app antigo */ }
   }
@@ -259,7 +259,7 @@ function reportStatusToDesktop() {
 function initPresenceStatus() {
   applyMyPresenceDot();
   reportStatusToDesktop();
-  const api = window.didiscordDesktop && window.didiscordDesktop.status;
+  const api = window.duskyDesktop && window.duskyDesktop.status;
   if (api && typeof api.onSetRequest === 'function') api.onSetRequest((s) => setMyPresenceStatus(s));
 }
 

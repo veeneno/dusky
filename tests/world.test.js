@@ -1,5 +1,5 @@
 // mundinho 3D: regras de posição/assento (server/world.js) e criação de canal-mundo.
-process.env.DIDISCORD_DB_PATH = ':memory:';
+process.env.DUSKY_DB_PATH = ':memory:';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');

@@ -1,4 +1,4 @@
-// didiscord — Painel de admin do site
+// dusky — Painel de admin do site
 // Parte 16 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em
@@ -189,7 +189,7 @@ async function renderAdminServers() {
 async function renderAdminAnnounce() {
   adminBody.innerHTML = `
       <div class="admin-announce">
-        <p class="modal-lead">O aviso aparece em destaque pra todo mundo que estiver com o didiscord aberto agora (manutenção, reinício do servidor, novidade…).</p>
+        <p class="modal-lead">O aviso aparece em destaque pra todo mundo que estiver com o dusky aberto agora (manutenção, reinício do servidor, novidade…).</p>
         <textarea maxlength="300" rows="4" placeholder="ex: vou reiniciar o servidor em 5 minutos pra atualizar"></textarea>
         <div class="modal-actions"><span class="field-help admin-announce-count">0/300</span><button type="button" class="btn btn-primary">mandar aviso</button></div>
       </div>`;
@@ -230,7 +230,7 @@ function showSiteAnnouncement(text, by) {
 // Esc fecha o que estiver aberto por cima (popout, menu, modais novos)
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if (window.DidiEmoji && DidiEmoji.isOpen()) return;
+  if (window.DuskyEmoji && DuskyEmoji.isOpen()) return;
   if (!viewProfileBackdrop.hidden) { closeViewProfile(); return; }
   if (!settingsModalBackdrop.hidden) { closeSettingsModal(); return; }
   if (!serverMenu.hidden) { closeServerMenu(); return; }

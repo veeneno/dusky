@@ -1,4 +1,4 @@
-// didiscord — Painéis de fixadas e busca, anexos e GIFs
+// dusky — Painéis de fixadas e busca, anexos e GIFs
 // Parte 9 de 28 do código do site (public/js/app/). Leia o README.md desta pasta antes de mexer.
 //
 // Todos os arquivos desta pasta são scripts comuns que dividem o MESMO escopo e são carregados em

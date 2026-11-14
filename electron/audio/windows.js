@@ -1,10 +1,10 @@
 'use strict';
-// Áudio do compartilhamento de tela no Windows, via didiscord-audiocap.exe (WASAPI Process
+// Áudio do compartilhamento de tela no Windows, via dusky-audiocap.exe (WASAPI Process
 // Loopback — ver electron/native/audiocap.cpp). O helper escreve PCM cru no stdout (float32
 // intercalado, 48 kHz, estéreo) e para sozinho quando o stdin fecha.
 //
 //   janela escolhida -> --capture include <pid da janela>  (só aquele app e os filhos)
-//   tela inteira     -> --capture exclude <pid do didiscord> (tudo menos o didiscord, senão a voz de
+//   tela inteira     -> --capture exclude <pid do dusky> (tudo menos o dusky, senão a voz de
 //                       quem está na call voltaria pra ele em eco)
 
 const { spawn, execFile } = require('child_process');
@@ -13,10 +13,10 @@ const path = require('path');
 
 function helperPath() {
   // instalado: o electron-builder copia o .exe pra <resources>/audiocap (ver "extraResources")
-  const packaged = path.join(process.resourcesPath || '', 'audiocap', 'didiscord-audiocap.exe');
+  const packaged = path.join(process.resourcesPath || '', 'audiocap', 'dusky-audiocap.exe');
   if (fs.existsSync(packaged)) return packaged;
   // rodando do código-fonte (npm run dev)
-  const dev = path.join(__dirname, '..', 'native', 'bin', 'didiscord-audiocap.exe');
+  const dev = path.join(__dirname, '..', 'native', 'bin', 'dusky-audiocap.exe');
   return fs.existsSync(dev) ? dev : null;
 }
 
@@ -38,7 +38,7 @@ function windowPid(helper, hwnd) {
 async function prepare({ source, ownPid, log }) {
   const helper = helperPath();
   if (!helper) {
-    log('didiscord-audiocap.exe não encontrado — compartilhando sem áudio');
+    log('dusky-audiocap.exe não encontrado — compartilhando sem áudio');
     return null;
   }
   const [kind, idPart] = String(source.id).split(':');

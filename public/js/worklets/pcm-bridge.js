@@ -2,8 +2,8 @@
 // O WebKitGTK não tem WebRTC, então o transporte da call vai pelo Rust — mas o tratamento do
 // microfone e a reprodução continuam aqui no site, pelo caminho de sempre.
 //
-//   didiscord-pcm-tap     microfone já tratado -> blocos de 20 ms (Float32, mono) pro Rust
-//   didiscord-pcm-player  PCM que veio do Rust -> saída de áudio (vira MediaStream no site)
+//   dusky-pcm-tap     microfone já tratado -> blocos de 20 ms (Float32, mono) pro Rust
+//   dusky-pcm-player  PCM que veio do Rust -> saída de áudio (vira MediaStream no site)
 
 // junta o microfone em blocos de 20 ms (960 amostras a 48 kHz) e manda pela porta
 class PcmTap extends AudioWorkletProcessor {
@@ -93,5 +93,5 @@ class PcmPlayer extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('didiscord-pcm-tap', PcmTap);
-registerProcessor('didiscord-pcm-player', PcmPlayer);
+registerProcessor('dusky-pcm-tap', PcmTap);
+registerProcessor('dusky-pcm-player', PcmPlayer);

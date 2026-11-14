@@ -1,5 +1,5 @@
 'use strict';
-// `npm start`: sobe o servidor do didiscord e, junto, o túnel do Cloudflare.
+// `npm start`: sobe o servidor do dusky e, junto, o túnel do Cloudflare.
 //
 // Padrão: túnel RÁPIDO — não precisa de conta nem domínio. O Cloudflare dá um endereço aleatório
 // (https://<palavras>.trycloudflare.com) que aparece em destaque aqui no terminal e fica salvo em
@@ -66,14 +66,17 @@ const tunnelName = env.CLOUDFLARE_TUNNEL_NAME;
 const mode = /^(nomeado|named)$/i.test(env.CLOUDFLARE_TUNNEL_MODE || '') ? 'named' : 'quick';
 const port = env.PORT || '3000';
 const bin = findCloudflared();
-// endereço fixo do túnel nomeado (só pra mostrar no terminal), ex: didiscord.veneno.space
-const hostname = (env.CLOUDFLARE_TUNNEL_HOSTNAME || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+// endereço fixo do túnel nomeado (só pra mostrar no terminal), ex: dusky.veneno.space. Aceita
+// vários separados por vírgula (ex: "dusky.veneno.space,didiscord.veneno.space" — o mesmo túnel
+// atende todos os endereços que tiverem rota DNS pra ele)
+const hostnames = (env.CLOUDFLARE_TUNNEL_HOSTNAME || '').split(',')
+  .map((h) => h.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '')).filter(Boolean);
 const URL_FILE = path.join(root, 'tunnel-url.txt');
 
 function announce(url) {
   try { fs.writeFileSync(URL_FILE, url + '\n'); } catch (_) { /* só informativo */ }
   const line = '='.repeat(Math.max(60, url.length + 8));
-  console.log(`\n${line}\n  endereço do didiscord (manda pros amigos colarem no app):\n\n    ${url}\n\n  muda toda vez que o npm start reinicia — também salvo em tunnel-url.txt\n${line}\n`);
+  console.log(`\n${line}\n  endereço do dusky (manda pros amigos colarem no app):\n\n    ${url}\n\n  muda toda vez que o npm start reinicia — também salvo em tunnel-url.txt\n${line}\n`);
 }
 
 if (!bin) {
@@ -106,7 +109,7 @@ if (!bin) {
     // túnel nomeado: avisa quando a primeira conexão com o Cloudflare subiu
     if (mode === 'named' && !announced && /Registered tunnel connection/i.test(text)) {
       announced = true;
-      if (hostname) console.log(`\n[start] túnel no ar: https://${hostname}\n`);
+      if (hostnames.length) console.log(`\n[start] túnel no ar: ${hostnames.map((h) => 'https://' + h).join('  e  ')}\n`);
     }
   };
   tunnel.stdout.on('data', onOutput);

@@ -1,6 +1,6 @@
 // configurações do servidor (estilo Discord), banimentos, cargo de entrada, auditoria e soundboard.
 // HTTP real + SQLite em memória: nunca lê ou altera o banco do servidor em uso.
-process.env.DIDISCORD_DB_PATH = ':memory:';
+process.env.DUSKY_DB_PATH = ':memory:';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -107,7 +107,7 @@ test('registro de auditoria: só quem pode vê, e as ações aparecem', async ()
 });
 
 test('soundboard: envio cortado pelo ffmpeg, permissões e sons externos', async () => {
-  const tmp = path.join(os.tmpdir(), 'didiscord-teste-som.wav');
+  const tmp = path.join(os.tmpdir(), 'dusky-teste-som.wav');
   execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', tmp]);
   const send = async (user, serverId, fields) => {
     const form = new FormData();
