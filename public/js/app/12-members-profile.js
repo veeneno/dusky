@@ -825,18 +825,32 @@ function decorChip(slot, value, label) {
   return btn;
 }
 
+const profileDecorTabs = document.getElementById('profileDecorTabs');
+
+// itens do menu "decorações", um por slot do DECOR_SLOTS (feito uma vez; decoração nova entra sozinha)
+for (const [slot, def] of Object.entries(DECOR_SLOTS)) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'profile-tab';
+  btn.dataset.tab = 'decor-' + slot;
+  btn.setAttribute('role', 'tab');
+  btn.innerHTML = '<span class="profile-tab-label"></span><span class="profile-tab-dot" aria-hidden="true"></span>';
+  btn.querySelector('.profile-tab-label').textContent = def.label;
+  profileDecorTabs.appendChild(btn);
+}
+
 function buildDecorEditor() {
   decorEditor.innerHTML = '';
   for (const [slot, def] of Object.entries(DECOR_SLOTS)) {
-    const field = document.createElement('div');
-    field.className = 'field decor-field';
-    const label = document.createElement('label');
-    label.textContent = def.label + ' ';
-    const hint = document.createElement('span');
-    hint.className = 'field-hint';
-    hint.textContent = def.help;
-    label.appendChild(hint);
-    field.appendChild(label);
+    const panel = document.createElement('div');
+    panel.className = 'profile-tab-panel profile-decor-panel';
+    panel.dataset.tabPanel = 'decor-' + slot;
+    panel.hidden = profileActiveTab !== 'decor-' + slot;
+
+    const intro = document.createElement('p');
+    intro.className = 'profile-section-lead';
+    intro.textContent = def.help;
+    panel.appendChild(intro);
 
     const opts = document.createElement('div');
     opts.className = 'decor-options';
@@ -857,8 +871,17 @@ function buildDecorEditor() {
       decorFileInput.click();
     });
     opts.appendChild(up);
-    field.appendChild(opts);
-    decorEditor.appendChild(field);
+    panel.appendChild(opts);
+
+    const help = document.createElement('p');
+    help.className = 'field-help';
+    help.textContent = 'Modelo e "nenhum" salvam no botão. A imagem enviada (png, webp ou gif animado, de preferência com fundo transparente, até 10MB) já fica salva na hora.';
+    panel.appendChild(help);
+    decorEditor.appendChild(panel);
+
+    // bolinha no menu: essa decoração está em uso no rascunho
+    const tab = profileDecorTabs.querySelector(`[data-tab="decor-${slot}"]`);
+    if (tab) tab.classList.toggle('has-value', !!decorDraft[slot]);
   }
   refreshDecorNpPreview();
 }
@@ -950,13 +973,31 @@ function refreshLivePreview() {
   refreshImagePreviews();
 }
 
+const profileSectionTitle = document.getElementById('profileSectionTitle');
+const profilePreviewCol = document.getElementById('profilePreviewCol');
+const profileEditFooter = document.getElementById('profileEditFooter');
+const profileMainScroll = document.getElementById('profileMainScroll');
+let profileActiveTab = 'perfil';
+
 function switchProfileTab(tabName) {
-  profileTabs.querySelectorAll('.profile-tab').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.tab === tabName);
-  });
+  const tabs = [...profileTabs.querySelectorAll('.profile-tab')];
+  const target = tabs.find((t) => t.dataset.tab === tabName) || tabs[0];
+  profileActiveTab = target.dataset.tab;
+  for (const btn of tabs) {
+    const on = btn === target;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  }
   profileModalBackdrop.querySelectorAll('.profile-tab-panel').forEach((panel) => {
-    panel.hidden = panel.dataset.tabPanel !== tabName;
+    panel.hidden = panel.dataset.tabPanel !== profileActiveTab;
   });
+  const label = target.querySelector('.profile-tab-label');
+  profileSectionTitle.textContent = (label || target).textContent;
+  // senha e sessão não mexem no perfil: sem prévia e sem "salvar alterações"
+  const isAccount = profileActiveTab === 'conta';
+  profilePreviewCol.hidden = isAccount;
+  profileEditFooter.hidden = isAccount;
+  profileMainScroll.scrollTop = 0;
 }
 
 profileTabs.addEventListener('click', (e) => {
@@ -978,12 +1019,13 @@ function openProfileModal() {
   profileUsernameInput.value = currentUser.username;
   profileStatusInput.value = currentUser.status_text || '';
   profileBioInput.value = currentUser.bio || '';
-  switchProfileTab('perfil');
+  profileActiveTab = 'perfil';
   buildColorSwatches(currentUser.accent_color);
   buildColorSwatches2(currentUser.accent_color_2);
   buildNameFxPicker(currentUser.name_style);
   for (const slot of Object.keys(DECOR_SLOTS)) decorDraft[slot] = parseDecor(slot, currentUser[slot]) ? currentUser[slot] : null;
   buildDecorEditor();
+  switchProfileTab('perfil');
   setAvatarSourceMenu(false);
   closeAvatarGiphy();
   refreshLivePreview();

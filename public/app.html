@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="/css/app.css?v=20">
   <link rel="stylesheet" href="/css/chat.css?v=20">
   <link rel="stylesheet" href="/css/members.css?v=20">
-  <link rel="stylesheet" href="/css/profile.css?v=24">
+  <link rel="stylesheet" href="/css/profile.css?v=25">
   <link rel="stylesheet" href="/css/voice.css?v=21">
   <link rel="stylesheet" href="/css/settings.css?v=20">
   <link rel="stylesheet" href="/css/servers.css?v=20">
@@ -314,139 +314,152 @@
     </div>
   </div>
 
-  <!-- modal: editar perfil -->
+  <!-- modal: editar perfil. Menu de seções à esquerda, a seção escolhida no meio e a prévia (cartão
+       + a sua linha na lista de membros) sempre à direita; "salvar" fica fixo embaixo.
+       As seções de decoração saem do DECOR_SLOTS (12-members-profile.js): decoração nova = item novo
+       no menu e seção nova, sem mexer aqui. -->
   <div class="modal-backdrop" id="profileModalBackdrop" hidden>
     <div class="modal card profile-modal" id="profileEditCard" role="dialog" aria-labelledby="profileModalTitle">
-      <header class="profile-modal-head">
-        <h3 class="display" id="profileModalTitle">seu perfil</h3>
-        <div class="profile-tabs" id="profileTabs" role="tablist">
-          <button type="button" class="profile-tab active" data-tab="perfil" role="tab">perfil</button>
-          <button type="button" class="profile-tab" data-tab="conta" role="tab">conta</button>
-        </div>
-        <button type="button" class="icon-btn modal-close" id="profileCloseBtn" aria-label="fechar">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </header>
+      <nav class="profile-nav" id="profileTabs" role="tablist" aria-label="seções do perfil">
+        <h3 class="display profile-nav-title" id="profileModalTitle">seu perfil</h3>
+        <span class="profile-nav-group">perfil</span>
+        <button type="button" class="profile-tab active" data-tab="perfil" role="tab">sobre você</button>
+        <button type="button" class="profile-tab" data-tab="visual" role="tab">cores e nome</button>
+        <span class="profile-nav-group">decorações</span>
+        <div class="profile-nav-list" id="profileDecorTabs"></div>
+        <span class="profile-nav-group">conta</span>
+        <button type="button" class="profile-tab" data-tab="conta" role="tab">senha e sessão</button>
+      </nav>
 
-      <div class="profile-tab-panel" data-tab-panel="perfil">
-        <div class="profile-edit-layout">
-          <div class="profile-edit-fields">
-            <section class="profile-edit-group">
-              <h4 class="profile-edit-group-title">imagens</h4>
-              <div class="profile-edit-images">
-                <div class="profile-edit-banner" id="profileEditBanner"></div>
-                <div class="profile-edit-avatar" id="profileEditAvatar"></div>
+      <div class="profile-main">
+        <header class="profile-main-head">
+          <h2 class="profile-section-title" id="profileSectionTitle">sobre você</h2>
+          <button type="button" class="icon-btn modal-close" id="profileCloseBtn" aria-label="fechar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </header>
+
+        <div class="profile-main-body">
+          <div class="profile-main-scroll" id="profileMainScroll">
+            <div class="profile-tab-panel" data-tab-panel="perfil">
+                <section class="profile-edit-group">
+                  <h4 class="profile-edit-group-title">imagens</h4>
+                  <div class="profile-edit-images">
+                    <div class="profile-edit-banner" id="profileEditBanner"></div>
+                    <div class="profile-edit-avatar" id="profileEditAvatar"></div>
+                  </div>
+                  <div class="profile-edit-image-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" id="avatarUploadBtn" aria-haspopup="menu" aria-expanded="false">trocar avatar</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="bannerUploadBtn">trocar banner</button>
+                    <button type="button" class="btn btn-ghost btn-sm btn-quiet" id="bannerRemoveBtn" hidden>remover banner</button>
+                    <!-- trocar avatar: arquivo do computador ou gif do GIPHY (ver 12-members-profile.js) -->
+                    <div class="avatar-source-menu" id="avatarSourceMenu" role="menu" hidden>
+                      <button type="button" role="menuitem" data-source="file">enviar do computador</button>
+                      <button type="button" role="menuitem" data-source="giphy">buscar gif no GIPHY</button>
+                    </div>
+                  </div>
+                  <div class="avatar-giphy" id="avatarGiphyPanel" hidden>
+                    <div class="avatar-giphy-head">
+                      <input type="text" id="avatarGiphySearch" placeholder="buscar gif pro avatar..." autocomplete="off" aria-label="buscar gif pro avatar">
+                      <button type="button" class="btn btn-ghost btn-sm" id="avatarGiphyClose">fechar</button>
+                    </div>
+                    <div class="avatar-giphy-grid" id="avatarGiphyGrid"></div>
+                    <p class="avatar-giphy-credit">gifs do GIPHY · clique num pra usar de avatar</p>
+                  </div>
+                  <p class="field-help">png, jpg, webp ou gif animado, até 15MB. Sem banner, o topo do cartão usa as suas cores.</p>
+                  <input type="file" id="avatarInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                  <input type="file" id="bannerInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                </section>
+
+                <section class="profile-edit-group">
+                  <h4 class="profile-edit-group-title">nome e bio</h4>
+                  <div class="field">
+                    <label for="profileUsernameInput">nome de usuário</label>
+                    <input id="profileUsernameInput" type="text" maxlength="32" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="profileStatusInput">status</label>
+                    <input id="profileStatusInput" type="text" maxlength="80" placeholder="o que você anda fazendo?" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="profileBioInput">sobre mim <span class="field-hint" id="profileBioCount">0/190</span></label>
+                    <textarea id="profileBioInput" maxlength="190" rows="4" placeholder="conta um pouco sobre você"></textarea>
+                  </div>
+                </section>
+
+            </div>
+
+            <div class="profile-tab-panel" data-tab-panel="visual" hidden>
+                <section class="profile-edit-group">
+                  <h4 class="profile-edit-group-title">cores do cartão</h4>
+                  <div class="field">
+                    <label>cor do perfil</label>
+                    <div class="color-swatches" id="colorSwatches"></div>
+                  </div>
+                  <div class="field">
+                    <label>segunda cor <span class="field-hint">cria um degradê no cartão</span></label>
+                    <div class="color-swatches" id="colorSwatches2"></div>
+                  </div>
+                </section>
+
+                <section class="profile-edit-group">
+                  <h4 class="profile-edit-group-title">efeito no nome</h4>
+                  <div class="field">
+                    <label>efeito no nome <span class="field-hint">aparece pra todo mundo: chat, DMs, membros e perfil</span></label>
+                    <div class="name-fx-picker" id="nameFxPicker" role="radiogroup" aria-label="efeito no nome"></div>
+                  </div>
+                  <div class="field" id="nameFxColorsField">
+                    <label>cores do efeito</label>
+                    <div class="name-fx-colors">
+                      <input type="color" id="nameFxColor1" aria-label="primeira cor do efeito" title="primeira cor">
+                      <input type="color" id="nameFxColor2" aria-label="segunda cor do efeito" title="segunda cor">
+                    </div>
+                  </div>
+                </section>
+
+            </div>
+
+            <!-- uma seção por decoração (placa do nome, decoração do avatar, efeito do perfil…) -->
+            <div id="decorEditor"></div>
+            <input type="file" id="decorFileInput" accept="image/png,image/webp,image/gif,image/jpeg" hidden>
+
+            <div class="profile-tab-panel" data-tab-panel="conta" hidden>
+            <section class="profile-edit-group profile-account">
+              <h4 class="profile-edit-group-title">trocar senha</h4>
+              <div class="field">
+                <label for="currentPasswordInput">senha atual</label>
+                <input id="currentPasswordInput" type="password" autocomplete="current-password">
               </div>
-              <div class="profile-edit-image-actions">
-                <button type="button" class="btn btn-ghost btn-sm" id="avatarUploadBtn" aria-haspopup="menu" aria-expanded="false">trocar avatar</button>
-                <button type="button" class="btn btn-ghost btn-sm" id="bannerUploadBtn">trocar banner</button>
-                <button type="button" class="btn btn-ghost btn-sm btn-quiet" id="bannerRemoveBtn" hidden>remover banner</button>
-                <!-- trocar avatar: arquivo do computador ou gif do GIPHY (ver 12-members-profile.js) -->
-                <div class="avatar-source-menu" id="avatarSourceMenu" role="menu" hidden>
-                  <button type="button" role="menuitem" data-source="file">enviar do computador</button>
-                  <button type="button" role="menuitem" data-source="giphy">buscar gif no GIPHY</button>
-                </div>
+              <div class="field">
+                <label for="newPasswordInput">nova senha</label>
+                <input id="newPasswordInput" type="password" autocomplete="new-password">
               </div>
-              <div class="avatar-giphy" id="avatarGiphyPanel" hidden>
-                <div class="avatar-giphy-head">
-                  <input type="text" id="avatarGiphySearch" placeholder="buscar gif pro avatar..." autocomplete="off" aria-label="buscar gif pro avatar">
-                  <button type="button" class="btn btn-ghost btn-sm" id="avatarGiphyClose">fechar</button>
-                </div>
-                <div class="avatar-giphy-grid" id="avatarGiphyGrid"></div>
-                <p class="avatar-giphy-credit">gifs do GIPHY · clique num pra usar de avatar</p>
+              <div class="field-error" id="profilePasswordError"></div>
+              <div class="modal-actions">
+                <button class="btn btn-primary" id="profilePasswordSaveBtn" type="button">trocar senha</button>
               </div>
-              <p class="field-help">png, jpg, webp ou gif animado, até 15MB. Sem banner, o topo do cartão usa as suas cores.</p>
-              <input type="file" id="avatarInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-              <input type="file" id="bannerInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
             </section>
 
-            <section class="profile-edit-group">
-              <div class="field">
-                <label for="profileUsernameInput">nome de usuário</label>
-                <input id="profileUsernameInput" type="text" maxlength="32" autocomplete="off">
-              </div>
-              <div class="field">
-                <label for="profileStatusInput">status</label>
-                <input id="profileStatusInput" type="text" maxlength="80" placeholder="o que você anda fazendo?" autocomplete="off">
-              </div>
-              <div class="field">
-                <label for="profileBioInput">sobre mim <span class="field-hint" id="profileBioCount">0/190</span></label>
-                <textarea id="profileBioInput" maxlength="190" rows="4" placeholder="conta um pouco sobre você"></textarea>
-              </div>
+            <section class="profile-edit-group profile-account profile-logout">
+              <h4 class="profile-edit-group-title">sair</h4>
+              <p class="field-help">Encerra a sessão neste navegador. Suas mensagens e servidores continuam aqui quando você voltar.</p>
+              <button class="btn btn-danger-ghost" id="logoutBtn" type="button">sair da conta</button>
             </section>
-
-            <section class="profile-edit-group">
-              <div class="field">
-                <label>cor do perfil</label>
-                <div class="color-swatches" id="colorSwatches"></div>
-              </div>
-              <div class="field">
-                <label>segunda cor <span class="field-hint">cria um degradê no cartão</span></label>
-                <div class="color-swatches" id="colorSwatches2"></div>
-              </div>
-            </section>
-
-            <section class="profile-edit-group">
-              <div class="field">
-                <label>efeito no nome <span class="field-hint">aparece pra todo mundo: chat, DMs, membros e perfil</span></label>
-                <div class="name-fx-picker" id="nameFxPicker" role="radiogroup" aria-label="efeito no nome"></div>
-              </div>
-              <div class="field" id="nameFxColorsField">
-                <label>cores do efeito</label>
-                <div class="name-fx-colors">
-                  <input type="color" id="nameFxColor1" aria-label="primeira cor do efeito" title="primeira cor">
-                  <input type="color" id="nameFxColor2" aria-label="segunda cor do efeito" title="segunda cor">
-                </div>
-              </div>
-            </section>
-
-            <!-- decorações: placa do nome, decoração do avatar, efeito do perfil (ver 12-members-profile.js) -->
-            <section class="profile-edit-group">
-              <h4 class="profile-edit-group-title">decorações</h4>
-              <p class="field-help">escolha um modelo ou envie uma imagem sua (png, webp ou gif animado, de preferência com fundo transparente, até 10MB). A imagem enviada já fica salva; modelo e "nenhum" salvam no botão.</p>
-              <div class="decor-editor" id="decorEditor"></div>
-              <div class="decor-np-preview-wrap">
-                <span class="profile-edit-preview-label">na lista de membros</span>
-                <div class="decor-np-preview" id="decorNpPreview"></div>
-              </div>
-              <input type="file" id="decorFileInput" accept="image/png,image/webp,image/gif,image/jpeg" hidden>
-            </section>
-
-            <div class="profile-edit-footer">
-              <div class="field-error" id="profileInfoError"></div>
-              <button class="btn btn-primary" id="profileInfoSaveBtn" type="button">salvar alterações</button>
             </div>
           </div>
 
-          <div class="profile-edit-preview-col">
+          <aside class="profile-edit-preview-col" id="profilePreviewCol" aria-label="prévia">
             <span class="profile-edit-preview-label">como os outros veem</span>
             <div class="profile-card is-static" id="profileLivePreview"></div>
-          </div>
+            <span class="profile-edit-preview-label">na lista de membros</span>
+            <div class="decor-np-preview" id="decorNpPreview"></div>
+          </aside>
         </div>
-      </div>
 
-      <div class="profile-tab-panel" data-tab-panel="conta" hidden>
-        <section class="profile-edit-group profile-account">
-          <h4 class="profile-edit-group-title">trocar senha</h4>
-          <div class="field">
-            <label for="currentPasswordInput">senha atual</label>
-            <input id="currentPasswordInput" type="password" autocomplete="current-password">
-          </div>
-          <div class="field">
-            <label for="newPasswordInput">nova senha</label>
-            <input id="newPasswordInput" type="password" autocomplete="new-password">
-          </div>
-          <div class="field-error" id="profilePasswordError"></div>
-          <div class="modal-actions">
-            <button class="btn btn-primary" id="profilePasswordSaveBtn" type="button">trocar senha</button>
-          </div>
-        </section>
-
-        <section class="profile-edit-group profile-account profile-logout">
-          <h4 class="profile-edit-group-title">sair</h4>
-          <p class="field-help">Encerra a sessão neste navegador. Suas mensagens e servidores continuam aqui quando você voltar.</p>
-          <button class="btn btn-danger-ghost" id="logoutBtn" type="button">sair da conta</button>
-        </section>
+        <footer class="profile-edit-footer" id="profileEditFooter">
+          <div class="field-error" id="profileInfoError"></div>
+          <button class="btn btn-primary" id="profileInfoSaveBtn" type="button">salvar alterações</button>
+        </footer>
       </div>
     </div>
   </div>
@@ -1294,7 +1307,7 @@
   <script src="/js/app/09-panels-attachments.js?v=50"></script>
   <script src="/js/app/10-video-player.js?v=50"></script>
   <script src="/js/app/11-slash-commands.js?v=50"></script>
-  <script src="/js/app/12-members-profile.js?v=50"></script>
+  <script src="/js/app/12-members-profile.js?v=51"></script>
   <script src="/js/app/13-servers.js?v=50"></script>
   <script src="/js/app/14-roles.js?v=50"></script>
   <script src="/js/app/15-media-viewer.js?v=50"></script>
