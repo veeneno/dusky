@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="/css/app.css?v=20">
   <link rel="stylesheet" href="/css/chat.css?v=20">
   <link rel="stylesheet" href="/css/members.css?v=20">
-  <link rel="stylesheet" href="/css/profile.css?v=20">
+  <link rel="stylesheet" href="/css/profile.css?v=21">
   <link rel="stylesheet" href="/css/voice.css?v=21">
   <link rel="stylesheet" href="/css/settings.css?v=20">
   <link rel="stylesheet" href="/css/servers.css?v=20">
@@ -370,6 +370,20 @@
               <div class="field">
                 <label>segunda cor <span class="field-hint">cria um degradê no cartão</span></label>
                 <div class="color-swatches" id="colorSwatches2"></div>
+              </div>
+            </section>
+
+            <section class="profile-edit-group">
+              <div class="field">
+                <label>efeito no nome <span class="field-hint">aparece pra todo mundo: chat, DMs, membros e perfil</span></label>
+                <div class="name-fx-picker" id="nameFxPicker" role="radiogroup" aria-label="efeito no nome"></div>
+              </div>
+              <div class="field" id="nameFxColorsField">
+                <label>cores do efeito</label>
+                <div class="name-fx-colors">
+                  <input type="color" id="nameFxColor1" aria-label="primeira cor do efeito" title="primeira cor">
+                  <input type="color" id="nameFxColor2" aria-label="segunda cor do efeito" title="segunda cor">
+                </div>
               </div>
             </section>
 
@@ -1244,34 +1258,34 @@
   <script src="/js/markdown.js?v=21"></script>
   <script src="/js/emoji.js?v=21"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=46"></script>
-  <script src="/js/app/02-preferences.js?v=46"></script>
-  <script src="/js/app/03-context-menus.js?v=46"></script>
-  <script src="/js/app/04-sidebar.js?v=46"></script>
-  <script src="/js/app/05-chat.js?v=46"></script>
-  <script src="/js/app/06-message-content.js?v=46"></script>
-  <script src="/js/app/07-composer.js?v=46"></script>
-  <script src="/js/app/08-notifications.js?v=46"></script>
-  <script src="/js/app/09-panels-attachments.js?v=46"></script>
-  <script src="/js/app/10-video-player.js?v=46"></script>
-  <script src="/js/app/11-slash-commands.js?v=46"></script>
-  <script src="/js/app/12-members-profile.js?v=46"></script>
-  <script src="/js/app/13-servers.js?v=46"></script>
-  <script src="/js/app/14-roles.js?v=46"></script>
-  <script src="/js/app/15-media-viewer.js?v=46"></script>
-  <script src="/js/app/16-site-admin.js?v=46"></script>
-  <script src="/js/app/17-settings.js?v=46"></script>
-  <script src="/js/app/18-call-audio.js?v=46"></script>
-  <script src="/js/app/19-call-ui.js?v=46"></script>
-  <script src="/js/app/20-screencast-native.js?v=46"></script>
-  <script src="/js/app/21-call-sfu.js?v=46"></script>
-  <script src="/js/app/22-call-mesh.js?v=46"></script>
-  <script src="/js/app/23-call-media.js?v=46"></script>
-  <script src="/js/app/24-presence.js?v=46"></script>
-  <script src="/js/app/25-server-settings.js?v=46"></script>
-  <script src="/js/app/26-soundboard.js?v=46"></script>
-  <script src="/js/app/27-world.js?v=46"></script>
-  <script src="/js/app/28-realtime.js?v=46"></script>
-  <script src="/js/app/29-mobile.js?v=46"></script>
+  <script src="/js/app/01-state.js?v=47"></script>
+  <script src="/js/app/02-preferences.js?v=47"></script>
+  <script src="/js/app/03-context-menus.js?v=47"></script>
+  <script src="/js/app/04-sidebar.js?v=47"></script>
+  <script src="/js/app/05-chat.js?v=47"></script>
+  <script src="/js/app/06-message-content.js?v=47"></script>
+  <script src="/js/app/07-composer.js?v=47"></script>
+  <script src="/js/app/08-notifications.js?v=47"></script>
+  <script src="/js/app/09-panels-attachments.js?v=47"></script>
+  <script src="/js/app/10-video-player.js?v=47"></script>
+  <script src="/js/app/11-slash-commands.js?v=47"></script>
+  <script src="/js/app/12-members-profile.js?v=47"></script>
+  <script src="/js/app/13-servers.js?v=47"></script>
+  <script src="/js/app/14-roles.js?v=47"></script>
+  <script src="/js/app/15-media-viewer.js?v=47"></script>
+  <script src="/js/app/16-site-admin.js?v=47"></script>
+  <script src="/js/app/17-settings.js?v=47"></script>
+  <script src="/js/app/18-call-audio.js?v=47"></script>
+  <script src="/js/app/19-call-ui.js?v=47"></script>
+  <script src="/js/app/20-screencast-native.js?v=47"></script>
+  <script src="/js/app/21-call-sfu.js?v=47"></script>
+  <script src="/js/app/22-call-mesh.js?v=47"></script>
+  <script src="/js/app/23-call-media.js?v=47"></script>
+  <script src="/js/app/24-presence.js?v=47"></script>
+  <script src="/js/app/25-server-settings.js?v=47"></script>
+  <script src="/js/app/26-soundboard.js?v=47"></script>
+  <script src="/js/app/27-world.js?v=47"></script>
+  <script src="/js/app/28-realtime.js?v=47"></script>
+  <script src="/js/app/29-mobile.js?v=47"></script>
 </body>
 </html>

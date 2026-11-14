@@ -374,3 +374,150 @@
 
 .profile-logout { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); }
 .profile-logout .field-help { margin: 0 0 12px; }
+
+/* ===================================================================
+   efeito no nome (perfil → "efeito no nome")
+   =================================================================== */
+/* O JS (applyNameStyle em js/app/12-members-profile.js) põe .name-fx + .name-fx-<efeito> e as
+   cores em --nfx-c1/--nfx-c2 no elemento do nome — mensagens, membros, DMs, call, cartão de perfil.
+   O efeito ganha da cor do cargo (que vem em style="color" inline): os degradês pintam com
+   -webkit-text-fill-color, o neon usa !important, e a animação do pulso já passa por cima do inline.
+   Efeito novo: aqui, em server/nameStyle.js (NAME_EFFECTS) e no NAME_EFFECTS do JS. */
+.name-fx {
+  --nfx-c1: #c084fc;
+  --nfx-c2: #c084fc;
+}
+
+/* os que pintam a letra com um fundo (degradê recortado no texto) */
+.name-fx-gradiente,
+.name-fx-led,
+.name-fx-brilho {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  /* descendentes (ex.: ícone de dono) não herdam o "transparente" */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* degradê: as duas cores, parado */
+.name-fx-gradiente {
+  background-image: linear-gradient(90deg, var(--nfx-c1), var(--nfx-c2));
+}
+
+/* LED RGB: a fita de LED correndo pelo nome + brilho em volta. A imagem tem 2x a largura e anda
+   exatamente um ladrilho por volta (0% → 200%), então emenda sem pulo */
+.name-fx-led {
+  background-image: linear-gradient(90deg, #ff2a6d, #ff9f1c, #ffe14d, #3dff8f, #2ee6ff, #7b61ff, #ff2a6d);
+  background-size: 200% 100%;
+  background-repeat: repeat-x;
+  animation: name-fx-led 2.4s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.25)) drop-shadow(0 0 6px rgba(123, 97, 255, 0.45));
+}
+@keyframes name-fx-led {
+  from { background-position: 0% 50%; }
+  to { background-position: 200% 50%; }
+}
+
+/* neon: letra na 1ª cor, brilho nas duas, e uma piscadinha de lâmpada de vez em quando */
+.name-fx-neon {
+  color: var(--nfx-c1) !important;
+  text-shadow:
+    0 0 1px rgba(255, 255, 255, 0.6),
+    0 0 4px var(--nfx-c1),
+    0 0 10px var(--nfx-c1),
+    0 0 18px var(--nfx-c2);
+  animation: name-fx-neon 5s steps(1, end) infinite;
+}
+@keyframes name-fx-neon {
+  0%, 100% { opacity: 1; }
+  41% { opacity: 0.6; }
+  42% { opacity: 1; }
+  44% { opacity: 0.7; }
+  45% { opacity: 1; }
+}
+
+/* brilho: degradê parado + um reflexo branco passando da esquerda pra direita (e uma pausa) */
+.name-fx-brilho {
+  background-image:
+    linear-gradient(100deg, transparent 40%, rgba(255, 255, 255, 0.95) 50%, transparent 60%),
+    linear-gradient(90deg, var(--nfx-c1), var(--nfx-c2));
+  background-size: 300% 100%, 100% 100%;
+  background-repeat: no-repeat;
+  background-position: 100% 0, 0 0;
+  animation: name-fx-brilho 3.2s ease-in-out infinite;
+}
+@keyframes name-fx-brilho {
+  0% { background-position: 100% 0, 0 0; }
+  65%, 100% { background-position: 0% 0, 0 0; }
+}
+
+/* pulso: respira entre as duas cores, com brilho no pico */
+.name-fx-pulso {
+  color: var(--nfx-c1);
+  animation: name-fx-pulso 1.8s ease-in-out infinite alternate;
+}
+@keyframes name-fx-pulso {
+  from { color: var(--nfx-c1); text-shadow: 0 0 0 transparent; }
+  to { color: var(--nfx-c2); text-shadow: 0 0 8px var(--nfx-c2); }
+}
+
+/* "reduzir movimento" (sistema ou acessibilidade do app): o efeito fica, parado. O theme.css
+   encurta animações pra 0,01 ms, mas com "infinite" isso vira pisca-pisca — aqui desliga de vez */
+@media (prefers-reduced-motion: reduce) {
+  .name-fx { animation: none !important; }
+  .name-fx-pulso { color: var(--nfx-c1) !important; }
+}
+html[data-reduce-motion] .name-fx { animation: none !important; }
+html[data-reduce-motion] .name-fx-pulso { color: var(--nfx-c1) !important; }
+
+/* seletor no modal de perfil: cada opção mostra o próprio nome com o efeito */
+.name-fx-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+}
+.name-fx-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--elevated);
+  color: var(--text-hi);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s var(--ease), transform 0.12s var(--ease);
+}
+.name-fx-option:hover { transform: translateY(-1px); border-color: var(--text-faint); }
+.name-fx-option.active { border-color: var(--amethyst); box-shadow: 0 0 0 1px var(--amethyst); }
+.name-fx-sample {
+  max-width: 100%;
+  padding: 2px 0; /* espaço pro brilho do neon/LED não ser cortado */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+}
+.name-fx-label {
+  font-size: 12px;
+  color: var(--text-lo);
+}
+.name-fx-colors {
+  display: flex;
+  gap: 10px;
+}
+.name-fx-colors input[type="color"] {
+  width: 44px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}

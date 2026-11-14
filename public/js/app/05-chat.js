@@ -55,6 +55,7 @@ async function selectChannel(ch, opts = {}) {
     const name = u ? u.username : ch.name;
     chatChannelIcon.innerHTML = AT_ICON;
     chatChannelName.textContent = name;
+    applyNameStyle(chatChannelName, u || { id: ch.userId });
     chatInput.placeholder = `mensagem para @${name}`;
     membersToggleBtn.hidden = true;
     memberPanel.hidden = true;
@@ -63,6 +64,7 @@ async function selectChannel(ch, opts = {}) {
   } else {
     chatChannelIcon.innerHTML = ICONS.text;
     chatChannelName.textContent = ch.name;
+    applyNameStyle(chatChannelName, null); // canal: sem efeito (o elemento é o mesmo da DM)
     chatInput.placeholder = `mensagem em #${ch.name}`;
     membersToggleBtn.hidden = false;
     memberPanel.hidden = memberPanelCollapsed;
@@ -321,7 +323,10 @@ function buildMessageEl(m, continued) {
         <div class="msg-text"></div>
       </div>
     `;
-  if (!isBot) applyAuthorColors(el);
+  if (!isBot) {
+    applyAuthorColors(el);
+    applyNameStyle(el.querySelector('.msg-author'), { id: m.user_id, name_style: m.name_style });
+  }
   renderMessageText(el.querySelector('.msg-text'), m.content || '', !!m.edited, m);
   if (messageMentionsMe(m)) el.classList.add('mentions-me');
   if (m.pinned) {

@@ -313,6 +313,7 @@ function renderCallParticipants() {
     const nameEl = document.createElement('span');
     nameEl.className = 'call-participant-name is-clickable';
     nameEl.textContent = user.username + (entry.isSelf ? ' (você)' : '');
+    applyNameStyle(nameEl, { ...user, id: entry.id });
     nameEl.addEventListener('click', () => openViewProfile(entry.id, nameEl));
     el.appendChild(nameEl);
 

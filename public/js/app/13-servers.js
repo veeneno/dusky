@@ -671,6 +671,7 @@ function renderContacts() {
         <span class="dm-item-text"><span class="dm-item-name"></span><span class="dm-item-status"></span></span>
       `;
     b.querySelector('.dm-item-name').textContent = u.username;
+    applyNameStyle(b.querySelector('.dm-item-name'), u);
     b.querySelector('.dm-item-status').textContent = u.status_text || (u.online ? 'online' : 'offline');
     b.addEventListener('click', () => { newDmBackdrop.hidden = true; openDm(u.id); });
     newDmList.appendChild(b);

@@ -212,7 +212,9 @@ function wireRealtime() {
       chatChannelName.textContent = user.username;
       renderDmProfilePanel();
     }
-    // mensagens já na tela mostram nome/avatar antigos até reabrir o canal — aceitável
+    // efeito no nome: troca na hora em tudo que já está na tela (mensagens antigas, call, DMs).
+    // Nome/avatar das mensagens antigas continuam os de antes até reabrir o canal — aceitável
+    refreshNameStyles(user);
   });
 
   // ---------- eventos de chamada de voz ----------

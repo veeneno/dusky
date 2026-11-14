@@ -13,6 +13,7 @@ const SALT_ROUNDS = 12;
 const USERNAME_RE = /^[\p{L}0-9 _-]+$/u;
 const BIO_MAX_LEN = 190;
 const STATUS_MAX_LEN = 80;
+const { cleanNameStyle } = require('../nameStyle'); // efeito no nome (LED, neon…)
 
 function publicUser(row) {
   if (!row) return null;
@@ -34,9 +35,21 @@ function removeOldUpload(url) {
 
 // PATCH /api/profile — atualiza nome, status, bio, cor de destaque e/ou cor secundária (degradê)
 router.patch('/', requireAuth, (req, res) => {
-  const { username, accent_color, accent_color_2, bio, status_text } = req.body || {};
+  const { username, accent_color, accent_color_2, bio, status_text, name_style } = req.body || {};
   const updates = [];
   const values = [];
+
+  // efeito no nome: { effect, c1, c2 } ou null (tira o efeito)
+  if (name_style !== undefined) {
+    let clean;
+    try { clean = cleanNameStyle(name_style); } catch (err) { return res.status(400).json({ error: err.message }); }
+    if (clean === null) {
+      updates.push('name_style = NULL');
+    } else {
+      updates.push('name_style = ?');
+      values.push(clean);
+    }
+  }
 
   if (username !== undefined) {
     const cleanUsername = String(username).trim().replace(/\s+/g, ' ');

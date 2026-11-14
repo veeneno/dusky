@@ -30,6 +30,65 @@ function findUser(id) {
   return usersById.get(id) || null;
 }
 
+// ---------- efeito no nome (LED, neon, degradê…) ----------
+// Vem do servidor em user.name_style (JSON {"effect","c1","c2"}, validado em server/nameStyle.js).
+// Todo lugar que mostra o nome de alguém chama applyNameStyle(el, user): o elemento ganha a classe
+// .name-fx-<efeito> (aparência em css/profile.css) e fica marcado com data-nfx-user, pra mudança de
+// perfil de alguém (profile_updated) trocar o efeito na hora em tudo que já está na tela.
+// O efeito ganha da cor do cargo (igual ao "estilo de nome" do Discord).
+const NAME_EFFECTS = [
+  { key: '', label: 'nenhum', colors: 0 },
+  { key: 'led', label: 'LED RGB', colors: 0 },
+  { key: 'neon', label: 'neon', colors: 2 },
+  { key: 'gradiente', label: 'degradê', colors: 2 },
+  { key: 'brilho', label: 'brilho', colors: 2 },
+  { key: 'pulso', label: 'pulso', colors: 2 },
+];
+const NAME_FX_CLASSES = NAME_EFFECTS.filter((e) => e.key).map((e) => 'name-fx-' + e.key);
+const NAME_FX_HEX = /^#[0-9a-f]{6}$/i;
+
+function parseNameStyle(raw) {
+  if (!raw) return null;
+  let s = raw;
+  if (typeof raw === 'string') {
+    try { s = JSON.parse(raw); } catch (_) { return null; }
+  }
+  if (!s || !NAME_FX_CLASSES.includes('name-fx-' + s.effect)) return null;
+  const c1 = NAME_FX_HEX.test(s.c1 || '') ? s.c1 : '#c084fc';
+  const c2 = NAME_FX_HEX.test(s.c2 || '') ? s.c2 : c1;
+  return { effect: s.effect, c1, c2 };
+}
+
+// o cache (findUser) é a fonte mais nova; `fallback` é o que veio junto (ex.: a mensagem)
+function nameStyleOf(userId, fallback) {
+  const u = userId != null ? findUser(userId) : null;
+  if (u && u.name_style !== undefined) return u.name_style;
+  return fallback && fallback.name_style;
+}
+
+// opts.exact: usa só o name_style do objeto (prévia do perfil, ainda não salvo) e não marca o
+// elemento pra ser trocado em profile_updated
+function applyNameStyle(el, user, opts = {}) {
+  if (!el) return;
+  el.classList.remove('name-fx', ...NAME_FX_CLASSES);
+  el.style.removeProperty('--nfx-c1');
+  el.style.removeProperty('--nfx-c2');
+  delete el.dataset.nfxUser;
+  if (!user || user.id == null) return;
+  if (!opts.exact) el.dataset.nfxUser = String(user.id);
+  const s = parseNameStyle(opts.exact ? user.name_style : nameStyleOf(user.id, user));
+  if (!s) return;
+  el.classList.add('name-fx', 'name-fx-' + s.effect);
+  el.style.setProperty('--nfx-c1', s.c1);
+  el.style.setProperty('--nfx-c2', s.c2);
+}
+
+// alguém mudou o perfil: troca o efeito em tudo que já está na tela (mensagens antigas inclusive)
+function refreshNameStyles(user) {
+  if (!user || user.id == null) return;
+  document.querySelectorAll(`[data-nfx-user="${Number(user.id)}"]`).forEach((el) => applyNameStyle(el, user));
+}
+
 function escapeAttr(str) {
   return String(str == null ? '' : str).replace(/[&"'<>]/g, (c) => ({ '&': '&amp;', '"': '&quot;', "'": '&#39;', '<': '&lt;', '>': '&gt;' }[c]));
 }
@@ -79,6 +138,7 @@ function renderMembers() {
       item.querySelector('.member-item-name-text').textContent = m.username;
       const roleColor = memberColor(m);
       if (roleColor) item.querySelector('.member-item-name-text').style.color = roleColor;
+      applyNameStyle(item.querySelector('.member-item-name-text'), m);
       const statusEl = item.querySelector('.member-item-status');
       if (m.activity && m.online) {
         // "jogando X" (rich presence) ocupa o lugar do status enquanto a pessoa está no jogo
@@ -244,6 +304,7 @@ function renderProfileCard(el, user, opts = {}) {
     `;
 
   el.querySelector('.pc-name').textContent = user.username || '';
+  applyNameStyle(el.querySelector('.pc-name'), user, { exact: !!opts.isPreview });
 
   const statusEl = el.querySelector('.pc-status');
   statusEl.textContent = user.status_text || '';
@@ -453,6 +514,7 @@ const profileStatusLine = document.getElementById('profileStatus');
 
 function applyUserToProfileBar(user) {
   profileName.textContent = user.username;
+  applyNameStyle(profileName, user);
   profileStatusLine.textContent = user.status_text || (userPresenceStatus(user) === 'idle' ? 'inativo' : 'ativo');
   profileStatusLine.classList.toggle('has-custom', !!user.status_text);
   applyMyPresenceDot();
@@ -539,6 +601,63 @@ function buildColorSwatches2(selected2) {
   colorSwatches2.appendChild(custom);
 }
 
+// ---------- editor do efeito no nome ----------
+const nameFxPicker = document.getElementById('nameFxPicker');
+const nameFxColorsField = document.getElementById('nameFxColorsField');
+const nameFxColor1 = document.getElementById('nameFxColor1');
+const nameFxColor2 = document.getElementById('nameFxColor2');
+
+// o efeito como está no formulário: { effect, c1, c2 } ou null
+function draftNameStyle() {
+  const effect = nameFxPicker.dataset.effect || '';
+  if (!effect) return null;
+  const def = NAME_EFFECTS.find((e) => e.key === effect);
+  return def && def.colors ? { effect, c1: nameFxColor1.value, c2: nameFxColor2.value } : { effect };
+}
+
+// cada opção mostra o MEU nome já com o efeito (com as cores escolhidas)
+function refreshNameFxSamples() {
+  const name = profileUsernameInput.value.trim() || currentUser.username;
+  nameFxPicker.querySelectorAll('.name-fx-option').forEach((btn) => {
+    const key = btn.dataset.effect;
+    const sample = btn.querySelector('.name-fx-sample');
+    sample.textContent = name;
+    const style = key ? { effect: key, c1: nameFxColor1.value, c2: nameFxColor2.value } : null;
+    applyNameStyle(sample, { id: currentUser.id, name_style: style }, { exact: true });
+    const on = key === (nameFxPicker.dataset.effect || '');
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+  const def = NAME_EFFECTS.find((e) => e.key === (nameFxPicker.dataset.effect || ''));
+  nameFxColorsField.hidden = !(def && def.colors);
+}
+
+function buildNameFxPicker(rawStyle) {
+  const s = parseNameStyle(rawStyle);
+  nameFxPicker.dataset.effect = s ? s.effect : '';
+  nameFxColor1.value = s ? s.c1 : (currentUser.accent_color || ACCENT_COLORS[0]);
+  nameFxColor2.value = s ? s.c2 : (currentUser.accent_color_2 || ACCENT_COLORS[3]);
+  nameFxPicker.innerHTML = '';
+  for (const fx of NAME_EFFECTS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'name-fx-option';
+    btn.dataset.effect = fx.key;
+    btn.setAttribute('role', 'radio');
+    btn.innerHTML = '<span class="name-fx-sample"></span><span class="name-fx-label"></span>';
+    btn.querySelector('.name-fx-label').textContent = fx.label;
+    btn.addEventListener('click', () => {
+      nameFxPicker.dataset.effect = fx.key;
+      refreshLivePreview();
+    });
+    nameFxPicker.appendChild(btn);
+  }
+}
+
+for (const input of [nameFxColor1, nameFxColor2]) {
+  input.addEventListener('input', refreshLivePreview);
+}
+
 // o perfil como está no formulário agora (ainda não salvo) — alimenta a prévia ao vivo
 function draftUser() {
   return {
@@ -548,6 +667,7 @@ function draftUser() {
     bio: profileBioInput.value.trim() || null,
     accent_color: colorSwatches.dataset.selected || currentUser.accent_color,
     accent_color_2: colorSwatches2.dataset.selected2 || null,
+    name_style: draftNameStyle(),
   };
 }
 
@@ -565,6 +685,7 @@ function refreshImagePreviews() {
 }
 
 function refreshLivePreview() {
+  refreshNameFxSamples(); // o nome nas opções de efeito acompanha o que está sendo digitado
   renderProfileCard(profileLivePreview, draftUser(), { online: true, isPreview: true });
   profileBioCount.textContent = `${profileBioInput.value.length}/190`;
   refreshImagePreviews();
@@ -601,6 +722,7 @@ function openProfileModal() {
   switchProfileTab('perfil');
   buildColorSwatches(currentUser.accent_color);
   buildColorSwatches2(currentUser.accent_color_2);
+  buildNameFxPicker(currentUser.name_style);
   refreshLivePreview();
   profileModalBackdrop.hidden = false;
   profileUsernameInput.focus();
@@ -681,6 +803,7 @@ profileInfoSaveBtn.addEventListener('click', async () => {
         bio: d.bio || '',
         accent_color: d.accent_color,
         accent_color_2: d.accent_color_2,
+        name_style: d.name_style, // null tira o efeito
       }),
     });
     const data = await res.json().catch(() => ({}));

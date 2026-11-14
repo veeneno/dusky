@@ -4,7 +4,7 @@
 const db = require('./db');
 
 // colunas públicas de um usuário (nunca inclui password_hash)
-const PUBLIC_USER_COLUMNS = 'id, username, avatar_url, banner_url, accent_color, accent_color_2, bio, status_text, created_at';
+const PUBLIC_USER_COLUMNS = 'id, username, avatar_url, banner_url, accent_color, accent_color_2, name_style, bio, status_text, created_at';
 
 function publicUser(row) {
   if (!row) return null;

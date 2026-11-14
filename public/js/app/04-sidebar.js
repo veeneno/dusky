@@ -246,6 +246,7 @@ function buildDmItem(dm) {
       <span class="unread-pill" aria-label="mensagens novas"></span>
     `;
   el.querySelector('.dm-item-name').textContent = u.username;
+  applyNameStyle(el.querySelector('.dm-item-name'), u);
   const dmUnread = unreadChannels.get(dm.id);
   if (dmUnread && dmUnread.mentions > 0) {
     const pill = el.querySelector('.unread-pill');
