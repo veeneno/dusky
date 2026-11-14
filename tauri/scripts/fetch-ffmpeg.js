@@ -1,5 +1,6 @@
 // Baixa o ffmpeg que vai DENTRO do instalador do Windows (src-tauri/vendor/ffmpeg/, fora do git).
-// Roda sozinho antes do `npm run dev` / `npm run build` no Windows (ver scripts/tauri.js).
+// Roda sozinho antes do `npm run dev` / `npm run build` no Windows (ver scripts/tauri.js) e antes
+// do build do Windows feito no Linux (scripts/build-all.js).
 //
 // Versão FIXA e conferida pelo SHA-256: arquivo diferente = descartado.
 // Build "essentials" do gyan.dev (https://www.gyan.dev/ffmpeg/builds/), ffmpeg 8.1.2: tem NVENC,
@@ -20,6 +21,21 @@ const exe = path.join(dir, 'ffmpeg.exe');
 const license = path.join(dir, 'LICENSE.txt');
 const stamp = path.join(dir, 'VERSION');
 
+// Abre o .zip com o que tiver no sistema. Windows: tar.exe (vem no Windows 10 1803+ e abre .zip).
+// Linux (cross-build do instalador, ver scripts/build-all.js): unzip, senão bsdtar, senão 7z.
+function unzip(zip, dest) {
+  const tries = process.platform === 'win32'
+    ? [[path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe'), ['-xf', zip, '-C', dest]]]
+    : [['unzip', ['-q', '-o', zip, '-d', dest]], ['bsdtar', ['-xf', zip, '-C', dest]], ['7z', ['x', '-y', `-o${dest}`, zip]]];
+  for (const [bin, args] of tries) {
+    const r = spawnSync(bin, args, { stdio: ['ignore', 'ignore', 'inherit'] });
+    if (r.error && r.error.code === 'ENOENT') continue; // programa não instalado: tenta o próximo
+    if (r.status === 0) return;
+    throw new Error(`não consegui abrir o .zip do ffmpeg (${bin} saiu com ${r.status})`);
+  }
+  throw new Error('não achei como abrir o .zip do ffmpeg: instale o unzip (sudo apt install unzip)');
+}
+
 async function main() {
   if (fs.existsSync(exe) && fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8').trim() === VERSION) return;
   fs.mkdirSync(dir, { recursive: true });
@@ -35,10 +51,7 @@ async function main() {
   const tmp = path.join(dir, 'tmp');
   fs.rmSync(tmp, { recursive: true, force: true });
   fs.mkdirSync(tmp);
-  // tar.exe vem no Windows 10 1803+ e abre .zip
-  const tar = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'bsdtar';
-  const r = spawnSync(tar, ['-xf', zip, '-C', tmp], { stdio: 'inherit' });
-  if (r.status !== 0) throw new Error('não consegui abrir o .zip do ffmpeg');
+  unzip(zip, tmp);
   const root = path.join(tmp, `ffmpeg-${VERSION}-essentials_build`);
   fs.copyFileSync(path.join(root, 'bin', 'ffmpeg.exe'), exe);
   fs.copyFileSync(path.join(root, 'LICENSE'), license);

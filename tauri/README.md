@@ -126,6 +126,44 @@ npm run build        # gera o instalador em src-tauri\target\release\bundle\nsis
 Tudo sai da pasta `downloads/` do servidor (fora do git): `/baixar`, `/api/downloads`, a
 atualização do app novo e a migração do Electron.
 
+### Tudo de uma vez, no servidor (`npm run release:all`)
+
+O servidor compila os **dois** sistemas (o Windows pelo modo experimental do Tauri de compilar no
+Linux, com o `cargo-xwin`) e publica num comando só:
+
+```bash
+cd tauri
+npm run release:all -- --notes "o que mudou"
+#   --so-linux | --so-windows   só um sistema
+#   --com-electron              também reescreve latest*.yml (MIGRA os apps Electron instalados!)
+#   --dry                       confere as ferramentas e mostra o que faria, sem compilar
+```
+
+O `scripts/build-all.js` confere as ferramentas (e diz o comando pra instalar o que faltar), roda
+o build do Linux (`npm run build`), baixa o ffmpeg do instalador (`scripts/fetch-ffmpeg.js`),
+compila o Windows (`tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc`, com
+`/usr/lib/llvm-21/bin` no PATH), copia o `.exe` pra `release-in/` e chama o `release` — **por
+padrão com `--sem-electron`**. Para no primeiro erro. No fim mostra quanto tempo cada build levou.
+
+Uma vez só, pra preparar o servidor:
+
+```bash
+sudo apt install nsis lld unzip                      # + o clang 21 (ver "Como rodar")
+rustup target add x86_64-pc-windows-msvc
+cargo install --locked cargo-xwin
+```
+
+A primeira compilação pro Windows baixa o kit da Microsoft (CRT + Windows SDK, ~1 GB em
+`~/.cache/cargo-xwin`; ao rodar o `cargo-xwin` você aceita a licença dele). O instalador não é
+assinado com certificado de código (o SmartScreen avisa "editor desconhecido" do mesmo jeito que o
+build feito no Windows) — a assinatura do **atualizador** é outra coisa e continua valendo.
+
+**Versão nova (ex: 1.0.1):** mude `version` em `src-tauri/tauri.conf.json` (e, pra ficar igual,
+em `src-tauri/Cargo.toml` e `package.json`), depois `npm run release:all -- --notes "…"`. O app
+novo se atualiza sozinho; o `release` guarda só as duas últimas versões em `downloads/`.
+
+### Passo a passo (cada sistema na sua máquina)
+
 1. **Linux (no servidor):** `cd tauri && npm run build` → `.AppImage` e `.deb`.
 2. **Windows:** `cd tauri && npm run build` → `src-tauri\target\release\bundle\nsis\dusky_<versão>_x64-setup.exe`.
    Copie esse `.exe` pra pasta `tauri/release-in/` do servidor (pendrive, rede, scp…).

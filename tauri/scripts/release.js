@@ -11,8 +11,10 @@
 //
 // De onde vêm os arquivos:
 //   Linux:   src-tauri/target/release/bundle/{appimage,deb}/  (o `npm run build` deste PC)
-//   Windows: o instalador compilado no Windows (dusky_<versão>_x64-setup.exe), copiado pra pasta
-//            tauri/release-in/ deste PC (pendrive, rede, scp…) — ou --windows caminho/do/arquivo.exe
+//   Windows: tauri/release-in/dusky_<versão>_x64-setup.exe — posto lá pelo `npm run release:all`
+//            (compila pro Windows aqui mesmo, ver scripts/build-all.js) ou copiado de um PC com
+//            Windows (pendrive, rede, scp…). Senão procura em src-tauri/target/x86_64-pc-windows-msvc/
+//            release/bundle/nsis/ (cross-build) — ou --windows caminho/do/arquivo.exe
 // Só publica a versão do tauri.conf.json; arquivo de outra versão é ignorado (com aviso).
 //
 // Assinatura: cada arquivo é assinado aqui com a chave PRIVADA do atualizador (fica só neste PC):
@@ -23,6 +25,7 @@
 //   --windows <arquivo.exe>   instalador do Windows (em vez de procurar em release-in/)
 //   --notes "texto"           novidades (aparece no /baixar)
 //   --sem-electron            não mexe nos latest*.yml (o Electron fica sem receber a migração)
+//   --so-linux / --so-windows publica só um sistema (o latest.json mantém o outro, se for da mesma versão)
 //   --dry                     só mostra o que faria
 
 const fs = require('fs');
@@ -34,6 +37,7 @@ const TAURI = path.join(__dirname, '..');
 const ROOT = path.join(TAURI, '..');
 const OUT = path.join(ROOT, 'downloads');
 const BUNDLE = path.join(TAURI, 'src-tauri', 'target', 'release', 'bundle');
+const BUNDLE_WIN_CROSS = path.join(TAURI, 'src-tauri', 'target', 'x86_64-pc-windows-msvc', 'release', 'bundle');
 const INBOX = path.join(TAURI, 'release-in');
 const KEEP_VERSIONS = 2;
 
@@ -72,16 +76,21 @@ function checkVersion(file, what) {
   return file;
 }
 
+const SO_LINUX = flag('--so-linux');
+const SO_WINDOWS = flag('--so-windows');
 const files = {
-  appimage: checkVersion(newest(path.join(BUNDLE, 'appimage'), /\.AppImage$/), 'AppImage'),
-  deb: checkVersion(newest(path.join(BUNDLE, 'deb'), /\.deb$/), '.deb'),
-  windows: checkVersion(opt('--windows') || newest(INBOX, /-setup\.exe$/) || newest(path.join(BUNDLE, 'nsis'), /-setup\.exe$/), 'instalador do Windows'),
+  appimage: SO_WINDOWS ? null : checkVersion(newest(path.join(BUNDLE, 'appimage'), /\.AppImage$/), 'AppImage'),
+  deb: SO_WINDOWS ? null : checkVersion(newest(path.join(BUNDLE, 'deb'), /\.deb$/), '.deb'),
+  // release-in/ (copiado do Windows ou pelo build-all.js) > build do Windows feito no Linux
+  // (target/x86_64-pc-windows-msvc/…) > build feito no próprio Windows (target/release/…)
+  windows: SO_LINUX ? null : checkVersion(opt('--windows') || newest(INBOX, /-setup\.exe$/)
+    || newest(path.join(BUNDLE_WIN_CROSS, 'nsis'), /-setup\.exe$/) || newest(path.join(BUNDLE, 'nsis'), /-setup\.exe$/), 'instalador do Windows'),
 };
 if (!files.appimage && !files.deb && !files.windows) {
   die(`nada pra publicar da versão ${VERSION}. Rode "npm run build" (Linux) e/ou copie o dusky_${VERSION}_x64-setup.exe do Windows pra ${INBOX}`);
 }
-if (!files.windows) console.warn(`[release] aviso: sem instalador do Windows (${INBOX}/dusky_${VERSION}_x64-setup.exe) — o Windows fica na versão anterior`);
-if (!files.appimage) console.warn('[release] aviso: sem AppImage — o Linux fica na versão anterior');
+if (!files.windows && !SO_LINUX) console.warn(`[release] aviso: sem instalador do Windows (${INBOX}/dusky_${VERSION}_x64-setup.exe) — o Windows fica na versão anterior`);
+if (!files.appimage && !SO_WINDOWS) console.warn('[release] aviso: sem AppImage — o Linux fica na versão anterior');
 
 // ------------------------------------------------------------------ assinatura
 
