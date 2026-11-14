@@ -6,6 +6,7 @@ const soundboard = require('./soundboard');
 const world = require('./world');
 const { createTables } = require('./games/duno');
 const { createBlackjack } = require('./games/blackjack');
+const { createChess } = require('./games/chess');
 
 const clients = new Set();
 const onlineCounts = new Map(); // userId -> quantidade de conexões abertas (várias abas)
@@ -519,13 +520,15 @@ function handleWorldMove(ws, msg) {
 
 // ------------------------------------------------------------------
 // jogos nas mesas do mundinho. Cada mesa da cena diz o jogo dela (`game` em tables[] do JSON):
-// 'duno' (server/games/duno.js) ou 'blackjack' (server/games/blackjack.js). Cada um da call recebe
-// a SUA visão da mesa (no Duno quem joga só vê a própria mão; no 21 só a carta da banca é escondida).
+// 'duno' (server/games/duno.js), 'blackjack' (server/games/blackjack.js) ou 'chess' (server/games/chess.js).
+// Cada um da call recebe a SUA visão da mesa (no Duno quem joga só vê a própria mão; no 21 só a carta
+// da banca é escondida; no xadrez tudo é aberto — quem assiste vê as peças andando na hora).
 // gameTables tem a mesma cara de um jogo só e repassa cada chamada pro jogo da mesa.
 // ------------------------------------------------------------------
 const gameEngines = {
   duno: createTables({ onChange: broadcastGame }),
   blackjack: createBlackjack({ onChange: broadcastGame }),
+  chess: createChess({ onChange: broadcastGame }),
 };
 const engineOf = (def) => gameEngines[(def && def.game) || 'duno'] || gameEngines.duno;
 const gameTables = {

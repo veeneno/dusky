@@ -15,7 +15,7 @@
 // { x, y, z, ry, action, seat } — y é a altura do PISO onde ele está (andar de baixo 0, mezanino 3.6).
 import * as THREE from '/vendor/three/0.170.0/three.module.min.js';
 import { createAvatar, AVATAR_HEAD_TOP } from './avatar.js?v=7';
-import { buildRoom, buildProps } from './props.js?v=7';
+import { buildRoom, buildProps } from './props.js?v=8';
 import { createTv } from './tv.js?v=7';
 
 const WALK_SPEED = 3.0;
@@ -30,7 +30,7 @@ const EYE_SITTING = 0.98;
 const CAMERA_PREF_KEY = 'dusky:worldCamera';
 const HINT_PREF_KEY = 'dusky:worldHintSeen';
 const CROSSHAIR_PREF_KEY = 'dusky:worldCrosshair';
-const ASSET_V = 7; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
+const ASSET_V = 8; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
 
 function lerpAngle(a, b, k) {
   const d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
@@ -123,13 +123,14 @@ export function createWorld(container, api) {
     <button type="button" class="world-dock-btn" data-act="crosshair" hidden><span class="world-dock-emoji">🎯</span><span class="world-dock-label">mira</span></button>
     <button type="button" class="world-dock-btn" data-act="duno" hidden><span class="world-dock-emoji">🃏</span><span class="world-dock-label">Duno</span></button>
     <button type="button" class="world-dock-btn" data-act="blackjack" hidden><span class="world-dock-emoji">♠️</span><span class="world-dock-label">21</span></button>
+    <button type="button" class="world-dock-btn" data-act="chess" hidden><span class="world-dock-emoji">♟️</span><span class="world-dock-label">xadrez</span></button>
     ${tv ? '<button type="button" class="world-dock-btn" data-act="tv"><span class="world-dock-emoji">📺</span><span class="world-dock-label">TV</span></button>' : ''}
     <button type="button" class="world-dock-btn" data-act="fullscreen"><span class="world-dock-emoji world-dock-glyph">⛶</span><span class="world-dock-label">tela cheia</span></button>`;
   container.appendChild(hud);
   const hint = document.createElement('div');
   hint.className = 'world-hint';
   hint.innerHTML = `
-    <span><b>WASD</b> anda · <b>shift</b> corre · clique no chão ou num assento · arraste pra olhar · <b>V</b> 1ª/3ª pessoa · <b>C</b> mira · <b>G</b> Duno · <b>B</b> 21 · <b>F</b> tela cheia</span>
+    <span><b>WASD</b> anda · <b>shift</b> corre · clique no chão ou num assento · arraste pra olhar · <b>V</b> 1ª/3ª pessoa · <b>C</b> mira · <b>G</b> Duno · <b>B</b> 21 · <b>K</b> xadrez · <b>F</b> tela cheia</span>
     <button type="button" aria-label="fechar dica">✕</button>`;
   hint.hidden = pref(HINT_PREF_KEY, '') === '1';
   hint.querySelector('button').addEventListener('click', () => { hint.hidden = true; savePref(HINT_PREF_KEY, '1'); });
@@ -357,7 +358,7 @@ export function createWorld(container, api) {
   let hudState = '';
   function refreshHud() {
     const p = me();
-    const key = `${p ? p.action : ''}|${camMode}|${cardMode}|${crosshairOn}|${pointerLocked}|${lockFailed}|${dunoVisibleKey()}|${bjVisibleKey()}|${anyPanelOpen()}`;
+    const key = `${p ? p.action : ''}|${camMode}|${cardMode}|${crosshairOn}|${pointerLocked}|${lockFailed}|${dunoVisibleKey()}|${bjVisibleKey()}|${chessVisibleKey()}|${anyPanelOpen()}`;
     if (key === hudState) return;
     hudState = key;
     hud.querySelector('[data-act="stand"]').hidden = !p || p.action !== 'sit';
@@ -374,6 +375,8 @@ export function createWorld(container, api) {
     hud.querySelector('[data-act="duno"]').classList.toggle('is-on', !!(duno && duno.isOpen()));
     hud.querySelector('[data-act="blackjack"]').hidden = !(bj && bj.isActive());
     hud.querySelector('[data-act="blackjack"]').classList.toggle('is-on', !!(bj && bj.isOpen()));
+    hud.querySelector('[data-act="chess"]').hidden = !(chess && chess.isActive());
+    hud.querySelector('[data-act="chess"]').classList.toggle('is-on', !!(chess && chess.isOpen()));
   }
 
   hud.addEventListener('click', (e) => {
@@ -385,6 +388,7 @@ export function createWorld(container, api) {
     else if (act === 'crosshair') toggleCrosshair();
     else if (act === 'duno') { if (duno) duno.toggle(); }
     else if (act === 'blackjack') { if (bj) bj.toggle(); }
+    else if (act === 'chess') { if (chess) chess.toggle(); }
     else if (act === 'fullscreen') toggleWorldFullscreen();
     else if (act === 'tv') { if (tv) { tv.togglePanel(); onPanelChange(); } }
     else if (!p) return;
@@ -394,12 +398,17 @@ export function createWorld(container, api) {
   });
 
   // ---------- jogos (Duno) e piano: módulos carregados só quando precisa ----------
-  // cada mesa da cena diz o jogo dela (`game`): Duno (uma mesa) ou 21 (quantas houver)
+  // cada mesa da cena diz o jogo dela (`game`): Duno (uma mesa), 21 ou xadrez (quantas houver)
   const tableDef = (sceneDef.tables || []).find((t) => (t.game || 'duno') === 'duno') || null;
   const bjDefs = (sceneDef.tables || []).filter((t) => t.game === 'blackjack');
   let bj = null;
   let bjLoading = null;
   const bjLast = new Map(); // mesa -> último estado (chegou antes do módulo carregar)
+  // xadrez: carrega junto com o mundo (é leve) — as peças ficam sempre nas mesas, até sem partida
+  const chessDefs = (sceneDef.tables || []).filter((t) => t.game === 'chess');
+  let chess = null;
+  let chessLoading = null;
+  const chessLast = new Map();
   let duno = null;
   let dunoLoading = null;
   let dunoLast = null;
@@ -410,6 +419,7 @@ export function createWorld(container, api) {
     user: (id) => api.user(id),
     standUp: () => { standUp(); sendMine(true); refreshHud(); },
     onPanelChange: () => onPanelChange(),
+    myPos: () => { const p = me(); return p ? { x: p.pos.x, y: p.pos.y, z: p.pos.z } : null; },
   };
 
   function ensureDuno() {
@@ -440,8 +450,32 @@ export function createWorld(container, api) {
     return bjLoading;
   }
   function bjVisibleKey() { return bj ? `${bj.isActive()}${bj.isOpen()}` : ''; }
+  // xadrez: um módulo pra todas as mesas de xadrez (public/world/games/chess.js)
+  function ensureChess() {
+    if (chess || !chessDefs.length) return Promise.resolve(chess);
+    if (!chessLoading) {
+      chessLoading = import(`./games/chess.js?v=${ASSET_V}`).then((mod) => {
+        chess = mod.createChess({ scene, container, api, defs: chessDefs, world: worldApiForModules });
+        for (const st of chessLast.values()) chess.setState(st);
+        hudState = '';
+        refreshHud();
+        return chess;
+      }).catch((err) => { console.error('[mundinho] xadrez não carregou:', err); chessLoading = null; return null; });
+    }
+    return chessLoading;
+  }
+  function chessVisibleKey() { return chess ? `${chess.isActive()}${chess.isOpen()}` : ''; }
+  if (chessDefs.length) ensureChess();
 
   function setGame(state) {
+    if (state.game === 'chess') {
+      chessLast.set(state.table, state);
+      if (chess) chess.setState(state);
+      else ensureChess();
+      hudState = '';
+      refreshHud();
+      return;
+    }
     if (state.game === 'blackjack') {
       bjLast.set(state.table, state);
       if (bj) bj.setState(state);
@@ -505,10 +539,11 @@ export function createWorld(container, api) {
     else if (piano) piano.setOpen(false);
     if (tableDef && seat && tableDef.seats.includes(seat)) ensureDuno();
     if (seat && bjDefs.some((d) => d.seats.includes(seat))) ensureBlackjack().then((b) => { if (b) b.onMySeat(seat); });
+    if (seat && chessDefs.some((d) => d.seats.includes(seat))) ensureChess().then((c) => { if (c) c.onMySeat(seat); });
   }
 
   function anyPanelOpen() {
-    return !!((tv && tv.isPanelOpen()) || (duno && duno.isOpen()) || (bj && bj.isOpen()) || (piano && piano.isOpen()));
+    return !!((tv && tv.isPanelOpen()) || (duno && duno.isOpen()) || (bj && bj.isOpen()) || (chess && chess.isOpen()) || (piano && piano.isOpen()));
   }
   // abriu um painel: solta o mouse (precisa do cursor pra clicar nele)
   function onPanelChange() {
@@ -795,6 +830,7 @@ export function createWorld(container, api) {
     else if (e.code === 'KeyC' && camMode === 'first') toggleCrosshair();
     else if (e.code === 'KeyG' && duno) duno.toggle();
     else if (e.code === 'KeyB' && bjDefs.length) ensureBlackjack().then((b) => { if (b) b.toggle(); });
+    else if (e.code === 'KeyK' && chessDefs.length) ensureChess().then((c) => { if (c) c.toggle(); });
     else if (e.code === 'F9') { e.preventDefault(); toggleFpsMeter(); }
   }
   function onKeyUp(e) { keys.delete(e.code); }
@@ -1105,6 +1141,7 @@ export function createWorld(container, api) {
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     if (duno) duno.destroy();
     if (bj) bj.destroy();
+    if (chess) chess.destroy();
     if (piano) piano.destroy();
     if (document.fullscreenElement === fsTarget) document.exitFullscreen().catch(() => {});
     for (const id of [...people.keys()]) removePerson(id);

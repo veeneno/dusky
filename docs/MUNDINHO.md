@@ -250,6 +250,28 @@ Ideias que ficaram de fora: acumular +2/+4, desafiar o +4, placar entre partidas
       aposta, pedir/parar/dobrar/dividir). Abre ao sentar e na sua vez; dock ♠️ 21 / tecla B; quem
       não está sentado pode olhar as duas mesas pelo painel.
 
+### Etapa 5 — xadrez em 2 mesas no mezanino ✅
+- [x] Cena: duas mesas de xadrez (`xadrez-1` em x -9.2 e `xadrez-2` em x -5.8, z 0.2, no mezanino),
+      entre a sala dos pufes e a mesa do Duno, com 2 cadeiras frente a frente (`xadrez1-a` a oeste,
+      `xadrez1-b` a leste; idem `xadrez2-*`), tapete, luminária e colisor. `game: 'chess'`.
+- [x] `server/games/chess.js` (testes em `tests/chess.test.js`, com perft da posição inicial e de 3
+      posições clássicas — roque, en passant, promoção e cravadas), mesmo formato dos outros jogos.
+      Regras completas; empate automático por material insuficiente, 3 repetições e 50 lances.
+      Modos: clássico 30+20, rápido 10+5 (padrão) e blitz 3+2 (minutos + segundos por lance).
+      Fluxo: senta → qualquer um dos dois escolhe o modo → os dois "pronto" → começa (cadeira `-a` de
+      brancas na 1ª; revanche com as mesmas pessoas troca as cores). Desistir, oferecer/aceitar/recusar
+      empate, cancelar antes do 1º lance de cada um. Tempo zerado perde (empata se o outro não tem
+      como dar mate). Levantou/saiu da call no meio: 60 s pra voltar, senão perde por abandono.
+      Visão: tudo aberto (quem assiste vê tudo); só quem tem a vez recebe a lista de lances legais.
+- [x] Site: `public/world/props.js` (`chessTable`: tampo de nogueira com o tabuleiro embutido, casas
+      de 0.065 m) e `public/world/games/chess.js` — carregado junto com o mundo (é leve): as peças
+      (torneadas em código, estilo Staunton) ficam sempre na mesa e deslizam a cada lance (cavalo
+      pula, roque leva a torre junto, capturada some), com destaque do último lance e do rei em
+      xeque, e um relógio de xadrez em cima da mesa — quem está de fora vê a partida sem abrir nada.
+      Painel (abre ao sentar e quando a partida começa; dock ♟️ / tecla K): tabuleiro 2D (clica na
+      peça, depois na casa; escolhe a peça na promoção), relógios, lances em notação brasileira
+      (R D T B C) e os botões. Quem assiste abre o painel da mesa mais perto ("ver outra mesa" troca).
+
 ### Próximas etapas (ideias combinadas com o dono do projeto)
 1. **Emotes/animação melhores**: personagens com rig (glTF CC0, ex.: Quaternius/Kenney),
    carregados sob demanda; escolher boneco/roupa no perfil.

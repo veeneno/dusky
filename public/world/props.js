@@ -657,9 +657,53 @@ function blackjackTable(p) {
   return g;
 }
 
+// mesa de xadrez: quadrada, de nogueira, com o tabuleiro embutido no tampo (casas de 0.065 m, igual
+// ao S de public/world/games/chess.js, que desenha as peças e o relógio por cima — altura 0.747).
+// As cadeiras ficam em lados opostos; quem joga de brancas fica do lado da casa a1 (escura, no canto
+// esquerdo dele), o que vale pros dois lados porque o xadrez é simétrico girando 180°.
+let chessBoardTex = null;
+function chessBoardTexture() {
+  if (chessBoardTex) return chessBoardTex;
+  chessBoardTex = canvasTex(512, 512, (g, w) => {
+    const border = w * (0.02 / 0.56);
+    const cell = (w - border * 2) / 8;
+    g.fillStyle = '#3a2418';
+    g.fillRect(0, 0, w, w);
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        g.fillStyle = (i + j) % 2 === 0 ? '#8a5a3b' : '#ead7b0';
+        g.fillRect(border + i * cell, border + j * cell, cell + 0.5, cell + 0.5);
+      }
+    }
+    g.strokeStyle = '#c9a46a';
+    g.lineWidth = 3;
+    g.strokeRect(border - 2, border - 2, w - border * 2 + 4, w - border * 2 + 4);
+  });
+  return chessBoardTex;
+}
+function chessTable(p) {
+  const g = new THREE.Group();
+  const w = p.w || 0.9;
+  g.add(rbox(w, 0.05, w, 0.02, WALNUT(), 0, 0.72, 0));
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.56), mat(0xffffff, { roughness: 0.35, map: chessBoardTexture() }));
+  board.rotation.x = -Math.PI / 2;
+  board.position.y = 0.7462;
+  g.add(board);
+  // coluna torneada + pé em cruz
+  g.add(cyl(0.05, 0.07, 0.6, WALNUT(), 16, 0, 0.4, 0));
+  g.add(cyl(0.09, 0.06, 0.08, WALNUT(), 16, 0, 0.66, 0));
+  for (const a of [0, Math.PI / 2]) {
+    const foot = rbox(0.62, 0.05, 0.08, 0.02, WALNUT(), 0, 0.03, 0);
+    foot.rotation.y = a;
+    g.add(foot);
+  }
+  return g;
+}
+
 const BUILDERS = {
   gameTable,
   blackjackTable,
+  chessTable,
   sofa, loungeChair, beanbag, chair, barStool, marbleTable, sideTable, roundTable, diningTable,
   island, kitchenRun, fridge, sideboard, mediaConsole, woodPanel, shelf, plantTall, arcLamp,
   pendant, pendantRow, chandelier, piano, art, rug,

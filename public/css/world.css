@@ -737,3 +737,63 @@ button.duno-card:disabled { cursor: default; }
 .bj-draft { min-width: 96px; text-align: center; font-weight: 800; color: var(--text-heading); }
 .bj-mybet { margin: 0; font-weight: 800; color: var(--text-heading); }
 .bj-actions .world-pill-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+/* ===================================================================
+   xadrez (public/world/games/chess.js) — usa a "folha" do Duno (.duno-panel, .duno-head, .duno-avatar)
+   e acrescenta o tabuleiro 2D, os relógios e a lista de lances
+   =================================================================== */
+.chess-panel { width: min(760px, calc(100% - 24px)); }
+.chess-body { display: flex; gap: 16px; align-items: flex-start; }
+.chess-left { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 304px; }
+.chess-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; align-self: stretch; }
+.chess-player { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 16px; background: var(--bg-hover); border: 2px solid transparent; }
+.chess-player.is-running { border-color: var(--accent); }
+.chess-player.is-me .chess-who { color: var(--text-heading); }
+.chess-who { flex: 1; min-width: 0; font-weight: 700; font-size: 0.8125rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chess-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); }
+.chess-dot.is-w { background: #f2e7cf; }
+.chess-dot.is-b { background: #2b2420; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35); }
+.chess-clock { min-width: 64px; padding: 4px 10px; border-radius: 10px; background: rgba(0, 0, 0, 0.35); font: 700 1rem/1.2 ui-monospace, Menlo, monospace; color: var(--text-muted); text-align: center; font-variant-numeric: tabular-nums; }
+.chess-player.is-running .chess-clock { background: var(--accent); color: var(--accent-contrast); }
+.chess-clock.is-low { background: var(--danger) !important; color: #fff !important; }
+.chess-board { position: relative; display: grid; grid-template-columns: repeat(8, 38px); grid-template-rows: repeat(8, 38px); border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 3px #3a2418, 0 6px 18px rgba(0, 0, 0, 0.35); user-select: none; }
+.chess-sq { position: relative; border: 0; padding: 0; margin: 0; display: flex; align-items: center; justify-content: center; cursor: default; font: inherit; }
+.chess-sq.is-light { background: #ead7b0; }
+.chess-sq.is-dark { background: #8a5a3b; }
+.chess-sq.is-last { box-shadow: inset 0 0 0 100px rgba(245, 214, 74, 0.42); }
+.chess-sq.is-check { box-shadow: inset 0 0 18px 6px rgba(255, 40, 40, 0.85); }
+.chess-sq.is-sel { box-shadow: inset 0 0 0 100px rgba(90, 170, 255, 0.45); }
+.chess-sq.is-target::after { content: ''; width: 12px; height: 12px; border-radius: 50%; background: rgba(20, 20, 20, 0.35); }
+.chess-sq.is-capture { box-shadow: inset 0 0 0 4px rgba(20, 20, 20, 0.4); }
+.chess-sq.is-target, .chess-sq.is-capture, .chess-sq:has(.chess-pc) { cursor: pointer; }
+.chess-pc { font-size: 30px; line-height: 1; pointer-events: none; font-family: 'Segoe UI Symbol', 'DejaVu Sans', 'Noto Sans Symbols 2', serif; }
+.chess-pc.is-w { color: #fffaf0; -webkit-text-stroke: 1.2px #2a211b; text-shadow: 0 2px 2px rgba(0, 0, 0, 0.35); }
+.chess-pc.is-b { color: #241c17; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25); }
+.chess-coord { position: absolute; font-style: normal; font-size: 9px; font-weight: 800; opacity: 0.7; pointer-events: none; }
+.chess-sq.is-light .chess-coord { color: #8a5a3b; }
+.chess-sq.is-dark .chess-coord { color: #ead7b0; }
+.chess-coord.is-rank { top: 2px; left: 3px; }
+.chess-coord.is-file { bottom: 1px; right: 3px; }
+.chess-promo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(0, 0, 0, 0.55); }
+.chess-promo button { pointer-events: auto; width: 56px; height: 56px; border-radius: 14px; border: 0; background: var(--bg-floating); font-size: 40px; cursor: pointer; }
+.chess-promo button:hover { transform: translateY(-2px); background: var(--bg-hover); }
+.chess-moves { flex: 1; min-height: 120px; max-height: 260px; overflow-y: auto; display: grid; grid-template-columns: auto 1fr 1fr; gap: 2px 8px; align-content: start; padding: 10px; border-radius: 16px; background: var(--bg-hover); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.chess-move-n { color: var(--text-muted); font-weight: 700; }
+.chess-move { color: var(--text-heading); font-weight: 600; }
+.chess-move.is-last { color: var(--accent); }
+.chess-muted { grid-column: 1 / -1; color: var(--text-muted); text-align: center; }
+.chess-note, .chess-result { margin: 0; padding: 8px 12px; border-radius: 14px; text-align: center; font-weight: 700; font-size: 0.875rem; }
+.chess-note { background: color-mix(in srgb, var(--mention) 22%, var(--bg-floating)); color: var(--text-heading); }
+.chess-result { background: var(--accent-soft); color: var(--text-heading); }
+.chess-actions { flex-direction: column; align-items: stretch; }
+.chess-modes { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.chess-modes .world-pill-btn { padding: 6px 12px; font-size: 0.75rem; }
+.world-pill-btn.is-on { background: var(--accent); color: var(--accent-contrast); }
+.world-pill-btn.is-danger { background: var(--danger); color: #fff; }
+.chess-away { background: var(--danger); color: #fff; }
+@media (max-width: 720px) {
+  .chess-body { flex-direction: column; align-items: center; }
+  .chess-left { width: 272px; }
+  .chess-board { grid-template-columns: repeat(8, 34px); grid-template-rows: repeat(8, 34px); }
+  .chess-right { width: 100%; }
+}
