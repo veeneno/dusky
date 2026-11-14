@@ -548,8 +548,118 @@ function gameTable(p) {
   return g;
 }
 
+// mesa de 21 (blackjack): meia-lua com a banca no lado reto (-z) e os jogadores na curva (+z).
+// O feltro tem a frase impressa em arco, como nas mesas de cassino. Cartas e fichas da rodada são
+// desenhadas por public/world/games/blackjack.js por cima do feltro (altura 0.781).
+let bjFeltTex = null;
+function blackjackFeltTexture() {
+  if (bjFeltTex) return bjFeltTex;
+  // o quadrado do canvas = [-r, r] nos dois eixos da mesa; a banca fica no meio da borda de cima
+  bjFeltTex = canvasTex(1024, 1024, (g, w) => {
+    const c = w / 2;
+    const grad = g.createRadialGradient(c, c * 0.9, 40, c, c, c);
+    grad.addColorStop(0, '#1f7a52');
+    grad.addColorStop(1, '#125a3c');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, w);
+    // texto em arco, com o "pé" das letras virado pros jogadores
+    const arcText = (text, radius, size, color, from = 152, to = 28) => {
+      g.save();
+      g.fillStyle = color;
+      g.font = `800 ${size}px Georgia, serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      const n = text.length;
+      for (let i = 0; i < n; i++) {
+        const th = ((from + (to - from) * (n === 1 ? 0.5 : i / (n - 1))) * Math.PI) / 180;
+        g.save();
+        g.translate(c + radius * Math.cos(th), c + radius * Math.sin(th));
+        g.rotate(th - Math.PI / 2);
+        g.fillText(text[i], 0, 0);
+        g.restore();
+      }
+      g.restore();
+    };
+    arcText('BLACKJACK PAGA 3 PARA 2', c * 0.5, 34, '#f4d58a', 150, 30);
+    arcText('A BANCA PARA EM 17', c * 0.38, 22, 'rgba(255,255,255,0.75)', 140, 40);
+    // arcos das apostas: um círculo por cadeira
+    g.strokeStyle = 'rgba(244, 213, 138, 0.7)';
+    g.lineWidth = 4;
+    for (const deg of [64, 32, 0, -32, -64]) {
+      const a = (deg * Math.PI) / 180;
+      g.beginPath();
+      g.arc(c + Math.sin(a) * c * 0.8, c + Math.cos(a) * c * 0.8, 34, 0, Math.PI * 2);
+      g.stroke();
+    }
+    // linha da banca
+    g.strokeStyle = 'rgba(244, 213, 138, 0.5)';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(c, c, c * 0.24, 0.1, Math.PI - 0.1);
+    g.stroke();
+  });
+  return bjFeltTex;
+}
+
+function blackjackTable(p) {
+  const g = new THREE.Group();
+  const r = p.r || 1.15;
+  // meia-lua (curva pro +z) + uma faixa reta atrás pra banca
+  const half = (rad, back) => {
+    const s = new THREE.Shape();
+    s.moveTo(rad, 0);
+    s.absarc(0, 0, rad, 0, -Math.PI, true);
+    s.lineTo(-rad, back);
+    s.lineTo(rad, back);
+    s.closePath();
+    return s;
+  };
+  const body = new THREE.Mesh(new THREE.ExtrudeGeometry(half(r, 0.18), { depth: 0.06, bevelEnabled: false, curveSegments: 40 }), WALNUT());
+  body.rotation.x = -Math.PI / 2;
+  body.position.y = 0.72;
+  g.add(body);
+  // feltro: UV refeito pra cobrir [-r, r] (a textura é desenhada nesse quadrado)
+  const feltGeo = new THREE.ShapeGeometry(half(r - 0.06, 0.12), 40);
+  const pos = feltGeo.attributes.position;
+  const uv = feltGeo.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + r) / (2 * r), (pos.getY(i) + r) / (2 * r));
+  const felt = new THREE.Mesh(feltGeo, mat(0xffffff, { roughness: 1, map: blackjackFeltTexture() }));
+  felt.rotation.x = -Math.PI / 2;
+  felt.position.y = 0.781;
+  g.add(felt);
+  // borda acolchoada de couro na curva
+  const rail = new THREE.Mesh(new THREE.TorusGeometry(r - 0.02, 0.05, 10, 48, Math.PI), mat(0x2a1a14, { roughness: 0.45 }));
+  rail.rotation.x = Math.PI / 2;
+  rail.position.y = 0.79;
+  g.add(rail);
+  // pés
+  for (const sx of [-1, 1]) g.add(cyl(0.05, 0.07, 0.72, BLACK_METAL(), 12, sx * r * 0.5, 0.36, r * 0.35));
+  g.add(cyl(0.06, 0.08, 0.72, BLACK_METAL(), 12, 0, 0.36, -0.05));
+  // bandeja de fichas da banca
+  const tray = box(0.62, 0.035, 0.13, mat(0x1b1b20, { roughness: 0.4 }), 0, 0.8, 0.06);
+  g.add(tray);
+  // uma fileira de fichas deitadas em cada canaleta (cores das fichas do jogo)
+  [0xe8e2d6, 0xd94141, 0x2f7de1, 0x2fa65a, 0x222226, 0x8d4fd6].forEach((col, i) => {
+    const row = cyl(0.026, 0.026, 0.11, mat(col, { roughness: 0.5 }), 16, -0.25 + i * 0.1, 0.835, 0.06);
+    row.rotation.x = Math.PI / 2;
+    g.add(row);
+  });
+  // sapato das cartas (à direita da banca) e porta-descarte (à esquerda)
+  const shoe = box(0.16, 0.1, 0.26, mat(0x101014, { roughness: 0.35 }), -r * 0.62, 0.83, 0.12);
+  shoe.rotation.y = 0.35;
+  g.add(shoe);
+  const shoeCards = box(0.13, 0.06, 0.2, mat(0x7a1f2b, { roughness: 0.6 }), -r * 0.62, 0.87, 0.12);
+  shoeCards.rotation.y = 0.35;
+  g.add(shoeCards);
+  const discardTray = box(0.15, 0.05, 0.2, mat(0x101014, { roughness: 0.35 }), r * 0.62, 0.805, 0.12);
+  discardTray.rotation.y = -0.35;
+  g.add(discardTray);
+  return g;
+}
+
 const BUILDERS = {
   gameTable,
+  blackjackTable,
   sofa, loungeChair, beanbag, chair, barStool, marbleTable, sideTable, roundTable, diningTable,
   island, kitchenRun, fridge, sideboard, mediaConsole, woodPanel, shelf, plantTall, arcLamp,
   pendant, pendantRow, chandelier, piano, art, rug,

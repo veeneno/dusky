@@ -5,6 +5,7 @@ const access = require('./access');
 const soundboard = require('./soundboard');
 const world = require('./world');
 const { createTables } = require('./games/duno');
+const { createBlackjack } = require('./games/blackjack');
 
 const clients = new Set();
 const onlineCounts = new Map(); // userId -> quantidade de conexões abertas (várias abas)
@@ -517,10 +518,28 @@ function handleWorldMove(ws, msg) {
 }
 
 // ------------------------------------------------------------------
-// jogos nas mesas do mundinho (server/games/duno.js). Cada um da call recebe a SUA visão da mesa
-// (quem joga só vê a própria mão).
+// jogos nas mesas do mundinho. Cada mesa da cena diz o jogo dela (`game` em tables[] do JSON):
+// 'duno' (server/games/duno.js) ou 'blackjack' (server/games/blackjack.js). Cada um da call recebe
+// a SUA visão da mesa (no Duno quem joga só vê a própria mão; no 21 só a carta da banca é escondida).
+// gameTables tem a mesma cara de um jogo só e repassa cada chamada pro jogo da mesa.
 // ------------------------------------------------------------------
-const gameTables = createTables({ onChange: broadcastGame });
+const gameEngines = {
+  duno: createTables({ onChange: broadcastGame }),
+  blackjack: createBlackjack({ onChange: broadcastGame }),
+};
+const engineOf = (def) => gameEngines[(def && def.game) || 'duno'] || gameEngines.duno;
+const gameTables = {
+  handle: (channelId, def, uid, msg) => engineOf(def).handle(channelId, def, uid, msg),
+  viewFor: (channelId, def, uid) => engineOf(def).viewFor(channelId, def, uid),
+  // trocou de cadeira entre mesas de jogos diferentes: cada jogo só fica sabendo da parte dele
+  onSeat(channelId, uid, def, seatId, prevDef) {
+    const same = def && prevDef && engineOf(def) === engineOf(prevDef);
+    if (prevDef && !same) engineOf(prevDef).onSeat(channelId, uid, null, null, prevDef);
+    if (def) engineOf(def).onSeat(channelId, uid, def, seatId, same ? prevDef : null);
+  },
+  onLeaveCall: (channelId, uid) => { for (const e of Object.values(gameEngines)) e.onLeaveCall(channelId, uid); },
+  clearChannel: (channelId) => { for (const e of Object.values(gameEngines)) e.clearChannel(channelId); },
+};
 
 function broadcastGame(channelId, tableId) {
   for (const [uid, s] of voiceStates.entries()) {

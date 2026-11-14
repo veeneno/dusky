@@ -225,6 +225,31 @@ Ideias que ficaram de fora: acumular +2/+4, desafiar o +4, placar entre partidas
   (`pointerlockerror`), a 1ª pessoa entra no modo "mouse solto": a câmera segue o movimento do
   mouse sem prender e o clique vale onde o cursor está (a mira some).
 
+### Etapa 4 — 21 (blackjack) em 2 mesas no térreo ✅
+- [x] Cena: duas mesas de 21 (`mesa-21-1` em x 0.9 e `mesa-21-2` em x 5.2, z 4.3), entre a sala de TV
+      e a parede de vidro, com 5 cadeiras cada (`bj1-1..5`, `bj2-1..5`; a 1ª é à esquerda da banca,
+      que é por onde a vez começa), tapete vinho, luminária e colisor. O nascer foi pra (3.05, 1.6).
+      Cada mesa da cena tem `game` (`'duno'` ou `'blackjack'`).
+- [x] `server/games/blackjack.js` (testes em `tests/blackjack.test.js`), mesmo formato do Duno
+      (`handle/onSeat/onLeaveCall/clearChannel/viewFor`). `server/realtime.js` tem um despachante
+      (`gameTables`) que manda cada mesa pro jogo dela.
+      Regras: sapato de 6 baralhos (novo quando sobra < 1/4); aposta 10–500; cada um começa com
+      1000 fichas (em memória, valem em qualquer mesa; acabou = "pegar mais 1000"); blackjack paga
+      3:2; a banca confere blackjack quando mostra Ás/10 (acaba a rodada na hora) e para em 17 mole;
+      dobrar só com 2 cartas; dividir par de mesmo valor até 4 mãos (Ás dividido = 1 carta só; 21
+      depois de dividir não é blackjack); sem seguro/desistência.
+      Fluxo: apostas (todo mundo sentado apostou = dá as cartas; senão 12 s depois da 1ª aposta, ou
+      "dar as cartas agora") → vez de cada mão na ordem das cadeiras (20 s; estourou o tempo = para)
+      → banca vira e compra uma carta a cada 0,8 s → resultado (6 s) → apostas de novo. Levantou ou
+      saiu da call: aposta não jogada volta; mão em jogo para.
+      Visão: tudo é aberto, menos a carta escondida da banca e o sapato.
+- [x] Site: `public/world/props.js` (`blackjackTable`: meia-lua com feltro impresso em arco, borda
+      acolchoada, bandeja de fichas, sapato e porta-descarte) e `public/world/games/blackjack.js`
+      (carregado sob demanda; um módulo pra todas as mesas de 21): cartas e fichas em 3D na frente de
+      cada cadeira e da banca; painel (cronômetro, banca, mãos, fichas 10/25/100/500 pra montar a
+      aposta, pedir/parar/dobrar/dividir). Abre ao sentar e na sua vez; dock ♠️ 21 / tecla B; quem
+      não está sentado pode olhar as duas mesas pelo painel.
+
 ### Próximas etapas (ideias combinadas com o dono do projeto)
 1. **Emotes/animação melhores**: personagens com rig (glTF CC0, ex.: Quaternius/Kenney),
    carregados sob demanda; escolher boneco/roupa no perfil.

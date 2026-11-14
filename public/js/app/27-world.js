@@ -13,7 +13,7 @@
 // Este arquivo é pequeno de propósito: o Three.js e o código 3D (public/world/) só são baixados
 // com import() quando a pessoa abre uma call-mundo. Quem nunca entra num mundo não baixa nada.
 
-const WORLD_ASSET_VERSION = 6; // sobe quando mexer em public/world/ (os imports levam ?v=)
+const WORLD_ASSET_VERSION = 7; // sobe quando mexer em public/world/ (os imports levam ?v=)
 const WORLD_SEND_INTERVAL_MS = 100;
 const WORLD_HEAD_STANDING = 1.55;
 const WORLD_HEAD_SITTING = 1.15;

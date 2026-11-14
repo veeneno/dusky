@@ -643,3 +643,97 @@ button.duno-card:disabled { cursor: default; }
 
 /* modo cartas: dock e dica somem (as cartas ocupam a parte de baixo) */
 .world-stage.is-card-mode .world-dock, .world-stage.is-card-mode .world-hint { display: none; }
+
+/* ===================================================================
+   21 / blackjack (public/world/games/blackjack.js) — usa a "folha" do Duno (.duno-panel,
+   .duno-head, .duno-turn, .duno-avatar) e acrescenta cartas, mãos e fichas
+   =================================================================== */
+.bj-switch { margin-left: auto; padding: 6px 12px; font-size: 0.75rem; }
+.bj-hands { display: flex; flex-direction: column; gap: 6px; }
+.bj-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 18px;
+  background: var(--bg-hover);
+  border: 2px solid transparent;
+}
+.bj-row.is-dealer { padding-left: 14px; background: color-mix(in srgb, #1f7a52 30%, var(--bg-hover)); }
+.bj-row.is-me { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.bj-row.is-active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.bj-who { min-width: 64px; max-width: 160px; font-weight: 800; color: var(--text-heading); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bj-row.is-dealer .bj-who { min-width: 56px; }
+.bj-cards { display: inline-flex; flex-wrap: wrap; gap: 4px; flex: 1; min-width: 0; }
+.bj-muted { color: var(--text-muted); font-size: 0.8125rem; }
+.bj-total {
+  min-width: 34px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg-floating);
+  color: var(--text-heading);
+  font-weight: 800;
+  font-size: 0.8125rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.bj-total:empty { display: none; }
+.bj-bet { padding: 3px 10px; border-radius: 999px; background: var(--bg-floating); font-size: 0.75rem; font-weight: 700; color: var(--text-muted); }
+.bj-bet.is-ready { background: var(--success); color: #fff; }
+.bj-result { padding: 3px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 800; color: #fff; background: var(--text-muted); }
+.bj-result.is-win, .bj-result.is-blackjack { background: var(--success); }
+.bj-result.is-blackjack { animation: duno-pulse 1.2s ease-in-out infinite; }
+.bj-result.is-lose, .bj-result.is-bust { background: var(--danger); }
+.bj-log { margin: 0; text-align: center; font-size: 0.8125rem; font-weight: 700; color: var(--text-muted); }
+
+/* carta (as cores do baralho são fixas, como as cartas do Duno) */
+.bj-card {
+  position: relative;
+  width: 30px;
+  height: 42px;
+  border-radius: 5px;
+  background: #fbfaf7;
+  color: #1d1d24;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-weight: 800;
+  animation: bj-card-in 0.22s cubic-bezier(.3, 1.4, .5, 1) both;
+}
+.bj-card.is-red { color: #d23a3a; }
+.bj-card-rank { font-size: 0.875rem; }
+.bj-card-suit { font-size: 0.9375rem; }
+.bj-card.is-back {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 6px),
+    #8a1f2e;
+}
+@keyframes bj-card-in { from { transform: translateY(-6px) rotate(-6deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* fichas pra montar a aposta */
+.bj-actions { gap: 10px; }
+.bj-chips { display: flex; gap: 8px; }
+.bj-chip {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 4px dashed rgba(255, 255, 255, 0.75);
+  background: var(--chip);
+  color: #fff;
+  font-weight: 900;
+  font-size: 0.8125rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--chip) 55%, #000), inset 0 0 0 3px color-mix(in srgb, var(--chip) 80%, #000);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.bj-chip:hover:not(:disabled) { transform: translateY(-2px) rotate(-8deg); }
+.bj-chip:active:not(:disabled) { transform: translateY(1px); }
+.bj-chip:disabled { opacity: 0.35; cursor: default; }
+.bj-draft { min-width: 96px; text-align: center; font-weight: 800; color: var(--text-heading); }
+.bj-mybet { margin: 0; font-weight: 800; color: var(--text-heading); }
+.bj-actions .world-pill-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
