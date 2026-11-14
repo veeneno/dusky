@@ -55,8 +55,10 @@ if (SO_LINUX && SO_WINDOWS) die('use --so-linux OU --so-windows, não os dois');
 
 // o rustup fica em ~/.cargo/bin (instalado sem sudo); o npm não carrega o ~/.cargo/env
 const env = { ...process.env };
-const cargoBin = path.join(HOME, '.cargo', 'bin');
-if (!env.PATH.split(':').includes(cargoBin)) env.PATH = `${cargoBin}:${env.PATH}`;
+// e o ~/.local/bin (patchelf baixado sem sudo, ver abaixo)
+for (const dir of [path.join(HOME, '.local', 'bin'), path.join(HOME, '.cargo', 'bin')]) {
+  if (!env.PATH.split(':').includes(dir)) env.PATH = `${dir}:${env.PATH}`;
+}
 
 const has = (bin, args = ['--version'], e = env) => {
   const r = spawnSync(bin, args, { stdio: 'ignore', env: e });
@@ -87,6 +89,10 @@ function checkTools() {
   if (!has('cargo')) missing.push(['cargo (Rust)', "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"]);
   if (!fs.existsSync(path.join(TAURI, 'node_modules', '.bin', 'tauri'))) missing.push(['CLI do Tauri', 'cd tauri && npm install']);
   if (LINUX && !has('clang-21') && !has('clang')) missing.push(['clang 21', 'wget https://apt.llvm.org/llvm.sh && sudo bash llvm.sh 21']);
+  // o AppImage leva os plugins do GStreamer (bundleMediaFramework em tauri.linux.conf.json: sem
+  // eles o WebKitGTK de dentro do AppImage fica sem microfone e sem som) e o script que copia os
+  // plugins usa o patchelf
+  if (LINUX && !has('patchelf')) missing.push(['patchelf (AppImage com GStreamer)', 'sudo apt install patchelf']);
   if (WINDOWS) {
     for (const b of ['clang-cl', 'lld-link', 'llvm-lib']) {
       if (!fs.existsSync(path.join(LLVM_BIN, b))) missing.push([`${b} (llvm-21, em ${LLVM_BIN})`, 'wget https://apt.llvm.org/llvm.sh && sudo bash llvm.sh 21']);

@@ -254,6 +254,17 @@ O que olhar quando o app tem menos fps que o navegador (Linux):
   bandeja, GStreamer base/good) e `Recommends` (ffmpeg, pipewire-bin, gstreamer tools/pipewire/
   bad/ugly/libav, xdg-desktop-portal), que o apt instala junto. Pro AppImage, o guia de cada distro
   (Arch, Ubuntu/Debian, Fedora) está na página **/baixar** do site.
+- **AppImage e GStreamer:** o AppImage leva o WebKitGTK dentro, e o WebKitGTK precisa dos plugins
+  do GStreamer pra QUALQUER áudio (microfone, sons da call, `AudioContext`). Sem eles o
+  `getUserMedia` dá `OverconstrainedError` (nenhum dispositivo) e o áudio fica suspenso
+  ("Failed to start the audio device") — era o "sem permissão pro microfone" e os sons de
+  entrar/sair mudos da 1.0.0/1.0.1. Por isso `bundleMediaFramework: true` em
+  `tauri.linux.conf.json`: o build copia os plugins instalados NA MÁQUINA DO BUILD
+  (`/usr/lib/x86_64-linux-gnu/gstreamer-1.0`, ~12 MB) pro AppImage — precisa do `patchelf`
+  (`sudo apt install patchelf`, ou o binário do GitHub em `~/.local/bin`). Plugin que não estiver
+  instalado no servidor não vai junto: com `gstreamer1.0-plugins-bad` e `gstreamer1.0-libav`
+  instalados antes do build, o AppImage também decodifica H.264 sozinho (tela dos outros). O
+  `.deb` usa o GStreamer do sistema e não tem esse problema.
 
 ## Como é organizado
 

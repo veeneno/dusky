@@ -1,6 +1,9 @@
 {
   "bundle": {
-    "targets": ["deb", "appimage"],
+    "targets": [
+      "deb",
+      "appimage"
+    ],
     "resources": {
       "../../electron/native/bin/dusky-screencast": "native/dusky-screencast"
     },
@@ -23,7 +26,12 @@
           "gstreamer1.0-libav",
           "xdg-desktop-portal"
         ],
-        "replaces": ["didiscord"]
+        "replaces": [
+          "didiscord"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
       }
     }
   }
