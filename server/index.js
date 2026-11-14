@@ -94,10 +94,12 @@ app.get('/invite/:code', (req, res) => {
 // EXCEÇÃO: public/vendor/ (bibliotecas de terceiros — motor/modelo de supressão de ruído, ~24 MB).
 // Esses arquivos nunca mudam no mesmo endereço (versão nova = pasta nova), então ficam no cache
 // do navegador — sem isso, a pessoa baixaria 24 MB de novo toda vez que entrasse numa call.
+const DECOR_MEDIA_DIR = path.join(__dirname, '..', 'public', 'decor', 'media') + path.sep;
 const VENDOR_DIR = path.join(__dirname, '..', 'public', 'vendor') + path.sep;
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   setHeaders: (res, filePath) => {
-    if (filePath.startsWith(VENDOR_DIR)) res.setHeader('Cache-Control', 'public, max-age=2592000');
+    if (filePath.startsWith(DECOR_MEDIA_DIR)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    else if (filePath.startsWith(VENDOR_DIR)) res.setHeader('Cache-Control', 'public, max-age=2592000');
     else res.setHeader('Cache-Control', 'no-store');
   },
 }));

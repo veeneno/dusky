@@ -121,6 +121,10 @@ const NP_CLASSES = ['np-img', ...DECOR_SLOTS.nameplate.presets.map(([k]) => 'np-
 // { preset } | { url } | null — só aceita o que o servidor gera (a url vai pra dentro de CSS/src)
 function parseDecor(slot, value) {
   if (typeof value !== 'string' || !value) return null;
+  if (value.startsWith('catalog:')) {
+    const item = window.DuskyDecor?.get(slot, value.slice(8));
+    return item ? { catalog: item, url: item.image || item.preview } : null;
+  }
   if (value.startsWith('preset:')) {
     const key = value.slice(7);
     return DECOR_SLOTS[slot].presets.some(([k]) => k === key) ? { preset: key } : null;
@@ -150,7 +154,8 @@ function applyAvatarDeco(avatarEl, user, opts = {}) {
   let deco;
   if (d.url) {
     deco = document.createElement('img');
-    deco.src = d.url;
+    if (d.catalog) DuskyDecor.avatar(deco, d.catalog);
+    else deco.src = d.url;
     deco.alt = '';
     deco.decoding = 'async';
   } else {
@@ -169,6 +174,7 @@ function applyAvatarDeco(avatarEl, user, opts = {}) {
 // placa do nome: fundo da linha (lista de membros, DMs), que some aos poucos pra esquerda
 function applyNameplate(rowEl, user, opts = {}) {
   if (!rowEl) return;
+  window.DuskyDecor?.clearNameplate(rowEl);
   rowEl.classList.remove('has-nameplate', ...NP_CLASSES);
   rowEl.style.removeProperty('--np-img');
   delete rowEl.dataset.npUser;
@@ -178,6 +184,7 @@ function applyNameplate(rowEl, user, opts = {}) {
   if (!d) return;
   rowEl.classList.add('has-nameplate', d.url ? 'np-img' : 'np-' + d.preset);
   if (d.url) rowEl.style.setProperty('--np-img', `url("${d.url}")`);
+  if (d.catalog) DuskyDecor.nameplate(rowEl, d.catalog);
 }
 
 // efeito do perfil: camada por cima do cartão inteiro (não pega clique)
@@ -187,7 +194,9 @@ function buildProfileFx(user, exact) {
   const fx = document.createElement('div');
   fx.className = 'pc-fx' + (d.preset ? ' pc-fx-' + d.preset : '');
   fx.setAttribute('aria-hidden', 'true');
-  if (d.url) {
+  if (d.catalog) {
+    DuskyDecor.profile(fx, d.catalog);
+  } else if (d.url) {
     const img = document.createElement('img');
     img.src = d.url;
     img.alt = '';
@@ -859,7 +868,7 @@ function buildDecorEditor() {
     opts.appendChild(decorChip(slot, null, 'nenhum'));
     // a imagem enviada que já está salva (pode voltar pra ela depois de olhar os modelos)
     const saved = currentUser[slot];
-    if (parseDecor(slot, saved) && !saved.startsWith('preset:')) opts.appendChild(decorChip(slot, saved, 'sua imagem'));
+    if (DECOR_UPLOAD_RE.test(saved || '')) opts.appendChild(decorChip(slot, saved, 'sua imagem'));
     for (const [key, name] of def.presets) opts.appendChild(decorChip(slot, 'preset:' + key, name));
 
     const up = document.createElement('button');
@@ -872,6 +881,7 @@ function buildDecorEditor() {
     });
     opts.appendChild(up);
     panel.appendChild(opts);
+    panel.appendChild(buildCatalogPicker(slot));
 
     const help = document.createElement('p');
     help.className = 'field-help';

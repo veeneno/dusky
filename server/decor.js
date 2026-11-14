@@ -14,6 +14,9 @@ const PRESETS = {
   avatar_deco: ['anel-rgb', 'aura', 'orbita', 'brilhos'],
   profile_fx: ['neve', 'estrelas', 'bolhas', 'coracoes'],
 };
+const catalog = require('../public/decor/catalog.json');
+const catalogSlots = new Map(catalog.items.map(item => [item.id, item.slot]));
+
 const SLOTS = Object.keys(PRESETS);
 const UPLOAD_RE = /^\/uploads\/decor\/[a-f0-9]{32}\.(png|jpg|webp|gif)$/;
 
@@ -28,6 +31,10 @@ function cleanDecor(slot, input, current) {
   if (!SLOTS.includes(slot)) throw new Error('decoração inválida');
   if (input === null || input === '') return { value: null };
   if (typeof input !== 'string') throw new Error('decoração inválida');
+  if (input.startsWith('catalog:')) {
+    if (catalogSlots.get(input.slice(8)) !== slot) throw new Error('item de catálogo inválido');
+    return { value: input };
+  }
   if (input.startsWith('preset:')) {
     if (!PRESETS[slot].includes(input.slice(7))) throw new Error('modelo de decoração inválido');
     return { value: input };

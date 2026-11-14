@@ -40,3 +40,8 @@ tauri/updater-key/
 
 # instalador do Windows esperando o `npm run release` (tauri/scripts/release.js)
 tauri/release-in/
+
+# catálogo: mídias locais imutáveis; índice e importador versionados
+public/decor/media/
+public/uploads/decor/*
+!public/uploads/decor/.gitkeep
