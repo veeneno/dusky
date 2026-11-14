@@ -55,8 +55,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 app::show_main(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
+    // ícone simplificado da marca Mist (lê melhor em 16–24 px que o ícone do app, que tem fundo)
+    match tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png")) {
+        Ok(icon) => builder = builder.icon(icon),
+        Err(_) => {
+            if let Some(icon) = app.default_window_icon() {
+                builder = builder.icon(icon.clone());
+            }
+        }
     }
     let icon = builder.build(app)?;
 

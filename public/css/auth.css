@@ -129,3 +129,6 @@
 }
 .auth-invite.is-invalid { border-color: rgba(255, 143, 102, 0.45); }
 .auth-invite.is-invalid strong { font-family: var(--font-body); font-size: 13px; font-weight: 500; color: var(--text-lo); }
+
+/* logo na tela de entrar */
+.auth-logo { display: block; width: 96px; height: 96px; margin: 0 auto; filter: drop-shadow(0 4px 14px rgba(168, 120, 255, .25)); }

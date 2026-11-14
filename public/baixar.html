@@ -3,145 +3,397 @@
 <head>
   <meta charset="UTF-8">
   <script src="/js/compat.js?v=1"></script>
-  <script src="/js/themes.js?v=22"></script>
-  <script>DuskyTheme.boot();</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>baixar o dusky</title>
-  <meta name="description" content="App do dusky pra Windows e Linux">
+  <title>baixar o dusky — Mist</title>
+  <meta name="description" content="dusky Mist: o app do dusky pra Windows e Linux">
+  <meta name="theme-color" content="#110f1a">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/theme.css?v=20">
-  <link rel="stylesheet" href="/css/auth.css?v=20">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    .dl-screen { min-height: 100vh; display: flex; justify-content: center; padding: 56px 20px 40px; position: relative; }
-    .dl-screen::before {
-      content: ''; position: fixed; inset: 0; pointer-events: none;
-      background-image: radial-gradient(circle at 18% 20%, rgba(157, 92, 232, 0.12), transparent 40%),
-                        radial-gradient(circle at 82% 78%, rgba(255, 143, 102, 0.07), transparent 42%);
+    /* ------------------------------------------------------------------
+       dusky Mist — página de download.
+       Paleta: a noite roxa do dusky + a névoa verde-água (o "respirar da névoa"):
+       violeta pra marca, menta/água pra névoa, branco frio pro brilho.
+       ------------------------------------------------------------------ */
+    :root {
+      --night: #0e0c16;
+      --night-2: #151223;
+      --violet: #b28cff;
+      --violet-deep: #7a4fe0;
+      --mint: #9ef3e3;
+      --mint-deep: #4fc9b4;
+      --frost: #eef3ff;
+      --text: #e6e3f2;
+      --text-lo: #aaa4c2;
+      --text-faint: #77718f;
+      --line: rgba(190, 170, 255, 0.14);
+      --glass: rgba(26, 22, 42, 0.58);
+      --radius: 14px;
+      --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+      color-scheme: dark;
     }
-    .dl { width: 100%; max-width: 640px; position: relative; animation: rise 0.5s var(--ease) both; }
-    .dl-mark { display: flex; justify-content: center; margin-bottom: 18px; }
-    .dl h1 { text-align: center; font-size: 40px; margin: 0 0 8px; }
-    .dl-lead { text-align: center; color: var(--text-lo); margin: 0 0 30px; line-height: 1.6; }
-    .dl-main { padding: 26px; text-align: center; }
-    .dl-main .btn { font-size: 16px; padding: 14px 26px; display: inline-flex; gap: 10px; align-items: center; text-decoration: none; }
-    .dl-meta { margin-top: 12px; font-size: 13px; color: var(--text-faint); }
-    .dl-others { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 18px 0 0; }
-    .dl-option {
-      display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; text-decoration: none;
-      border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--elevated); color: var(--text-hi);
-      transition: border-color 0.15s;
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: radial-gradient(120% 80% at 50% 0%, #1d1830 0%, var(--night-2) 42%, var(--night) 100%) fixed;
+      color: var(--text);
+      font: 15px/1.6 Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      overflow-x: hidden;
     }
-    .dl-option:hover { border-color: var(--amethyst); }
-    .dl-option strong { font-size: 14.5px; }
-    .dl-option span { font-size: 12.5px; color: var(--text-faint); }
-    .dl-option.is-off { opacity: 0.45; pointer-events: none; }
-    .dl-steps { margin-top: 28px; padding: 22px 24px; }
-    .dl-steps h2 { font-size: 20px; margin: 0 0 12px; }
-    .dl-steps ol { margin: 0; padding-left: 20px; color: var(--text-lo); line-height: 1.7; }
-    .dl-steps li + li { margin-top: 6px; }
-    .dl-steps code {
-      font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace; font-size: 12.5px;
-      background: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--text-hi);
-      word-break: break-all;
+    a { color: var(--mint); }
+    code, pre { font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace; }
+
+    /* ---------------- a névoa ---------------- */
+    .mist { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    /* nuvens grandes e borradas, cada uma andando no seu ritmo */
+    .fog {
+      position: absolute; width: 140vmax; height: 70vmax; border-radius: 50%;
+      filter: blur(60px); opacity: .55; will-change: transform;
     }
-    .dl-steps .dl-note { margin-top: 14px; font-size: 13px; color: var(--text-faint); line-height: 1.6; }
-    .dl-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
-    .dl-tab { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text-lo); cursor: pointer; font: inherit; font-size: 13px; }
-    .dl-tab.active { background: var(--amethyst); border-color: var(--amethyst); color: var(--amethyst-ink); font-weight: 600; }
-    .dl-panel[hidden] { display: none; }
-    .dl-foot { margin-top: 26px; text-align: center; color: var(--text-faint); font-size: 13.5px; line-height: 1.7; }
-    .dl-foot a { color: var(--amethyst-hi); }
-    .dl-empty { color: var(--text-lo); line-height: 1.6; }
+    .fog.f1 { top: -30vmax; left: -40vmax; background: radial-gradient(closest-side, rgba(178, 140, 255, .40), transparent); animation: drift1 70s ease-in-out infinite alternate; }
+    .fog.f2 { top: 20vh; right: -60vmax; background: radial-gradient(closest-side, rgba(158, 243, 227, .30), transparent); animation: drift2 90s ease-in-out infinite alternate; }
+    .fog.f3 { bottom: -40vmax; left: -20vmax; background: radial-gradient(closest-side, rgba(238, 243, 255, .12), transparent); animation: drift3 110s ease-in-out infinite alternate; }
+    .fog.f4 { top: 45vh; left: -70vmax; background: radial-gradient(closest-side, rgba(122, 79, 224, .30), transparent); animation: drift2 80s ease-in-out -30s infinite alternate-reverse; }
+    @keyframes drift1 { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(28vmax, 8vmax, 0) scale(1.15); } }
+    @keyframes drift2 { from { transform: translate3d(0, 0, 0) scale(1.1); } to { transform: translate3d(-34vmax, -6vmax, 0) scale(.95); } }
+    @keyframes drift3 { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(40vmax, -10vmax, 0); } }
+
+    /* faixas de névoa baixa (kasumi), passando devagar da esquerda pra direita */
+    .band {
+      position: absolute; left: -50%; width: 200%; height: 220px;
+      background-repeat: repeat-x; background-size: 1200px 220px; opacity: .5; will-change: transform;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='220' viewBox='0 0 1200 220'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23eef3ff' stop-opacity='0'/%3E%3Cstop offset='.55' stop-color='%23c9f7ef' stop-opacity='.16'/%3E%3Cstop offset='1' stop-color='%23b28cff' stop-opacity='0'/%3E%3C/linearGradient%3E%3Cfilter id='b'%3E%3CfeGaussianBlur stdDeviation='14'/%3E%3C/filter%3E%3C/defs%3E%3Cpath filter='url(%23b)' fill='url(%23g)' d='M0 140 C 120 90, 220 170, 360 120 S 600 70, 760 130 S 1020 180, 1200 120 L 1200 220 L 0 220 Z'/%3E%3C/svg%3E");
+    }
+    .band.b1 { bottom: 4vh; opacity: .7; animation: slide 80s linear infinite; }
+    .band.b2 { bottom: 22vh; opacity: .32; transform: scaleY(-1); animation: slide 120s linear -40s infinite reverse; }
+    .band.b3 { top: 8vh; opacity: .22; animation: slide 150s linear -70s infinite; }
+    @keyframes slide { from { transform: translateX(0); } to { transform: translateX(-1200px); } }
+    .band.b2 { animation-name: slide-flip; }
+    @keyframes slide-flip { from { transform: scaleY(-1) translateX(0); } to { transform: scaleY(-1) translateX(-1200px); } }
+
+    /* grão bem fino por cima (névoa não é lisa) */
+    .grain {
+      position: absolute; inset: 0; opacity: .07; mix-blend-mode: screen;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .9 0 0 0 0 .95 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* fiapos subindo devagar */
+    .wisps span {
+      position: absolute; bottom: -20px; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--mint); box-shadow: 0 0 12px 4px rgba(158, 243, 227, .35);
+      opacity: 0; animation: rise-wisp linear infinite;
+    }
+    @keyframes rise-wisp {
+      0% { transform: translate(0, 0) scale(.6); opacity: 0; }
+      15% { opacity: .55; }
+      100% { transform: translate(var(--dx, 40px), -95vh) scale(1.4); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .fog, .band, .wisps span, .hero-logo img, .hero-logo::before { animation: none !important; }
+      .wisps { display: none; }
+    }
+
+    /* ---------------- conteúdo ---------------- */
+    .page { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; padding: 64px 20px 48px; }
+    .hero { text-align: center; animation: appear .9s var(--ease) both; }
+    @keyframes appear { from { opacity: 0; transform: translateY(14px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+
+    .hero-logo { position: relative; width: 168px; height: 168px; margin: 0 auto 6px; display: grid; place-items: center; }
+    .hero-logo::before {
+      content: ''; position: absolute; inset: -46px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(178, 140, 255, .38), rgba(158, 243, 227, .14) 46%, transparent 70%);
+      filter: blur(18px); animation: breathe 5s ease-in-out infinite;
+    }
+    .hero-logo img { position: relative; width: 168px; height: 168px; animation: swirl 40s linear infinite; filter: drop-shadow(0 10px 30px rgba(120, 80, 230, .45)); }
+    @keyframes swirl { to { transform: rotate(-360deg); } }
+    @keyframes breathe { 0%, 100% { opacity: .55; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.06); } }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 14px; padding: 5px 14px 5px 10px;
+      border-radius: 999px; border: 1px solid rgba(158, 243, 227, .35); background: rgba(158, 243, 227, .07);
+      color: var(--mint); font-size: 12.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    }
+    .badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 10px var(--mint); }
+    h1 {
+      font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(52px, 11vw, 84px); line-height: 1;
+      margin: 0 0 6px; padding-bottom: .12em; letter-spacing: -.02em;
+      background: linear-gradient(100deg, var(--frost) 0%, #d4c0ff 35%, var(--violet) 55%, var(--mint) 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    h1 em { font-style: italic; font-weight: 400; }
+    .tagline { font-family: Fraunces, Georgia, serif; font-style: italic; color: var(--text-lo); font-size: 19px; margin: 0 0 14px; }
+    .lead { color: var(--text-lo); max-width: 560px; margin: 0 auto 34px; }
+
+    .glass {
+      background: var(--glass); border: 1px solid var(--line); border-radius: var(--radius);
+      backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%);
+      box-shadow: 0 20px 60px rgba(5, 3, 15, .45), inset 0 1px 0 rgba(255, 255, 255, .04);
+    }
+    .main { padding: 28px; text-align: center; animation: appear .9s .12s var(--ease) both; }
+    .btn-dl {
+      position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 15px 30px;
+      border-radius: 12px; border: 0; cursor: pointer; text-decoration: none;
+      font: 600 16.5px Inter, system-ui, sans-serif; color: #120d22;
+      background: linear-gradient(110deg, #c9b0ff 0%, var(--violet) 40%, var(--mint) 100%);
+      background-size: 160% 100%; background-position: 0 0;
+      box-shadow: 0 10px 30px rgba(140, 100, 240, .35), 0 0 0 1px rgba(255, 255, 255, .15) inset;
+      transition: background-position .5s var(--ease), transform .15s var(--ease), box-shadow .3s var(--ease);
+    }
+    .btn-dl:hover { background-position: 100% 0; transform: translateY(-1px); box-shadow: 0 14px 40px rgba(110, 220, 200, .35), 0 0 0 1px rgba(255, 255, 255, .2) inset; }
+    .btn-dl:active { transform: translateY(1px); }
+    .meta { margin-top: 12px; font-size: 13px; color: var(--text-faint); }
+    .empty { color: var(--text-lo); margin: 0; }
+
+    .others { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 14px; animation: appear .9s .2s var(--ease) both; }
+    .opt {
+      display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; text-decoration: none; color: var(--text);
+      border-radius: 12px; border: 1px solid var(--line); background: rgba(22, 19, 36, .55);
+      transition: border-color .2s, background .2s;
+    }
+    .opt:hover { border-color: rgba(158, 243, 227, .45); background: rgba(30, 26, 48, .7); }
+    .opt strong { font-size: 14.5px; }
+    .opt span { font-size: 12.5px; color: var(--text-faint); }
+    .opt.off { opacity: .45; pointer-events: none; }
+
+    section.block { margin-top: 30px; padding: 24px 26px; animation: appear .9s .28s var(--ease) both; }
+    h2 { font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: 23px; margin: 0 0 4px; color: var(--frost); }
+    h2 small { font-family: Inter, sans-serif; font-weight: 500; font-size: 12px; color: var(--mint); letter-spacing: .08em; text-transform: uppercase; margin-left: 6px; }
+    .sub { color: var(--text-faint); font-size: 13.5px; margin: 0 0 16px; }
+
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+    .feat { padding: 14px 14px 12px; border-radius: 12px; background: rgba(14, 12, 22, .45); border: 1px solid rgba(190, 170, 255, .08); }
+    .feat b { display: block; color: var(--text); font-size: 14px; margin-bottom: 3px; }
+    .feat p { margin: 0; font-size: 13px; color: var(--text-lo); line-height: 1.5; }
+    .feat i { font-style: normal; color: var(--mint); margin-right: 6px; }
+
+    .tabs { display: flex; gap: 6px; margin: 4px 0 14px; flex-wrap: wrap; }
+    .tab {
+      padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent;
+      color: var(--text-lo); cursor: pointer; font: 500 13px Inter, sans-serif; transition: all .2s;
+    }
+    .tab:hover { color: var(--text); border-color: rgba(178, 140, 255, .4); }
+    .tab.active { background: linear-gradient(110deg, rgba(178, 140, 255, .3), rgba(158, 243, 227, .2)); border-color: rgba(158, 243, 227, .45); color: var(--frost); }
+    .panel[hidden] { display: none; }
+    ol { margin: 0; padding-left: 20px; color: var(--text-lo); }
+    li + li { margin-top: 6px; }
+    li strong { color: var(--text); }
+    code.inline { font-size: 12.5px; background: rgba(10, 8, 18, .7); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; color: var(--frost); overflow-wrap: anywhere; }
+    .note { margin: 14px 0 0; font-size: 13px; color: var(--text-faint); }
+
+    .cmd { position: relative; margin: 10px 0 6px; }
+    .cmd pre {
+      margin: 0; padding: 14px 92px 14px 14px; border-radius: 10px; background: rgba(8, 7, 14, .8); border: 1px solid var(--line);
+      color: #d9fff8; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+    }
+    .copy {
+      position: absolute; top: 8px; right: 8px; padding: 5px 12px; border-radius: 8px; cursor: pointer;
+      border: 1px solid rgba(158, 243, 227, .35); background: rgba(158, 243, 227, .08); color: var(--mint); font: 600 12px Inter, sans-serif;
+    }
+    .copy:hover { background: rgba(158, 243, 227, .16); }
+    .why { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 14px 0 0; font-size: 13px; }
+    .why dt { color: var(--frost); font-family: ui-monospace, Consolas, monospace; font-size: 12px; padding-top: 1px; }
+    .why dd { margin: 0; color: var(--text-lo); }
+    @media (max-width: 560px) { .why { grid-template-columns: 1fr; } .why dd { margin-bottom: 6px; } }
+
+    .migrate { display: flex; gap: 14px; align-items: flex-start; }
+    .migrate img { width: 44px; height: 44px; flex-shrink: 0; opacity: .9; }
+    .migrate p { margin: 0; color: var(--text-lo); font-size: 14px; }
+    .migrate p + p { margin-top: 6px; }
+
+    .foot { margin-top: 30px; text-align: center; color: var(--text-faint); font-size: 13.5px; }
+    .foot a { color: var(--violet); }
   </style>
 </head>
 <body>
-  <div class="dl-screen">
-    <main class="dl">
-      <div class="dl-mark">
-        <svg class="mark-duo" width="56" height="28" viewBox="0 0 56 28" xmlns="http://www.w3.org/2000/svg">
-          <path d="M 10 14 C 20 2, 36 26, 46 14" />
-          <circle cx="10" cy="14" r="6"></circle>
-          <circle cx="46" cy="14" r="6"></circle>
-        </svg>
+  <!-- névoa (só decoração; nada aqui recebe clique) -->
+  <div class="mist" aria-hidden="true">
+    <div class="fog f1"></div>
+    <div class="fog f2"></div>
+    <div class="fog f3"></div>
+    <div class="fog f4"></div>
+    <div class="band b3"></div>
+    <div class="band b2"></div>
+    <div class="band b1"></div>
+    <div class="wisps" id="wisps"></div>
+    <div class="grain"></div>
+  </div>
+
+  <div class="page">
+    <header class="hero">
+      <div class="hero-logo"><img src="/img/brand/logo-transparente-512.png" alt="dusky" width="168" height="168"></div>
+      <div class="badge" id="badge">Mist 1.0</div>
+      <h1>dusky</h1>
+      <p class="tagline">a névoa baixou: app novo, mais leve, que se cuida sozinho.</p>
+      <p class="lead">O app pro computador compartilha a tela pela placa de vídeo (sem pesar no jogo), pega o som de um app só, mostra o que você está jogando, avisa quando te chamam e se atualiza sozinho.</p>
+    </header>
+
+    <section class="main glass" id="dlMain">
+      <p class="empty">carregando…</p>
+    </section>
+    <div class="others" id="dlOthers"></div>
+
+    <section class="block glass">
+      <h2>o que chegou na Mist <small id="whatsNewVersion">1.0</small></h2>
+      <p class="sub">O app foi refeito do zero em Rust (Tauri). Mesmo dusky de sempre, por dentro bem mais leve.</p>
+      <div class="features">
+        <div class="feat"><b><i>◌</i>mais leve</b><p>Usa o navegador do próprio sistema em vez de carregar um Chrome inteiro junto.</p></div>
+        <div class="feat"><b><i>↻</i>atualiza sozinho</b><p>Baixa a versão nova em segundo plano e pergunta se pode reiniciar. Pacotes assinados.</p></div>
+        <div class="feat"><b><i>▶</i>jogando agora</b><p>Mostra pros amigos o jogo aberto (Steam, Proton e os que você cadastrar).</p></div>
+        <div class="feat"><b><i>▣</i>tela pela placa</b><p>NVENC, VA-API e AMF: a tela é codificada uma vez só na placa de vídeo.</p></div>
+        <div class="feat"><b><i>≋</i>reconecta sozinho</b><p>Se o servidor cair, o app espera na tela de "conectando…" e volta quando ele voltar.</p></div>
+        <div class="feat"><b><i>⚙</i>aceleração de hardware</b><p>Liga e desliga nas configurações ou na bandeja, pra placa ou driver que dá problema.</p></div>
       </div>
-      <h1 class="display">baixar o dusky</h1>
-      <p class="dl-lead">O app pro computador: compartilha a tela pela placa de vídeo (sem pesar no jogo), pega o som de um app só, avisa quando te chamam e se atualiza sozinho.</p>
+    </section>
 
-      <section class="dl-main card" id="dlMain">
-        <p class="dl-empty">carregando…</p>
-      </section>
-
-      <div class="dl-others" id="dlOthers"></div>
-
-      <section class="dl-steps card">
-        <h2 class="display">como instalar</h2>
-        <div class="dl-tabs" role="tablist">
-          <button type="button" class="dl-tab" data-tab="windows">Windows</button>
-          <button type="button" class="dl-tab" data-tab="appimage">Linux (AppImage)</button>
-          <button type="button" class="dl-tab" data-tab="deb">Linux (.deb)</button>
+    <section class="block glass">
+      <div class="migrate">
+        <img src="/img/brand/dm-colorido-64.png" alt="">
+        <div>
+          <h2>já tem o app antigo?</h2>
+          <p>Não precisa fazer nada: o app antigo se atualiza sozinho pro novo (em até 3 horas, ou em <strong>Ajuda → Procurar atualizações</strong>). O endereço do servidor e as preferências da bandeja vêm junto.</p>
+          <p>Na primeira vez você entra na conta de novo. No Linux com <code class="inline">.deb</code>, depois tire o antigo: <code class="inline">sudo apt remove didiscord</code></p>
         </div>
+      </div>
+    </section>
 
-        <div class="dl-panel" data-panel="windows">
-          <ol>
-            <li>Baixa o instalador e abre.</li>
-            <li>Se aparecer <strong>"O Windows protegeu o computador"</strong>, clica em <strong>Mais informações</strong> e depois em <strong>Executar assim mesmo</strong> — o aviso aparece porque o app não tem assinatura paga da Microsoft.</li>
-            <li>Escolhe onde instalar e pronto: o dusky abre direto no servidor.</li>
-          </ol>
-          <p class="dl-note">As próximas versões chegam sozinhas: o app baixa em segundo plano e pergunta se quer reiniciar.</p>
-        </div>
+    <section class="block glass">
+      <h2>como instalar</h2>
+      <div class="tabs" role="tablist" id="installTabs">
+        <button type="button" class="tab" data-tab="windows">Windows</button>
+        <button type="button" class="tab" data-tab="appimage">Linux (AppImage)</button>
+        <button type="button" class="tab" data-tab="deb">Linux (.deb)</button>
+      </div>
 
-        <div class="dl-panel" data-panel="appimage" hidden>
-          <ol>
-            <li>Baixa o arquivo <code>.AppImage</code>.</li>
-            <li>Deixa ele executável: botão direito → Propriedades → "permitir executar", ou no terminal: <code id="chmodCmd">chmod +x dusky-*.AppImage</code></li>
-            <li>Abre com dois cliques (ou <code>./dusky-*.AppImage</code>). Pra ele aparecer no menu de apps, dá pra usar o <strong>Gear Lever</strong> ou o <strong>AppImageLauncher</strong>.</li>
-          </ol>
-          <p class="dl-note">É o jeito recomendado no Linux: se atualiza sozinho, sem pedir senha.<br>
-            Compartilhar a tela pela placa no <strong>Wayland</strong> (Hyprland, GNOME, KDE) precisa do GStreamer:<br>
-            Arch/CachyOS: <code>sudo pacman -S gst-plugin-pipewire gst-plugins-bad gst-plugins-ugly</code><br>
-            Ubuntu/Debian: <code>sudo apt install gstreamer1.0-pipewire gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly</code></p>
-        </div>
+      <div class="panel" data-panel="windows">
+        <ol>
+          <li>Baixa o instalador e abre.</li>
+          <li>Se aparecer <strong>"O Windows protegeu o computador"</strong>, clica em <strong>Mais informações</strong> → <strong>Executar assim mesmo</strong> (o aviso aparece porque o app não tem assinatura paga da Microsoft).</li>
+          <li>Pronto: o dusky abre direto no servidor.</li>
+        </ol>
+        <p class="note">O instalador traz tudo: o ffmpeg e os auxiliares de tela e de áudio já vêm dentro. Se o computador não tiver o WebView2 (Windows 10 bem antigo), ele baixa sozinho durante a instalação. Windows 10 e 11, 64 bits.</p>
+      </div>
 
-        <div class="dl-panel" data-panel="deb" hidden>
-          <ol>
-            <li>Baixa o arquivo <code>.deb</code>.</li>
-            <li>Instala pelo terminal: <code id="debCmd">sudo apt install ./dusky-*.deb</code></li>
-            <li>O dusky aparece no menu de apps.</li>
-          </ol>
-          <p class="dl-note">Também se atualiza sozinho, mas pede a senha de administrador a cada versão nova. Sem esse incômodo, use o AppImage.</p>
-        </div>
-      </section>
+      <div class="panel" data-panel="appimage" hidden>
+        <ol>
+          <li>Instala as dependências do seu sistema (logo abaixo, em <strong>dependências no Linux</strong>).</li>
+          <li>Baixa o arquivo <code class="inline">.AppImage</code> e deixa ele executável: botão direito → Propriedades → "permitir executar", ou <code class="inline" id="chmodCmd">chmod +x dusky_*.AppImage</code></li>
+          <li>Abre com dois cliques. Pra aparecer no menu de apps, use o <strong>Gear Lever</strong> ou o <strong>AppImageLauncher</strong>.</li>
+        </ol>
+        <p class="note">É o jeito recomendado no Linux: se atualiza sozinho, sem pedir senha.</p>
+      </div>
 
-      <p class="dl-foot">Prefere não instalar nada? Dá pra usar direto no navegador: <a href="/">entrar no dusky</a>.<br>
-        No celular, use pelo navegador mesmo.</p>
-    </main>
+      <div class="panel" data-panel="deb" hidden>
+        <ol>
+          <li>Baixa o arquivo <code class="inline">.deb</code>.</li>
+          <li>Instala pelo terminal: <code class="inline" id="debCmd">sudo apt install ./dusky_*.deb</code> — o apt já puxa as dependências.</li>
+          <li>O dusky aparece no menu de apps.</li>
+        </ol>
+        <p class="note">Também se atualiza sozinho, mas pede a senha de administrador a cada versão nova. Sem esse incômodo, use o AppImage.</p>
+      </div>
+    </section>
+
+    <section class="block glass" id="linuxDeps">
+      <h2>dependências no Linux</h2>
+      <p class="sub">O app usa o que o sistema já tem (é isso que deixa ele leve). Copia o comando da sua distro e roda uma vez.</p>
+      <div class="tabs" role="tablist" id="distroTabs">
+        <button type="button" class="tab" data-tab="arch">Arch / CachyOS / Manjaro</button>
+        <button type="button" class="tab" data-tab="debian">Ubuntu / Debian / Mint / Pop!_OS</button>
+        <button type="button" class="tab" data-tab="fedora">Fedora</button>
+      </div>
+
+      <div class="panel" data-panel="arch">
+        <div class="cmd"><pre>sudo pacman -S --needed webkit2gtk-4.1 libayatana-appindicator gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav gst-plugin-pipewire gst-plugin-va pipewire ffmpeg xdg-desktop-portal fuse2</pre><button type="button" class="copy">copiar</button></div>
+        <p class="note">NVIDIA: o codificador da placa (NVENC) vem no <code class="inline">gst-plugins-bad</code> e precisa do driver proprietário (<code class="inline">nvidia-utils</code>).</p>
+      </div>
+
+      <div class="panel" data-panel="debian" hidden>
+        <div class="cmd"><pre>sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-pipewire pipewire-bin ffmpeg xdg-desktop-portal libfuse2t64</pre><button type="button" class="copy">copiar</button></div>
+        <p class="note">Ubuntu 22.04 / Debian 12: troque <code class="inline">libfuse2t64</code> por <code class="inline">libfuse2</code>. Quem instala o <code class="inline">.deb</code> não precisa disso: o apt instala sozinho.</p>
+      </div>
+
+      <div class="panel" data-panel="fedora" hidden>
+        <div class="cmd"><pre>sudo dnf install webkit2gtk4.1 libayatana-appindicator-gtk3 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugins-ugly-free gstreamer1-plugin-libav pipewire-gstreamer pipewire-utils ffmpeg-free xdg-desktop-portal fuse-libs</pre><button type="button" class="copy">copiar</button></div>
+        <p class="note">Codificar a tela na placa (NVENC/VA-API) precisa do RPM Fusion: <code class="inline">sudo dnf install gstreamer1-plugins-bad-freeworld</code> e <code class="inline">sudo dnf swap ffmpeg-free ffmpeg --allowerasing</code></p>
+      </div>
+
+      <dl class="why">
+        <dt>webkit2gtk</dt><dd>a janela do app (o motor que mostra o site)</dd>
+        <dt>appindicator</dt><dd>o ícone na bandeja, perto do relógio (no GNOME, também a extensão "AppIndicator")</dd>
+        <dt>gst base/good/libav</dt><dd>sons, vídeos e GIFs dentro do site</dd>
+        <dt>gst pipewire + pipewire</dt><dd>compartilhar a tela no Wayland, e o áudio da tela (pw-record, pw-link, pw-dump)</dd>
+        <dt>gst bad / va / ugly</dt><dd>codificar a tela na placa de vídeo (NVIDIA, AMD, Intel) — ou no processador, se não tiver</dd>
+        <dt>ffmpeg</dt><dd>compartilhar a tela no X11 (se faltar, o app baixa um sozinho)</dd>
+        <dt>fuse2</dt><dd>abrir o arquivo AppImage</dd>
+      </dl>
+    </section>
+
+    <p class="foot">Prefere não instalar nada? Dá pra usar direto no navegador: <a href="/">entrar no dusky</a>. No celular, use pelo navegador mesmo.</p>
   </div>
 
   <script>
     (function () {
       'use strict';
       const ua = navigator.userAgent;
-      const os = /Windows/i.test(ua) ? 'windows' : (/Linux/i.test(ua) && !/Android/i.test(ua) ? 'appimage' : null);
+      const isLinux = /Linux/i.test(ua) && !/Android/i.test(ua);
+      const os = /Windows/i.test(ua) ? 'windows' : (isLinux ? 'appimage' : null);
       const DL_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
       const NAMES = { windows: 'Windows', appimage: 'Linux (AppImage)', deb: 'Linux (.deb)' };
       const HINTS = { windows: 'instalador .exe · Windows 10 e 11', appimage: 'qualquer distro · se atualiza sozinho', deb: 'Ubuntu, Debian, Mint, Pop!_OS' };
-
       const size = (b) => (b ? `${(b / 1024 / 1024).toFixed(0)} MB` : '');
       const date = (d) => { try { return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }); } catch (_) { return ''; } };
 
-      function showTab(tab) {
-        document.querySelectorAll('.dl-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-        document.querySelectorAll('.dl-panel').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
+      // fiapos de névoa subindo (poucos: é enfeite)
+      const wisps = document.getElementById('wisps');
+      if (wisps && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        for (let i = 0; i < 14; i++) {
+          const s = document.createElement('span');
+          s.style.left = `${Math.random() * 100}%`;
+          s.style.animationDuration = `${18 + Math.random() * 22}s`;
+          s.style.animationDelay = `${-Math.random() * 30}s`;
+          s.style.setProperty('--dx', `${(Math.random() - 0.5) * 160}px`);
+          if (i % 3 === 0) { s.style.background = '#b28cff'; s.style.boxShadow = '0 0 14px 5px rgba(178,140,255,.35)'; }
+          wisps.appendChild(s);
+        }
       }
-      document.querySelectorAll('.dl-tab').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
-      showTab(os || 'windows');
+
+      function tabs(groupId, onShow) {
+        const group = document.getElementById(groupId);
+        const section = group.parentElement;
+        function show(tab) {
+          group.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+          section.querySelectorAll(':scope > .panel').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
+          if (onShow) onShow(tab);
+        }
+        group.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => show(b.dataset.tab)));
+        return show;
+      }
+      const showInstall = tabs('installTabs');
+      const showDistro = tabs('distroTabs');
+      showInstall(os || 'windows');
+      // distro do visitante, quando o navegador entrega (Ubuntu/Fedora costumam aparecer no user agent)
+      showDistro(/Ubuntu|Debian|Mint/i.test(ua) ? 'debian' : /Fedora/i.test(ua) ? 'fedora' : 'arch');
+
+      document.querySelectorAll('.copy').forEach((btn) => btn.addEventListener('click', async () => {
+        const text = btn.parentElement.querySelector('pre').textContent;
+        try { await navigator.clipboard.writeText(text); btn.textContent = 'copiado!'; } catch (_) { btn.textContent = 'selecione e copie'; }
+        setTimeout(() => { btn.textContent = 'copiar'; }, 1800);
+      }));
 
       fetch('/api/downloads').then((r) => r.json()).then((info) => {
         const main = document.getElementById('dlMain');
         const others = document.getElementById('dlOthers');
+        if (info.codename && info.version) {
+          const short = info.version.split('.').slice(0, 2).join('.');
+          document.getElementById('badge').textContent = `${info.codename} ${short}`;
+          document.getElementById('whatsNewVersion').textContent = info.version;
+          document.title = `baixar o dusky — ${info.codename}`;
+        }
         if (!info.version || !(info.windows || info.appimage || info.deb)) {
-          main.innerHTML = '<p class="dl-empty">O app ainda não foi publicado aqui. Enquanto isso, dá pra usar <a href="/">pelo navegador</a>.</p>';
+          main.innerHTML = '<p class="empty">O app ainda não foi publicado aqui. Enquanto isso, dá pra usar <a href="/">pelo navegador</a>.</p>';
           return;
         }
         if (info.appimage) document.getElementById('chmodCmd').textContent = `chmod +x ${info.appimage.file}`;
@@ -151,30 +403,34 @@
         const primary = info[primaryKey];
         main.innerHTML = '';
         const a = document.createElement('a');
-        a.className = 'btn btn-primary';
+        a.className = 'btn-dl';
         a.href = primary.url;
         a.innerHTML = DL_ICON + '<span></span>';
         a.querySelector('span').textContent = `baixar pra ${NAMES[primaryKey]}`;
         const meta = document.createElement('div');
-        meta.className = 'dl-meta';
-        meta.textContent = `versão ${info.version}${info.date ? ` · ${date(info.date)}` : ''} · ${size(primary.size)}`;
+        meta.className = 'meta';
+        const name = info.codename ? `dusky ${info.codename} ${info.version}` : `versão ${info.version}`;
+        meta.textContent = `${name}${info.date ? ` · ${date(info.date)}` : ''} · ${size(primary.size)}`;
         main.append(a, meta);
-        a.addEventListener('click', () => showTab(primaryKey));
+        a.addEventListener('click', () => {
+          showInstall(primaryKey);
+          if (primaryKey === 'appimage') document.getElementById('linuxDeps').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
 
         for (const key of ['windows', 'appimage', 'deb']) {
           if (key === primaryKey) continue;
           const f = info[key];
           const o = document.createElement('a');
-          o.className = 'dl-option' + (f ? '' : ' is-off');
+          o.className = 'opt' + (f ? '' : ' off');
           if (f) o.href = f.url;
           o.innerHTML = '<strong></strong><span></span>';
           o.querySelector('strong').textContent = NAMES[key];
           o.querySelector('span').textContent = f ? `${HINTS[key]} · ${size(f.size)}` : 'ainda não disponível';
-          o.addEventListener('click', () => showTab(key));
+          o.addEventListener('click', () => showInstall(key));
           others.appendChild(o);
         }
       }).catch(() => {
-        document.getElementById('dlMain').innerHTML = '<p class="dl-empty">Não deu pra carregar. Tenta recarregar a página.</p>';
+        document.getElementById('dlMain').innerHTML = '<p class="empty">Não deu pra carregar. Tenta recarregar a página.</p>';
       });
     })();
   </script>

@@ -25,6 +25,8 @@ compartilhada. Ver "Próximas etapas".
   com o `?v=` do `app.html`).
 - O mundo **só desenha quando está visível** (aba visível, call view aberta). Sem foco na janela,
   limita o fps (o pessoal joga com o dusky aberto: não pode roubar GPU do jogo).
+- **F9** no mundinho liga um contador de fps (fps, pior quadro, placa do WebGL, escala de pixels,
+  foco e, no app, a aceleração de hardware) — pra comparar app e navegador (ver tauri/README.md).
 - Visual low-poly feito em código (sem modelos .glb por enquanto), sem sombras em tempo real,
   `pixelRatio` limitado.
 

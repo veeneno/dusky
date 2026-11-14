@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "node scripts/tauri.js dev",
     "build": "node scripts/tauri.js build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release": "node scripts/release.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
-  }
+  },
+  "codename": "Mist"
 }

@@ -88,7 +88,7 @@ O áudio sempre vem do YouTube (a API do Spotify só dá o nome, o artista e a c
 - Servidores: ver e apagar.
 - Aviso geral que aparece pra todo mundo conectado.
 
-**App desktop** (Electron, Linux e Windows): abre direto no site, compartilha a tela pela placa de vídeo, mostra o contador de menções no ícone e **se atualiza sozinho**. Os amigos instalam pela página **https://dusky.veneno.space/baixar**. Detalhes mais abaixo.
+**App desktop — dusky Mist 1.0** (Rust/Tauri, Linux e Windows): abre direto no site, compartilha a tela pela placa de vídeo, mostra o jogo aberto ("jogando X"), o contador de menções, volta sozinho quando o servidor cai e **se atualiza sozinho**. Os amigos instalam pela página **https://dusky.veneno.space/baixar** (com o guia de dependências de cada distro Linux). Quem tem o app antigo (Electron) migra sozinho pelo atualizador. Detalhes em [`tauri/README.md`](tauri/README.md).
 
 ## Como rodar
 
@@ -217,7 +217,8 @@ dusky/
 │   ├── world/              # mundinho 3D (módulos ES, carregados sob demanda): world.js, avatar.js, props.js, tv.js, scenes/
 │   ├── vendor/             # DeepFilterNet3 e RNNoise (supressão de ruído, em WebAssembly) e Three.js
 │   └── uploads/            # arquivos enviados pelo pessoal (fora do git)
-├── electron/               # app desktop (ver abaixo)
+├── tauri/                  # app desktop dusky Mist (Rust/Tauri) — ver tauri/README.md
+├── electron/               # app desktop ANTIGO (Electron) + auxiliares nativos (native/) usados pelos dois
 ├── scripts/start.js        # npm start: servidor + túnel
 └── deploy/setup-vm.sh      # instalação numa VM Ubuntu (alternativa ao túnel)
 ```
@@ -274,9 +275,15 @@ Como funciona:
 | `LIVEKIT_HTTP_PORT` | porta interna da sinalização (só `127.0.0.1`) | `7880` |
 | `LIVEKIT_VERSION`, `LIVEKIT_PATH` | outra versão, ou um `livekit-server` já instalado | versão fixa, baixada sozinha |
 
-## App desktop (Electron)
+## App desktop
 
-O app **não roda o servidor**: é uma janela do Chromium que abre o site. Saiu do Tauri pro Electron porque o motor do Tauri no Linux (WebKitGTK) tinha bugs de microfone e de compartilhamento de tela.
+**O app oficial agora é o dusky Mist (pasta `tauri/`)** — como rodar, publicar versão (`npm run release`), atualização automática, migração do Electron e aceleração de hardware estão em [`tauri/README.md`](tauri/README.md).
+
+O texto abaixo é do app **antigo** (Electron). Ele não recebe mais versões próprias: o `npm run release` do `tauri/` aponta os `latest*.yml` pro app novo, e cada Electron instalado se atualiza pra ele. A pasta continua no repositório porque os auxiliares nativos (`electron/native/`: `dusky-screencast`, `dusky-audiocap.exe`) são usados pelos dois.
+
+### App antigo (Electron)
+
+O app **não roda o servidor**: é uma janela do Chromium que abre o site.
 
 ```bash
 cd electron
@@ -287,7 +294,7 @@ npm run build      # gera AppImage + .deb (Linux) e instalador .exe (Windows) em
 npm run release    # gera tudo E publica em downloads/ (página /baixar + atualização automática)
 ```
 
-### Versão nova pros amigos
+### Versão nova pros amigos (Electron — não use mais; ver tauri/README.md)
 
 1. Sobe o `version` em `electron/package.json` (ex: `0.5.0` → `0.5.1`).
 2. `cd electron && npm run release`. Ele gera os instaladores e copia pra pasta `downloads/` do servidor (fora do git), guardando só a versão nova e a anterior.

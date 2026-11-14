@@ -37,3 +37,6 @@ server/db/.fuse_hidden*
 # chave PRIVADA que assina as atualizações do app novo (tauri/) — nunca vai pro git
 tauri/updater-key/
 *.key
+
+# instalador do Windows esperando o `npm run release` (tauri/scripts/release.js)
+tauri/release-in/

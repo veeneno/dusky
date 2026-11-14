@@ -6,8 +6,24 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libayatana-appindicator3-1"],
-        "recommends": ["ffmpeg", "pipewire-bin", "gstreamer1.0-pipewire"]
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good"
+        ],
+        "recommends": [
+          "ffmpeg",
+          "pipewire-bin",
+          "gstreamer1.0-tools",
+          "gstreamer1.0-pipewire",
+          "gstreamer1.0-plugins-bad",
+          "gstreamer1.0-plugins-ugly",
+          "gstreamer1.0-libav",
+          "xdg-desktop-portal"
+        ],
+        "replaces": ["didiscord"]
       }
     }
   }

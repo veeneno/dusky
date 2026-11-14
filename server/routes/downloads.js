@@ -1,5 +1,7 @@
 // app desktop pra baixar: a pasta downloads/ (fora do git) recebe os instaladores pelo
-// `npm run release` da pasta electron/. Daqui saem a página /baixar e a atualização automática.
+// `npm run release` da pasta tauri/ (app novo; antes, da pasta electron/). Daqui saem a página
+// /baixar, a atualização automática do app novo (latest.json) e a do Electron antigo (latest*.yml,
+// que agora apontam pro app novo — é assim que quem tem o Electron migra sem reinstalar).
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -33,15 +35,38 @@ function fileInfo(file) {
   }
 }
 
-// GET /api/downloads — versão atual de cada sistema (público: a página de instalação usa sem login)
+// GET /api/downloads — versão atual de cada sistema (público: a página de instalação usa sem login).
+// App novo (tauri/, latest.json) primeiro; sem ele, o que o app Electron antigo publicou (latest*.yml).
+function readManifest() {
+  try { return JSON.parse(fs.readFileSync(path.join(DOWNLOADS_DIR, 'latest.json'), 'utf8')); } catch (_) { return null; }
+}
+
 router.get('/api/downloads', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const m = readManifest();
+  if (m && m.platforms) {
+    const p = m.platforms;
+    const pick = (...keys) => { for (const k of keys) if (p[k] && p[k].url) return fileInfo(path.basename(p[k].url)); return null; };
+    return res.json({
+      app: 'tauri',
+      version: m.version || null,
+      codename: m.codename || null,
+      notes: m.notes || null,
+      date: m.pub_date || null,
+      windows: pick('windows-x86_64-nsis', 'windows-x86_64'),
+      appimage: pick('linux-x86_64-appimage', 'linux-x86_64'),
+      deb: pick('linux-x86_64-deb'),
+    });
+  }
   const win = readYml('latest.yml');
   const linux = readYml('latest-linux.yml');
   const version = (linux && linux.version) || (win && win.version) || null;
   const deb = version ? (fileInfo(`dusky-${version}.deb`) || fileInfo(`didiscord-${version}.deb`)) : null; // nome antigo dos arquivos
-  res.set('Cache-Control', 'no-store');
   res.json({
+    app: 'electron',
     version,
+    codename: null,
+    notes: null,
     date: (linux && linux.date) || (win && win.date) || null,
     windows: win && fileInfo(win.file),
     appimage: linux && fileInfo(linux.file),

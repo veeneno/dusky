@@ -754,3 +754,11 @@ html[data-theme-mode="light"] .profile-bar .profile-presence-dot { border-color:
 html[data-theme-mode="light"] .profile-bar .profile-presence-dot.is-idle {
   background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--bg-sidebar), black 4%) 0 34%, var(--idle) 35%) !important;
 }
+
+/* ícone Mist no botão das conversas diretas: colorido no escuro, claro sobre a cor de destaque */
+.rail-home .rail-logo { width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none; }
+.rail-home .rail-logo-mono { display: none; }
+.rail-home:hover .rail-logo-color,
+.rail-home.active .rail-logo-color { display: none; }
+.rail-home:hover .rail-logo-mono,
+.rail-home.active .rail-logo-mono { display: block; }

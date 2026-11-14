@@ -1,6 +1,7 @@
-# dusky — app desktop em Rust (Tauri 2)
+# dusky Mist — app desktop em Rust (Tauri 2)
 
-Substituto do app Electron (`../electron`). Mesma ideia: abre uma janela nativa apontando pro site
+**dusky 1.0, codinome Mist.** É o app oficial: substitui o app Electron (`../electron`, que agora
+só existe pra quem ainda não migrou — e migra sozinho, ver abaixo). Mesma ideia: abre uma janela nativa apontando pro site
 hospedado e adiciona o que o navegador não faz. O site não precisa mudar nada: a ponte
 `window.duskyDesktop` tem a mesma API do `electron/preload.js`.
 
@@ -20,7 +21,15 @@ hospedado e adiciona o que o navegador não faz. O site não precisa mudar nada:
 | Call: assistir tela/câmera dos outros, mandar câmera | ✅ pelo Rust | ✅ |
 | Call: áudio da tela compartilhada indo pra call | ✅ pelo Rust | ✅ |
 | Call: números de qualidade (perda, jitter, ping) | ✅ pelo Rust | ✅ |
-| "Jogando X" (presence) e atualização automática | ainda não | ainda não |
+| "Jogando X" (presence) | ✅ /proc (inclusive Wine/Proton) | ✅ (sem PowerShell) |
+| Atualização automática (assinada) + "procurar atualizações" | ✅ AppImage (e .deb, pedindo senha) | ✅ |
+| Servidor caiu → volta pra "conectando…" e reabre sozinho | ✅ | ✅ |
+| Aceleração de hardware (configurações e bandeja; reinicia) | ✅ | ✅ |
+| Migração do app Electron sem reinstalar | ✅ | ✅ |
+
+A versão aparece nas configurações do site ("dusky Mist 1.0 · app 1.0.0 · site …") e na bandeja.
+Pra uma versão nova: mude `version` em `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` e
+`package.json` (e o codinome em `src/app.rs` / `package.json`, se mudar).
 
 ### Call no Linux
 
@@ -112,11 +121,105 @@ npm run build        # gera o instalador em src-tauri\target\release\bundle\nsis
 - `DUSKY_INJECT_JS=arquivo.js` (só no modo debug) roda um script extra em toda página — foi
   assim que a call foi testada de ponta a ponta (app + Chromium na mesma sala).
 
+## Publicar uma versão (`npm run release`)
+
+Tudo sai da pasta `downloads/` do servidor (fora do git): `/baixar`, `/api/downloads`, a
+atualização do app novo e a migração do Electron.
+
+1. **Linux (no servidor):** `cd tauri && npm run build` → `.AppImage` e `.deb`.
+2. **Windows:** `cd tauri && npm run build` → `src-tauri\target\release\bundle\nsis\dusky_<versão>_x64-setup.exe`.
+   Copie esse `.exe` pra pasta `tauri/release-in/` do servidor (pendrive, rede, scp…).
+3. **No servidor:** `cd tauri && npm run release -- --notes "o que mudou"`.
+
+O `release` assina cada arquivo, copia pra `downloads/` e escreve:
+- `latest.json` — atualização do app novo. Só com o nome de cada arquivo: o servidor completa o
+  endereço com o mesmo endereço por onde o app perguntou (`server/routes/downloads.js`).
+- `latest.yml` / `latest-linux.yml` — no formato do electron-builder (sha512 + tamanho), apontando
+  pros instaladores **novos**: é a migração do Electron (abaixo). `--sem-electron` não mexe neles.
+
+Dá pra publicar um sistema de cada vez (o `latest.json` mantém o que já estava publicado da mesma
+versão). `--dry` só mostra o que faria.
+
+### A chave do atualizador
+
+O app só aceita atualização assinada pela chave cuja parte pública está em `tauri.conf.json`
+(`plugins.updater.pubkey`). A **privada** fica em `tauri/updater-key/dusky-updater.key` (fora do
+git, sem senha) — ou em `TAURI_SIGNING_PRIVATE_KEY_PATH`. **Faça backup dela** (gerenciador de
+senhas, pendrive): sem ela, nenhum app instalado aceita versão nova, e trocar a chave obriga todo
+mundo a reinstalar. Só o servidor precisa dela (o build do Windows não assina; quem assina é o
+`release`, no Linux).
+
+## Migração do app antigo (Electron)
+
+Quem tem o Electron (0.5.x, instalado como "didiscord") **não precisa reinstalar**: o atualizador
+dele (electron-updater) lê `downloads/latest*.yml`, que o `release` aponta pros instaladores novos.
+
+- **Windows:** o Electron baixa o `dusky_<versão>_x64-setup.exe`, confere o sha512/tamanho e roda
+  com `--updated` (e `/S` quando instala ao sair). O instalador (NSIS do Tauri) instala o dusky em
+  `%LOCALAPPDATA%\dusky` e o gancho `src-tauri/windows/hooks.nsh` procura "didiscord …" na lista de
+  programas instalados, roda o desinstalador dele em silêncio (`QuietUninstallString`; os dados em
+  `%APPDATA%\didiscord` ficam) e, se veio em silêncio, abre o app novo.
+- **Linux (AppImage):** o Electron baixa o AppImage novo, confere e põe na mesma pasta do antigo. Ao
+  instalar "ao sair", ele roda o arquivo novo com `APPIMAGE_EXIT_AFTER_INSTALL=true` e espera — o
+  app novo sai na hora quando vê isso (`src/main.rs`). Integrações tipo Gear Lever podem continuar
+  apontando pro arquivo antigo: aí é só reintegrar o novo.
+- **Linux (.deb):** o Electron instala o `.deb` novo com pkexec (pede senha). Os dois pacotes ficam
+  instalados lado a lado; o antigo sai com `sudo apt remove didiscord`.
+- **Endereço do servidor e preferências:** o app novo copia `server.json` e `prefs.json` da pasta do
+  Electron (`~/.config/didiscord` / `%APPDATA%\didiscord`) na primeira vez. O login do site **não**
+  vem (o Electron guarda num perfil do Chromium que o app novo não lê): entra de novo uma vez.
+- O endereço antigo (`didiscord.veneno.space`) continua no ar: é dele que os Electron instalados
+  leem os `latest*.yml`.
+
+## Servidor fora do ar
+
+Com a página do site aberta, o app confere `/api/version` a cada 15 s; duas falhas seguidas (~30 s)
+→ sai da call, volta pra tela de "conectando…" ("o servidor caiu — volto sozinho…") e reabre o site
+quando ele responder. No Linux, uma navegação pro site que falha (recarregar com o servidor
+desligado) já volta na hora (sinal `load-failed` do WebKitGTK).
+
+## Aceleração de hardware (e o mundinho mais lento no app)
+
+Opção nas configurações do site (aba "app e versão") e na bandeja; mudar reinicia o app.
+- **Ligada (padrão).** Linux: política "sempre" na placa (WebKitGTK). Windows: `--force_high_performance_gpu`
+  (em notebook com duas placas, o WebView2 usava a integrada).
+- **Desligada.** Linux: `WEBKIT_DISABLE_COMPOSITING_MODE=1` + `WEBKIT_DISABLE_DMABUF_RENDERER=1` +
+  política "nunca". Windows: `--disable-gpu --disable-gpu-compositing`. Pra driver que dá tela preta.
+
+**Contador de fps no mundinho: F9** (lembra entre aberturas). Mostra fps, o pior quadro, a placa
+que o WebGL está usando, a escala de pixels, se a janela tem foco e, no app, o estado da aceleração.
+
+O que olhar quando o app tem menos fps que o navegador (Linux):
+1. **`placa:` diz llvmpipe / softpipe / SwiftShader** → o WebGL está no processador. Driver/EGL do
+   WebKitGTK não achou a placa (NVIDIA: precisa do `nvidia-utils` com EGL/GBM; teste
+   `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json`).
+2. **`WEBKIT_DISABLE_DMABUF_RENDERER=1` aparece** → é o mais comum com NVIDIA no Wayland (muita
+   gente põe no `~/.profile`/`environment.d` por causa de janela branca). Sem DMA-BUF, cada quadro
+   do WebGL é copiado da placa pro processador e de volta: o fps cai muito. Tire a variável e veja
+   se o app abre normal; o app avisa no terminal quando ela está ligada.
+3. **`foco: não`** → o mundinho limita em 20 fps sem foco de propósito (pra não roubar a placa do
+   jogo). Se aparece "não" com a janela em cima, clique no mundinho.
+4. **fps travado em 60 num monitor de 144 Hz** → o WebKitGTK sincroniza o desenho em 60 Hz em
+   algumas versões/compositores (o Chrome usa a taxa do monitor). Não tem opção do app pra isso;
+   atualizar o `webkit2gtk-4.1` ajuda.
+5. **pixels** → a escala é limitada a 1,5× nos dois (navegador e app); com zoom do sistema 2× o
+   navegador e o app desenham a mesma quantidade.
+
+## Dependências e instaladores
+
+- **Windows:** o instalador traz tudo — ffmpeg (8.1.2 do gyan.dev, conferido por SHA-256, ver
+  `scripts/fetch-ffmpeg.js`), `dusky-screencast.exe`, `dusky-audiocap.exe`; o runtime do Visual C++
+  vai embutido no executável; o WebView2, se faltar, é baixado durante a instalação.
+- **Linux:** o app usa as bibliotecas do sistema. O `.deb` declara `Depends` (WebKitGTK, GTK,
+  bandeja, GStreamer base/good) e `Recommends` (ffmpeg, pipewire-bin, gstreamer tools/pipewire/
+  bad/ugly/libav, xdg-desktop-portal), que o apt instala junto. Pro AppImage, o guia de cada distro
+  (Arch, Ubuntu/Debian, Fedora) está na página **/baixar** do site.
+
 ## Como é organizado
 
 ```
 tauri/
-  ui/loading.html, ui/picker.html   telas locais (copiadas do electron/, sem mudança)
+  ui/loading.html, ui/picker.html   telas locais ("conectando…" com o visual Mist; seletor de tela)
   src-tauri/
     src/bridge.js       ponte JS: window.duskyDesktop / duskyShell / pickerApi
     src/app.rs          janela, conexão com o servidor, comandos do site, ciclo de vida
@@ -127,6 +230,12 @@ tauri/
     src/deps.rs         baixa o ffmpeg (versão fixa + SHA-256)
     src/audio/          áudio da tela: linux.rs (PipeWire), windows.rs (audiocap)
     src/call.rs         call pelo LiveKit no Rust (só Linux; no Windows é o call_stub.rs)
+    src/updater.rs      atualização automática (latest.json do servidor, pacote assinado)
+    src/presence.rs     "jogando X"
+    src/webview_setup.rs  ajustes do WebKitGTK/WebView2 e aceleração de hardware
+    windows/hooks.nsh   gancho do instalador (migração do Electron)
+  scripts/release.js    publica a versão em ../downloads (latest.json + yml da migração)
+  updater-key/          chave PRIVADA do atualizador (fora do git)
     capabilities/       quem pode chamar o quê (o site ganha a dele em tempo de execução)
 ```
 
