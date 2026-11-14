@@ -326,6 +326,7 @@ function buildMessageEl(m, continued) {
   if (!isBot) {
     applyAuthorColors(el);
     applyNameStyle(el.querySelector('.msg-author'), { id: m.user_id, name_style: m.name_style });
+    applyAvatarDeco(el.querySelector('.msg-avatar'), { id: m.user_id, avatar_deco: m.avatar_deco, accent_color: m.accent_color, accent_color_2: m.accent_color_2 });
   }
   renderMessageText(el.querySelector('.msg-text'), m.content || '', !!m.edited, m);
   if (messageMentionsMe(m)) el.classList.add('mentions-me');

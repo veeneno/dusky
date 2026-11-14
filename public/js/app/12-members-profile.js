@@ -83,10 +83,118 @@ function applyNameStyle(el, user, opts = {}) {
   el.style.setProperty('--nfx-c2', s.c2);
 }
 
-// alguém mudou o perfil: troca o efeito em tudo que já está na tela (mensagens antigas inclusive)
+// alguém mudou o perfil: troca o efeito no nome, a decoração do avatar e a placa do nome em tudo
+// que já está na tela (mensagens antigas inclusive)
 function refreshNameStyles(user) {
   if (!user || user.id == null) return;
-  document.querySelectorAll(`[data-nfx-user="${Number(user.id)}"]`).forEach((el) => applyNameStyle(el, user));
+  const id = Number(user.id);
+  document.querySelectorAll(`[data-nfx-user="${id}"]`).forEach((el) => applyNameStyle(el, user));
+  document.querySelectorAll(`[data-deco-user="${id}"]`).forEach((el) => applyAvatarDeco(el, user));
+  document.querySelectorAll(`[data-np-user="${id}"]`).forEach((el) => applyNameplate(el, user));
+}
+
+// ---------- decorações do perfil (placa do nome, decoração do avatar, efeito do perfil) ----------
+// Cada uma vem em user.<slot> como "preset:<nome>" (desenhado em css/profile.css) ou
+// "/uploads/decor/<hex>.<ext>" (imagem que a pessoa enviou) — ver server/decor.js. Igual ao
+// efeito no nome: quem desenha marca o elemento (data-deco-user / data-np-user) pra trocar na
+// hora quando a pessoa muda o perfil.
+const DECOR_SLOTS = {
+  nameplate: {
+    label: 'placa do nome',
+    help: 'fundo atrás do seu nome na lista de membros e nas DMs',
+    presets: [['aurora', 'aurora'], ['galaxia', 'galáxia'], ['por-do-sol', 'pôr do sol'], ['sakura', 'sakura']],
+  },
+  avatar_deco: {
+    label: 'decoração do avatar',
+    help: 'moldura por cima do avatar, em todo lugar',
+    presets: [['anel-rgb', 'anel RGB'], ['aura', 'aura'], ['orbita', 'órbita'], ['brilhos', 'brilhos']],
+  },
+  profile_fx: {
+    label: 'efeito do perfil',
+    help: 'animação por cima do seu cartão de perfil',
+    presets: [['neve', 'neve'], ['estrelas', 'estrelas'], ['bolhas', 'bolhas'], ['coracoes', 'corações']],
+  },
+};
+const DECOR_UPLOAD_RE = /^\/uploads\/decor\/[a-f0-9]{32}\.(png|jpg|webp|gif)$/;
+const NP_CLASSES = ['np-img', ...DECOR_SLOTS.nameplate.presets.map(([k]) => 'np-' + k)];
+
+// { preset } | { url } | null — só aceita o que o servidor gera (a url vai pra dentro de CSS/src)
+function parseDecor(slot, value) {
+  if (typeof value !== 'string' || !value) return null;
+  if (value.startsWith('preset:')) {
+    const key = value.slice(7);
+    return DECOR_SLOTS[slot].presets.some(([k]) => k === key) ? { preset: key } : null;
+  }
+  return DECOR_UPLOAD_RE.test(value) ? { url: value } : null;
+}
+
+// o cache (findUser) é a fonte mais nova; `fallback` é o que veio junto (ex.: a mensagem)
+function decorValueOf(slot, user, exact) {
+  if (exact) return user[slot];
+  const u = findUser(user.id);
+  if (u && u[slot] !== undefined) return u[slot];
+  return user[slot];
+}
+
+// decoração do avatar: um elemento por cima do avatar, maior que ele (125%, o tamanho das molduras
+// do Discord — o avatar fica nos 80% do meio), fora do recorte redondo
+function applyAvatarDeco(avatarEl, user, opts = {}) {
+  if (!avatarEl) return;
+  avatarEl.querySelectorAll(':scope > .avatar-deco').forEach((n) => n.remove());
+  avatarEl.classList.remove('has-avatar-deco');
+  delete avatarEl.dataset.decoUser;
+  if (!user || user.id == null) return;
+  if (!opts.exact) avatarEl.dataset.decoUser = String(user.id);
+  const d = parseDecor('avatar_deco', decorValueOf('avatar_deco', user, opts.exact));
+  if (!d) return;
+  let deco;
+  if (d.url) {
+    deco = document.createElement('img');
+    deco.src = d.url;
+    deco.alt = '';
+    deco.decoding = 'async';
+  } else {
+    deco = document.createElement('span');
+    deco.classList.add('avatar-deco-' + d.preset);
+  }
+  deco.classList.add('avatar-deco');
+  deco.setAttribute('aria-hidden', 'true');
+  const src = opts.exact ? user : (findUser(user.id) || user);
+  deco.style.setProperty('--deco-c1', src.accent_color || ACCENT_COLORS[0]);
+  deco.style.setProperty('--deco-c2', src.accent_color_2 || src.accent_color || ACCENT_COLORS[0]);
+  avatarEl.classList.add('has-avatar-deco');
+  avatarEl.appendChild(deco);
+}
+
+// placa do nome: fundo da linha (lista de membros, DMs), que some aos poucos pra esquerda
+function applyNameplate(rowEl, user, opts = {}) {
+  if (!rowEl) return;
+  rowEl.classList.remove('has-nameplate', ...NP_CLASSES);
+  rowEl.style.removeProperty('--np-img');
+  delete rowEl.dataset.npUser;
+  if (!user || user.id == null) return;
+  if (!opts.exact) rowEl.dataset.npUser = String(user.id);
+  const d = parseDecor('nameplate', decorValueOf('nameplate', user, opts.exact));
+  if (!d) return;
+  rowEl.classList.add('has-nameplate', d.url ? 'np-img' : 'np-' + d.preset);
+  if (d.url) rowEl.style.setProperty('--np-img', `url("${d.url}")`);
+}
+
+// efeito do perfil: camada por cima do cartão inteiro (não pega clique)
+function buildProfileFx(user, exact) {
+  const d = parseDecor('profile_fx', decorValueOf('profile_fx', user, exact));
+  if (!d) return null;
+  const fx = document.createElement('div');
+  fx.className = 'pc-fx' + (d.preset ? ' pc-fx-' + d.preset : '');
+  fx.setAttribute('aria-hidden', 'true');
+  if (d.url) {
+    const img = document.createElement('img');
+    img.src = d.url;
+    img.alt = '';
+    img.decoding = 'async';
+    fx.appendChild(img);
+  }
+  return fx;
 }
 
 function escapeAttr(str) {
@@ -139,6 +247,8 @@ function renderMembers() {
       const roleColor = memberColor(m);
       if (roleColor) item.querySelector('.member-item-name-text').style.color = roleColor;
       applyNameStyle(item.querySelector('.member-item-name-text'), m);
+      applyNameplate(item, m);
+      applyAvatarDeco(item.querySelector('.member-item-avatar'), m);
       const statusEl = item.querySelector('.member-item-status');
       if (m.activity && m.online) {
         // "jogando X" (rich presence) ocupa o lugar do status enquanto a pessoa está no jogo
@@ -305,6 +415,9 @@ function renderProfileCard(el, user, opts = {}) {
 
   el.querySelector('.pc-name').textContent = user.username || '';
   applyNameStyle(el.querySelector('.pc-name'), user, { exact: !!opts.isPreview });
+  applyAvatarDeco(el.querySelector('.pc-avatar'), user, { exact: !!opts.isPreview });
+  const profileFx = buildProfileFx(user, !!opts.isPreview);
+  if (profileFx) el.appendChild(profileFx);
 
   const statusEl = el.querySelector('.pc-status');
   statusEl.textContent = user.status_text || '';
@@ -524,6 +637,7 @@ function applyUserToProfileBar(user) {
   } else {
     profileAvatar.textContent = initials(user.username);
   }
+  applyAvatarDeco(profileAvatar, user);
 }
 
 function buildColorSwatches(selected) {
@@ -658,6 +772,147 @@ for (const input of [nameFxColor1, nameFxColor2]) {
   input.addEventListener('input', refreshLivePreview);
 }
 
+// ---------- editor das decorações ----------
+// Modelo e "nenhum" ficam só no rascunho (decorDraft) até "salvar alterações"; imagem enviada vai
+// na hora (POST /api/profile/decor/:slot), igual ao avatar, e entra no rascunho como "sua imagem".
+const decorEditor = document.getElementById('decorEditor');
+const decorNpPreview = document.getElementById('decorNpPreview');
+const decorFileInput = document.getElementById('decorFileInput');
+const decorDraft = { nameplate: null, avatar_deco: null, profile_fx: null };
+
+// miniatura de cada opção, desenhada com as mesmas classes de verdade
+function decorThumb(slot, value) {
+  const fake = { ...currentUser, nameplate: null, avatar_deco: null, profile_fx: null, [slot]: value };
+  if (slot === 'nameplate') {
+    const t = document.createElement('span');
+    t.className = 'decor-thumb decor-thumb-np';
+    applyNameplate(t, fake, { exact: true });
+    return t;
+  }
+  if (slot === 'avatar_deco') {
+    const wrap = document.createElement('span');
+    wrap.className = 'decor-thumb decor-thumb-av';
+    const av = document.createElement('span');
+    av.className = 'decor-thumb-av-circle';
+    av.innerHTML = currentUser.avatar_url ? `<img src="${escapeAttr(currentUser.avatar_url)}" alt="">` : '';
+    applyAvatarDeco(av, fake, { exact: true });
+    wrap.appendChild(av);
+    return wrap;
+  }
+  const t = document.createElement('span');
+  t.className = 'decor-thumb decor-thumb-fx';
+  const fx = buildProfileFx(fake, true);
+  if (fx) t.appendChild(fx);
+  return t;
+}
+
+function decorChip(slot, value, label) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'decor-chip' + ((decorDraft[slot] || null) === (value || null) ? ' active' : '');
+  btn.setAttribute('role', 'radio');
+  btn.setAttribute('aria-checked', btn.classList.contains('active') ? 'true' : 'false');
+  btn.appendChild(decorThumb(slot, value));
+  const l = document.createElement('span');
+  l.className = 'decor-chip-label';
+  l.textContent = label;
+  btn.appendChild(l);
+  btn.addEventListener('click', () => {
+    decorDraft[slot] = value;
+    buildDecorEditor();
+    refreshLivePreview();
+  });
+  return btn;
+}
+
+function buildDecorEditor() {
+  decorEditor.innerHTML = '';
+  for (const [slot, def] of Object.entries(DECOR_SLOTS)) {
+    const field = document.createElement('div');
+    field.className = 'field decor-field';
+    const label = document.createElement('label');
+    label.textContent = def.label + ' ';
+    const hint = document.createElement('span');
+    hint.className = 'field-hint';
+    hint.textContent = def.help;
+    label.appendChild(hint);
+    field.appendChild(label);
+
+    const opts = document.createElement('div');
+    opts.className = 'decor-options';
+    opts.setAttribute('role', 'radiogroup');
+    opts.setAttribute('aria-label', def.label);
+    opts.appendChild(decorChip(slot, null, 'nenhum'));
+    // a imagem enviada que já está salva (pode voltar pra ela depois de olhar os modelos)
+    const saved = currentUser[slot];
+    if (parseDecor(slot, saved) && !saved.startsWith('preset:')) opts.appendChild(decorChip(slot, saved, 'sua imagem'));
+    for (const [key, name] of def.presets) opts.appendChild(decorChip(slot, 'preset:' + key, name));
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'decor-chip decor-chip-upload';
+    up.innerHTML = '<span class="decor-thumb decor-thumb-plus" aria-hidden="true">+</span><span class="decor-chip-label">enviar imagem</span>';
+    up.addEventListener('click', () => {
+      decorFileInput.dataset.slot = slot;
+      decorFileInput.click();
+    });
+    opts.appendChild(up);
+    field.appendChild(opts);
+    decorEditor.appendChild(field);
+  }
+  refreshDecorNpPreview();
+}
+
+// a minha linha na lista de membros, com a placa/decoração/efeito do nome como estão no rascunho
+function refreshDecorNpPreview() {
+  const d = draftUser();
+  decorNpPreview.innerHTML = `
+      <div class="member-item">
+        <div class="member-item-avatar">${memberAvatarInner(d)}<span class="member-presence-dot"></span></div>
+        <div class="member-item-text">
+          <span class="member-item-name"><span class="member-item-name-text"></span></span>
+          <span class="member-item-status"></span>
+        </div>
+      </div>`;
+  const row = decorNpPreview.firstElementChild;
+  row.style.setProperty('--member-accent', d.accent_color || 'var(--amethyst)');
+  row.querySelector('.member-item-name-text').textContent = d.username;
+  const status = row.querySelector('.member-item-status');
+  status.textContent = d.status_text || '';
+  status.hidden = !d.status_text;
+  applyNameStyle(row.querySelector('.member-item-name-text'), d, { exact: true });
+  applyNameplate(row, d, { exact: true });
+  applyAvatarDeco(row.querySelector('.member-item-avatar'), d, { exact: true });
+}
+
+decorFileInput.addEventListener('change', async () => {
+  const file = decorFileInput.files[0];
+  const slot = decorFileInput.dataset.slot;
+  decorFileInput.value = '';
+  if (!file || !DECOR_SLOTS[slot]) return;
+  profileInfoError.textContent = 'enviando imagem...';
+  profileInfoError.classList.remove('is-success');
+  try {
+    const form = new FormData();
+    form.append('image', file);
+    const res = await fetch(`/api/profile/decor/${slot}`, { method: 'POST', body: form });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      profileInfoError.textContent = data.error || 'não deu pra enviar essa imagem';
+      return;
+    }
+    currentUser = { ...currentUser, ...data.user };
+    decorDraft[slot] = currentUser[slot];
+    applyUserToProfileBar(currentUser);
+    buildDecorEditor();
+    refreshLivePreview();
+    profileInfoError.textContent = `${DECOR_SLOTS[slot].label}: imagem salva`;
+    profileInfoError.classList.add('is-success');
+  } catch (_) {
+    profileInfoError.textContent = 'erro de conexão';
+  }
+});
+
 // o perfil como está no formulário agora (ainda não salvo) — alimenta a prévia ao vivo
 function draftUser() {
   return {
@@ -668,6 +923,9 @@ function draftUser() {
     accent_color: colorSwatches.dataset.selected || currentUser.accent_color,
     accent_color_2: colorSwatches2.dataset.selected2 || null,
     name_style: draftNameStyle(),
+    nameplate: decorDraft.nameplate,
+    avatar_deco: decorDraft.avatar_deco,
+    profile_fx: decorDraft.profile_fx,
   };
 }
 
@@ -686,6 +944,7 @@ function refreshImagePreviews() {
 
 function refreshLivePreview() {
   refreshNameFxSamples(); // o nome nas opções de efeito acompanha o que está sendo digitado
+  refreshDecorNpPreview();
   renderProfileCard(profileLivePreview, draftUser(), { online: true, isPreview: true });
   profileBioCount.textContent = `${profileBioInput.value.length}/190`;
   refreshImagePreviews();
@@ -723,6 +982,8 @@ function openProfileModal() {
   buildColorSwatches(currentUser.accent_color);
   buildColorSwatches2(currentUser.accent_color_2);
   buildNameFxPicker(currentUser.name_style);
+  for (const slot of Object.keys(DECOR_SLOTS)) decorDraft[slot] = parseDecor(slot, currentUser[slot]) ? currentUser[slot] : null;
+  buildDecorEditor();
   setAvatarSourceMenu(false);
   closeAvatarGiphy();
   refreshLivePreview();
@@ -956,6 +1217,9 @@ profileInfoSaveBtn.addEventListener('click', async () => {
         accent_color: d.accent_color,
         accent_color_2: d.accent_color_2,
         name_style: d.name_style, // null tira o efeito
+        nameplate: d.nameplate, // decorações: "preset:x", null ou a imagem que já estava
+        avatar_deco: d.avatar_deco,
+        profile_fx: d.profile_fx,
       }),
     });
     const data = await res.json().catch(() => ({}));

@@ -672,6 +672,8 @@ function renderContacts() {
       `;
     b.querySelector('.dm-item-name').textContent = u.username;
     applyNameStyle(b.querySelector('.dm-item-name'), u);
+    applyNameplate(b, u);
+    applyAvatarDeco(b.querySelector('.dm-item-avatar'), u);
     b.querySelector('.dm-item-status').textContent = u.status_text || (u.online ? 'online' : 'offline');
     b.addEventListener('click', () => { newDmBackdrop.hidden = true; openDm(u.id); });
     newDmList.appendChild(b);

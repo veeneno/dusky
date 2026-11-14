@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="/css/app.css?v=20">
   <link rel="stylesheet" href="/css/chat.css?v=20">
   <link rel="stylesheet" href="/css/members.css?v=20">
-  <link rel="stylesheet" href="/css/profile.css?v=22">
+  <link rel="stylesheet" href="/css/profile.css?v=23">
   <link rel="stylesheet" href="/css/voice.css?v=21">
   <link rel="stylesheet" href="/css/settings.css?v=20">
   <link rel="stylesheet" href="/css/servers.css?v=20">
@@ -398,6 +398,18 @@
                   <input type="color" id="nameFxColor2" aria-label="segunda cor do efeito" title="segunda cor">
                 </div>
               </div>
+            </section>
+
+            <!-- decorações: placa do nome, decoração do avatar, efeito do perfil (ver 12-members-profile.js) -->
+            <section class="profile-edit-group">
+              <h4 class="profile-edit-group-title">decorações</h4>
+              <p class="field-help">escolha um modelo ou envie uma imagem sua (png, webp ou gif animado, de preferência com fundo transparente, até 10MB). A imagem enviada já fica salva; modelo e "nenhum" salvam no botão.</p>
+              <div class="decor-editor" id="decorEditor"></div>
+              <div class="decor-np-preview-wrap">
+                <span class="profile-edit-preview-label">na lista de membros</span>
+                <div class="decor-np-preview" id="decorNpPreview"></div>
+              </div>
+              <input type="file" id="decorFileInput" accept="image/png,image/webp,image/gif,image/jpeg" hidden>
             </section>
 
             <div class="profile-edit-footer">
@@ -1271,34 +1283,34 @@
   <script src="/js/markdown.js?v=21"></script>
   <script src="/js/emoji.js?v=21"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=48"></script>
-  <script src="/js/app/02-preferences.js?v=48"></script>
-  <script src="/js/app/03-context-menus.js?v=48"></script>
-  <script src="/js/app/04-sidebar.js?v=48"></script>
-  <script src="/js/app/05-chat.js?v=48"></script>
-  <script src="/js/app/06-message-content.js?v=48"></script>
-  <script src="/js/app/07-composer.js?v=48"></script>
-  <script src="/js/app/08-notifications.js?v=48"></script>
-  <script src="/js/app/09-panels-attachments.js?v=48"></script>
-  <script src="/js/app/10-video-player.js?v=48"></script>
-  <script src="/js/app/11-slash-commands.js?v=48"></script>
-  <script src="/js/app/12-members-profile.js?v=48"></script>
-  <script src="/js/app/13-servers.js?v=48"></script>
-  <script src="/js/app/14-roles.js?v=48"></script>
-  <script src="/js/app/15-media-viewer.js?v=48"></script>
-  <script src="/js/app/16-site-admin.js?v=48"></script>
-  <script src="/js/app/17-settings.js?v=48"></script>
-  <script src="/js/app/18-call-audio.js?v=48"></script>
-  <script src="/js/app/19-call-ui.js?v=48"></script>
-  <script src="/js/app/20-screencast-native.js?v=48"></script>
-  <script src="/js/app/21-call-sfu.js?v=48"></script>
-  <script src="/js/app/22-call-mesh.js?v=48"></script>
-  <script src="/js/app/23-call-media.js?v=48"></script>
-  <script src="/js/app/24-presence.js?v=48"></script>
-  <script src="/js/app/25-server-settings.js?v=48"></script>
-  <script src="/js/app/26-soundboard.js?v=48"></script>
-  <script src="/js/app/27-world.js?v=48"></script>
-  <script src="/js/app/28-realtime.js?v=48"></script>
-  <script src="/js/app/29-mobile.js?v=48"></script>
+  <script src="/js/app/01-state.js?v=49"></script>
+  <script src="/js/app/02-preferences.js?v=49"></script>
+  <script src="/js/app/03-context-menus.js?v=49"></script>
+  <script src="/js/app/04-sidebar.js?v=49"></script>
+  <script src="/js/app/05-chat.js?v=49"></script>
+  <script src="/js/app/06-message-content.js?v=49"></script>
+  <script src="/js/app/07-composer.js?v=49"></script>
+  <script src="/js/app/08-notifications.js?v=49"></script>
+  <script src="/js/app/09-panels-attachments.js?v=49"></script>
+  <script src="/js/app/10-video-player.js?v=49"></script>
+  <script src="/js/app/11-slash-commands.js?v=49"></script>
+  <script src="/js/app/12-members-profile.js?v=49"></script>
+  <script src="/js/app/13-servers.js?v=49"></script>
+  <script src="/js/app/14-roles.js?v=49"></script>
+  <script src="/js/app/15-media-viewer.js?v=49"></script>
+  <script src="/js/app/16-site-admin.js?v=49"></script>
+  <script src="/js/app/17-settings.js?v=49"></script>
+  <script src="/js/app/18-call-audio.js?v=49"></script>
+  <script src="/js/app/19-call-ui.js?v=49"></script>
+  <script src="/js/app/20-screencast-native.js?v=49"></script>
+  <script src="/js/app/21-call-sfu.js?v=49"></script>
+  <script src="/js/app/22-call-mesh.js?v=49"></script>
+  <script src="/js/app/23-call-media.js?v=49"></script>
+  <script src="/js/app/24-presence.js?v=49"></script>
+  <script src="/js/app/25-server-settings.js?v=49"></script>
+  <script src="/js/app/26-soundboard.js?v=49"></script>
+  <script src="/js/app/27-world.js?v=49"></script>
+  <script src="/js/app/28-realtime.js?v=49"></script>
+  <script src="/js/app/29-mobile.js?v=49"></script>
 </body>
 </html>

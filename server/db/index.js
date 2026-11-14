@@ -92,6 +92,10 @@ ensureColumn('users', 'theme_json', 'TEXT');
 // efeito no nome (LED, neon, degradê…) — JSON {"effect","c1","c2"}, validado em routes/profile.js.
 // Vai junto com os dados públicos do perfil: todo mundo vê o efeito no chat, DMs, membros e perfil
 ensureColumn('users', 'name_style', 'TEXT');
+// decorações do perfil (placa do nome, decoração do avatar, efeito do perfil) — ver server/decor.js
+ensureColumn('users', 'nameplate', 'TEXT');
+ensureColumn('users', 'avatar_deco', 'TEXT');
+ensureColumn('users', 'profile_fx', 'TEXT');
 
 // admin do site: marcado UMA vez, pra conta com o nome em SITE_ADMINS (.env, padrão "veneno"). Fica
 // gravado no banco — trocar de nick não tira o admin, e criar outra conta com o mesmo nome depois

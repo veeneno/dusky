@@ -8,7 +8,8 @@ const realtime = require('../realtime');
 const access = require('../access');
 const crypto = require('crypto');
 const config = require('../config');
-const { avatarUpload, bannerUpload, themeBackgroundUpload, UPLOADS_ROOT } = require('../upload');
+const { avatarUpload, bannerUpload, themeBackgroundUpload, decorUpload, UPLOADS_ROOT } = require('../upload');
+const decor = require('../decor'); // placa do nome, decoração do avatar, efeito do perfil
 
 const router = express.Router();
 const SALT_ROUNDS = 12;
@@ -40,6 +41,20 @@ router.patch('/', requireAuth, (req, res) => {
   const { username, accent_color, accent_color_2, bio, status_text, name_style } = req.body || {};
   const updates = [];
   const values = [];
+
+  // decorações: "preset:<nome>", null (tira) ou a mesma imagem que já está (continua). Imagem
+  // nova só por POST /api/profile/decor/:slot. Imagem que sair é apagada depois de salvar.
+  const decorCurrent = db.prepare('SELECT nameplate, avatar_deco, profile_fx FROM users WHERE id = ?').get(req.user.id) || {};
+  const decorDropped = [];
+  for (const slot of decor.SLOTS) {
+    if (req.body?.[slot] === undefined) continue;
+    let clean;
+    try { clean = decor.cleanDecor(slot, req.body[slot], decorCurrent[slot]); } catch (err) { return res.status(400).json({ error: err.message }); }
+    if (clean.value === decorCurrent[slot]) continue;
+    updates.push(`${slot} = ?`);
+    values.push(clean.value);
+    if (decor.isDecorUpload(decorCurrent[slot])) decorDropped.push(decorCurrent[slot]);
+  }
 
   // efeito no nome: { effect, c1, c2 } ou null (tira o efeito)
   if (name_style !== undefined) {
@@ -121,6 +136,7 @@ router.patch('/', requireAuth, (req, res) => {
 
   values.push(req.user.id);
   db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  for (const url of decorDropped) removeOldUpload(url);
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   broadcastProfileUpdate(user);
@@ -244,6 +260,27 @@ router.post('/avatar/giphy', requireAuth, async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   broadcastProfileUpdate(user);
   res.json({ user: publicUser(user) });
+});
+
+// POST /api/profile/decor/:slot — imagem própria pra uma decoração (campo "image"): placa do nome
+// (nameplate), decoração do avatar (avatar_deco) ou efeito do perfil (profile_fx). Salva na hora,
+// igual ao avatar; a imagem anterior dessa decoração (se era enviada) é apagada.
+router.post('/decor/:slot', requireAuth, (req, res) => {
+  const slot = req.params.slot;
+  if (!decor.SLOTS.includes(slot)) return res.status(404).json({ error: 'decoração inválida' });
+  decorUpload.single('image')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'imagem grande demais (até 10MB)' : 'não deu pra enviar essa imagem' });
+    if (!req.file) return res.status(400).json({ error: 'imagem inválida (use png, webp, gif ou jpg)' });
+
+    const url = `/uploads/decor/${req.file.filename}`;
+    const old = db.prepare(`SELECT ${slot} AS v FROM users WHERE id = ?`).get(req.user.id);
+    db.prepare(`UPDATE users SET ${slot} = ? WHERE id = ?`).run(url, req.user.id);
+    if (decor.isDecorUpload(old?.v)) removeOldUpload(old.v);
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    broadcastProfileUpdate(user);
+    res.json({ user: publicUser(user) });
+  });
 });
 
 // POST /api/profile/banner — upload de banner (imagem ou gif)

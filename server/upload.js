@@ -3,6 +3,8 @@ const crypto = require('crypto');
 const multer = require('multer');
 
 const UPLOADS_ROOT = path.join(__dirname, '..', 'public', 'uploads');
+// pasta das decorações do perfil é nova: cria se ainda não existir (o multer não cria sozinho)
+require('fs').mkdirSync(path.join(UPLOADS_ROOT, 'decor'), { recursive: true });
 
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
@@ -64,6 +66,14 @@ const serverIconUpload = multer({
 });
 
 // imagem de fundo do tema de cada pessoa (ver routes/profile.js, /theme/background)
+// decorações do perfil enviadas pela pessoa (placa do nome, decoração do avatar, efeito do perfil —
+// ver server/decor.js). Imagem com fundo transparente (png/webp/gif) é o normal; até 10MB
+const decorUpload = multer({
+  storage: makeStorage('decor'),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, IMAGE_TYPES.includes(file.mimetype)),
+});
+
 const themeBackgroundUpload = multer({
   storage: makeStorage('themes'),
   limits: { fileSize: 15 * 1024 * 1024 },
@@ -87,4 +97,4 @@ function attachmentTypeOf(mimetype) {
   return 'file'; // qualquer outro tipo — chip de download genérico no chat
 }
 
-module.exports = { avatarUpload, bannerUpload, soundUpload, attachmentUpload, serverIconUpload, themeBackgroundUpload, attachmentTypeOf, UPLOADS_ROOT };
+module.exports = { decorUpload, avatarUpload, bannerUpload, soundUpload, attachmentUpload, serverIconUpload, themeBackgroundUpload, attachmentTypeOf, UPLOADS_ROOT };

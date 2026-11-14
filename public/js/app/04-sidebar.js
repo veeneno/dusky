@@ -247,6 +247,8 @@ function buildDmItem(dm) {
     `;
   el.querySelector('.dm-item-name').textContent = u.username;
   applyNameStyle(el.querySelector('.dm-item-name'), u);
+  applyNameplate(el, u);
+  applyAvatarDeco(el.querySelector('.dm-item-avatar'), u);
   const dmUnread = unreadChannels.get(dm.id);
   if (dmUnread && dmUnread.mentions > 0) {
     const pill = el.querySelector('.unread-pill');
