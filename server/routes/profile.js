@@ -6,7 +6,9 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const realtime = require('../realtime');
 const access = require('../access');
-const { avatarUpload, bannerUpload, themeBackgroundUpload } = require('../upload');
+const crypto = require('crypto');
+const config = require('../config');
+const { avatarUpload, bannerUpload, themeBackgroundUpload, UPLOADS_ROOT } = require('../upload');
 
 const router = express.Router();
 const SALT_ROUNDS = 12;
@@ -162,6 +164,86 @@ router.post('/avatar', requireAuth, (req, res) => {
     broadcastProfileUpdate(user);
     res.json({ user: publicUser(user) });
   });
+});
+
+// ---------- avatar escolhido no GIPHY ----------
+// O site manda só o ID do gif (o mesmo da busca em /api/giphy/search), nunca uma URL: o servidor
+// pergunta pro GIPHY qual é o arquivo, baixa (só de *.giphy.com, até 15MB, tem que começar com
+// "GIF8") e guarda em /uploads/avatars como qualquer avatar enviado. Assim o avatar não depende
+// do GIPHY continuar no ar e quem vê o perfil não faz pedido nenhum pro GIPHY.
+const GIPHY_ID_RE = /^[A-Za-z0-9]{1,64}$/;
+const GIPHY_AVATAR_MAX = 15 * 1024 * 1024;
+// fixed_height (200 px de altura, ~0,5–2 MB) sobra pro maior avatar do app (cartão de perfil); o
+// downsized_medium chegava a 7 MB — pesado demais pra algo que aparece em toda mensagem/lista.
+// Os outros só se o GIPHY não tiver esse
+const GIPHY_RENDITIONS = ['fixed_height', 'downsized', 'downsized_medium', 'original'];
+
+function giphyFileUrl(gif) {
+  const imgs = (gif && gif.images) || {};
+  for (const key of GIPHY_RENDITIONS) {
+    const r = imgs[key];
+    if (!r || !r.url) continue;
+    const size = Number(r.size) || 0;
+    if (size > GIPHY_AVATAR_MAX) continue;
+    try {
+      const u = new URL(r.url);
+      if (u.protocol === 'https:' && (u.hostname === 'giphy.com' || u.hostname.endsWith('.giphy.com'))) return u.toString();
+    } catch (_) { /* url estranha: tenta a próxima */ }
+  }
+  return null;
+}
+
+// baixa no máximo `max` bytes; passou disso, desiste
+async function downloadLimited(url, max) {
+  const res = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20000) });
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+  if (Number(res.headers.get('content-length')) > max) throw new Error('grande demais');
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of res.body) {
+    total += chunk.length;
+    if (total > max) throw new Error('grande demais');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
+}
+
+// POST /api/profile/avatar/giphy { id } — usa um gif do GIPHY como avatar
+router.post('/avatar/giphy', requireAuth, async (req, res) => {
+  const id = String((req.body && req.body.id) || '');
+  if (!GIPHY_ID_RE.test(id)) return res.status(400).json({ error: 'gif inválido' });
+  if (!config.giphyApiKey) return res.status(503).json({ error: 'GIPHY não configurado no servidor' });
+
+  let buf;
+  try {
+    const info = await fetch(`https://api.giphy.com/v1/gifs/${id}?api_key=${encodeURIComponent(config.giphyApiKey)}`, { signal: AbortSignal.timeout(10000) });
+    if (!info.ok) return res.status(info.status === 404 ? 404 : 502).json({ error: info.status === 404 ? 'esse gif não existe mais' : 'o GIPHY não respondeu' });
+    const url = giphyFileUrl((await info.json()).data);
+    if (!url) return res.status(400).json({ error: 'esse gif é grande demais pra avatar' });
+    buf = await downloadLimited(url, GIPHY_AVATAR_MAX);
+  } catch (err) {
+    console.error('[giphy] avatar:', err.message);
+    return res.status(502).json({ error: 'não deu pra baixar esse gif agora' });
+  }
+  if (buf.length < 6 || buf.toString('latin1', 0, 4) !== 'GIF8') {
+    return res.status(400).json({ error: 'o GIPHY não mandou um gif' });
+  }
+
+  const filename = crypto.randomBytes(16).toString('hex') + '.gif';
+  try {
+    await fs.promises.writeFile(path.join(UPLOADS_ROOT, 'avatars', filename), buf);
+  } catch (err) {
+    console.error('[giphy] avatar: não salvou:', err.message);
+    return res.status(500).json({ error: 'não deu pra salvar o avatar' });
+  }
+
+  const oldUser = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.id);
+  db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(`/uploads/avatars/${filename}`, req.user.id);
+  if (oldUser?.avatar_url) removeOldUpload(oldUser.avatar_url);
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  broadcastProfileUpdate(user);
+  res.json({ user: publicUser(user) });
 });
 
 // POST /api/profile/banner — upload de banner (imagem ou gif)

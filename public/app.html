@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="/css/app.css?v=20">
   <link rel="stylesheet" href="/css/chat.css?v=20">
   <link rel="stylesheet" href="/css/members.css?v=20">
-  <link rel="stylesheet" href="/css/profile.css?v=21">
+  <link rel="stylesheet" href="/css/profile.css?v=22">
   <link rel="stylesheet" href="/css/voice.css?v=21">
   <link rel="stylesheet" href="/css/settings.css?v=20">
   <link rel="stylesheet" href="/css/servers.css?v=20">
@@ -338,9 +338,22 @@
                 <div class="profile-edit-avatar" id="profileEditAvatar"></div>
               </div>
               <div class="profile-edit-image-actions">
-                <button type="button" class="btn btn-ghost btn-sm" id="avatarUploadBtn">trocar avatar</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="avatarUploadBtn" aria-haspopup="menu" aria-expanded="false">trocar avatar</button>
                 <button type="button" class="btn btn-ghost btn-sm" id="bannerUploadBtn">trocar banner</button>
                 <button type="button" class="btn btn-ghost btn-sm btn-quiet" id="bannerRemoveBtn" hidden>remover banner</button>
+                <!-- trocar avatar: arquivo do computador ou gif do GIPHY (ver 12-members-profile.js) -->
+                <div class="avatar-source-menu" id="avatarSourceMenu" role="menu" hidden>
+                  <button type="button" role="menuitem" data-source="file">enviar do computador</button>
+                  <button type="button" role="menuitem" data-source="giphy">buscar gif no GIPHY</button>
+                </div>
+              </div>
+              <div class="avatar-giphy" id="avatarGiphyPanel" hidden>
+                <div class="avatar-giphy-head">
+                  <input type="text" id="avatarGiphySearch" placeholder="buscar gif pro avatar..." autocomplete="off" aria-label="buscar gif pro avatar">
+                  <button type="button" class="btn btn-ghost btn-sm" id="avatarGiphyClose">fechar</button>
+                </div>
+                <div class="avatar-giphy-grid" id="avatarGiphyGrid"></div>
+                <p class="avatar-giphy-credit">gifs do GIPHY · clique num pra usar de avatar</p>
               </div>
               <p class="field-help">png, jpg, webp ou gif animado, até 15MB. Sem banner, o topo do cartão usa as suas cores.</p>
               <input type="file" id="avatarInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
@@ -1258,34 +1271,34 @@
   <script src="/js/markdown.js?v=21"></script>
   <script src="/js/emoji.js?v=21"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=47"></script>
-  <script src="/js/app/02-preferences.js?v=47"></script>
-  <script src="/js/app/03-context-menus.js?v=47"></script>
-  <script src="/js/app/04-sidebar.js?v=47"></script>
-  <script src="/js/app/05-chat.js?v=47"></script>
-  <script src="/js/app/06-message-content.js?v=47"></script>
-  <script src="/js/app/07-composer.js?v=47"></script>
-  <script src="/js/app/08-notifications.js?v=47"></script>
-  <script src="/js/app/09-panels-attachments.js?v=47"></script>
-  <script src="/js/app/10-video-player.js?v=47"></script>
-  <script src="/js/app/11-slash-commands.js?v=47"></script>
-  <script src="/js/app/12-members-profile.js?v=47"></script>
-  <script src="/js/app/13-servers.js?v=47"></script>
-  <script src="/js/app/14-roles.js?v=47"></script>
-  <script src="/js/app/15-media-viewer.js?v=47"></script>
-  <script src="/js/app/16-site-admin.js?v=47"></script>
-  <script src="/js/app/17-settings.js?v=47"></script>
-  <script src="/js/app/18-call-audio.js?v=47"></script>
-  <script src="/js/app/19-call-ui.js?v=47"></script>
-  <script src="/js/app/20-screencast-native.js?v=47"></script>
-  <script src="/js/app/21-call-sfu.js?v=47"></script>
-  <script src="/js/app/22-call-mesh.js?v=47"></script>
-  <script src="/js/app/23-call-media.js?v=47"></script>
-  <script src="/js/app/24-presence.js?v=47"></script>
-  <script src="/js/app/25-server-settings.js?v=47"></script>
-  <script src="/js/app/26-soundboard.js?v=47"></script>
-  <script src="/js/app/27-world.js?v=47"></script>
-  <script src="/js/app/28-realtime.js?v=47"></script>
-  <script src="/js/app/29-mobile.js?v=47"></script>
+  <script src="/js/app/01-state.js?v=48"></script>
+  <script src="/js/app/02-preferences.js?v=48"></script>
+  <script src="/js/app/03-context-menus.js?v=48"></script>
+  <script src="/js/app/04-sidebar.js?v=48"></script>
+  <script src="/js/app/05-chat.js?v=48"></script>
+  <script src="/js/app/06-message-content.js?v=48"></script>
+  <script src="/js/app/07-composer.js?v=48"></script>
+  <script src="/js/app/08-notifications.js?v=48"></script>
+  <script src="/js/app/09-panels-attachments.js?v=48"></script>
+  <script src="/js/app/10-video-player.js?v=48"></script>
+  <script src="/js/app/11-slash-commands.js?v=48"></script>
+  <script src="/js/app/12-members-profile.js?v=48"></script>
+  <script src="/js/app/13-servers.js?v=48"></script>
+  <script src="/js/app/14-roles.js?v=48"></script>
+  <script src="/js/app/15-media-viewer.js?v=48"></script>
+  <script src="/js/app/16-site-admin.js?v=48"></script>
+  <script src="/js/app/17-settings.js?v=48"></script>
+  <script src="/js/app/18-call-audio.js?v=48"></script>
+  <script src="/js/app/19-call-ui.js?v=48"></script>
+  <script src="/js/app/20-screencast-native.js?v=48"></script>
+  <script src="/js/app/21-call-sfu.js?v=48"></script>
+  <script src="/js/app/22-call-mesh.js?v=48"></script>
+  <script src="/js/app/23-call-media.js?v=48"></script>
+  <script src="/js/app/24-presence.js?v=48"></script>
+  <script src="/js/app/25-server-settings.js?v=48"></script>
+  <script src="/js/app/26-soundboard.js?v=48"></script>
+  <script src="/js/app/27-world.js?v=48"></script>
+  <script src="/js/app/28-realtime.js?v=48"></script>
+  <script src="/js/app/29-mobile.js?v=48"></script>
 </body>
 </html>

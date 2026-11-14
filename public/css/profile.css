@@ -286,7 +286,7 @@
 }
 .profile-edit-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-.profile-edit-image-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.profile-edit-image-actions { position: relative; display: flex; flex-wrap: wrap; gap: 8px; }
 .profile-edit-group .field-help { margin-top: 8px; }
 
 .profile-edit-footer {
@@ -522,3 +522,77 @@ html[data-reduce-motion] .name-fx-pulso { color: var(--nfx-c1) !important; }
   background: none;
   cursor: pointer;
 }
+
+/* ===================================================================
+   trocar avatar: menu (computador / GIPHY) e busca de gif
+   =================================================================== */
+.avatar-source-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  background: var(--elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.avatar-source-menu button {
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-hi);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.avatar-source-menu button:hover,
+.avatar-source-menu button:focus-visible { background: var(--overlay); }
+
+.avatar-giphy {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--elevated);
+}
+.avatar-giphy-head { display: flex; gap: 8px; margin-bottom: 8px; }
+.avatar-giphy-head input { flex: 1; min-width: 0; }
+.avatar-giphy-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 84px;
+  gap: 6px;
+  max-height: 264px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.avatar-giphy-item {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--overlay);
+  cursor: pointer;
+}
+/* corta no meio, como vai ficar no avatar redondo */
+.avatar-giphy-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar-giphy-item:hover,
+.avatar-giphy-item:focus-visible { outline: 2px solid var(--amethyst); outline-offset: -2px; }
+.avatar-giphy.is-saving .avatar-giphy-item { opacity: 0.4; pointer-events: none; }
+.avatar-giphy.is-saving .avatar-giphy-item.is-picked { opacity: 1; outline: 2px solid var(--amethyst); outline-offset: -2px; }
+.avatar-giphy-msg {
+  grid-column: 1 / -1;
+  padding: 20px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.avatar-giphy-credit { margin: 8px 0 0; font-size: 11px; color: var(--text-faint); }

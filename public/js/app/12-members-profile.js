@@ -723,6 +723,8 @@ function openProfileModal() {
   buildColorSwatches(currentUser.accent_color);
   buildColorSwatches2(currentUser.accent_color_2);
   buildNameFxPicker(currentUser.name_style);
+  setAvatarSourceMenu(false);
+  closeAvatarGiphy();
   refreshLivePreview();
   profileModalBackdrop.hidden = false;
   profileUsernameInput.focus();
@@ -742,8 +744,158 @@ profileModalBackdrop.addEventListener('click', (e) => {
   if (e.target === profileModalBackdrop) closeProfileModal();
 });
 
-avatarUploadBtn.addEventListener('click', () => avatarInput.click());
 bannerUploadBtn.addEventListener('click', () => bannerInput.click());
+
+// ---------- trocar avatar: arquivo do computador ou gif do GIPHY ----------
+// "trocar avatar" abre um menuzinho com as duas opções. No GIPHY, a busca é a mesma do chat
+// (/api/giphy/search, a chave fica no servidor) e o escolhido vai por /api/profile/avatar/giphy:
+// o servidor baixa o gif e guarda como um avatar enviado normal.
+const avatarSourceMenu = document.getElementById('avatarSourceMenu');
+const avatarGiphyPanel = document.getElementById('avatarGiphyPanel');
+const avatarGiphySearch = document.getElementById('avatarGiphySearch');
+const avatarGiphyGrid = document.getElementById('avatarGiphyGrid');
+const avatarGiphyClose = document.getElementById('avatarGiphyClose');
+let avatarGiphyTimer = null;
+let avatarGiphyQuery = '';
+let avatarGiphyOffset = 0;
+let avatarGiphyMore = true;
+let avatarGiphyLoading = false;
+let avatarGiphySaving = false;
+
+function setAvatarSourceMenu(open) {
+  avatarSourceMenu.hidden = !open;
+  avatarUploadBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) avatarSourceMenu.querySelector('button').focus();
+}
+
+avatarUploadBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  setAvatarSourceMenu(avatarSourceMenu.hidden);
+});
+
+avatarSourceMenu.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-source]');
+  if (!btn) return;
+  setAvatarSourceMenu(false);
+  if (btn.dataset.source === 'file') avatarInput.click();
+  else openAvatarGiphy();
+});
+
+avatarSourceMenu.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.stopPropagation(); setAvatarSourceMenu(false); avatarUploadBtn.focus(); }
+});
+
+document.addEventListener('click', (e) => {
+  if (!avatarSourceMenu.hidden && !avatarSourceMenu.contains(e.target) && e.target !== avatarUploadBtn) setAvatarSourceMenu(false);
+});
+
+function openAvatarGiphy() {
+  avatarGiphyPanel.hidden = false;
+  avatarGiphySearch.value = '';
+  avatarGiphySearch.focus();
+  loadAvatarGiphy('', false);
+}
+
+function closeAvatarGiphy() {
+  avatarGiphyPanel.hidden = true;
+  clearTimeout(avatarGiphyTimer);
+}
+
+avatarGiphyClose.addEventListener('click', closeAvatarGiphy);
+avatarGiphySearch.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.stopPropagation(); closeAvatarGiphy(); avatarUploadBtn.focus(); }
+});
+avatarGiphySearch.addEventListener('input', () => {
+  clearTimeout(avatarGiphyTimer);
+  avatarGiphyTimer = setTimeout(() => loadAvatarGiphy(avatarGiphySearch.value.trim(), false), 350);
+});
+
+// append = rolou até o fim (busca a próxima página da mesma pesquisa)
+async function loadAvatarGiphy(query, append) {
+  if (append && (avatarGiphyLoading || !avatarGiphyMore)) return;
+  if (!append) {
+    avatarGiphyQuery = query;
+    avatarGiphyOffset = 0;
+    avatarGiphyMore = true;
+    avatarGiphyGrid.innerHTML = '<div class="avatar-giphy-msg">buscando...</div>';
+  }
+  avatarGiphyLoading = true;
+  const asked = avatarGiphyQuery;
+  try {
+    const res = await fetch(`/api/giphy/search?q=${encodeURIComponent(asked)}&type=gifs&offset=${avatarGiphyOffset}`);
+    const data = await res.json().catch(() => ({}));
+    if (asked !== avatarGiphyQuery) return; // já pesquisou outra coisa
+    if (!res.ok) {
+      if (!append) avatarGiphyGrid.innerHTML = `<div class="avatar-giphy-msg">${escapeHtml(data.error || 'erro ao buscar')}</div>`;
+      avatarGiphyMore = false;
+      return;
+    }
+    const gifs = data.gifs || [];
+    if (!append) avatarGiphyGrid.innerHTML = '';
+    if (!append && !gifs.length) {
+      avatarGiphyGrid.innerHTML = '<div class="avatar-giphy-msg">nenhum gif encontrado</div>';
+    }
+    avatarGiphyOffset += gifs.length;
+    avatarGiphyMore = gifs.length > 0;
+    for (const g of gifs) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'avatar-giphy-item';
+      btn.title = g.title || 'gif';
+      btn.innerHTML = `<img src="${escapeAttr(g.preview)}" alt="${escapeAttr(g.title || 'gif')}" loading="lazy">`;
+      btn.addEventListener('click', () => chooseAvatarGiphy(g, btn));
+      avatarGiphyGrid.appendChild(btn);
+    }
+  } catch (_) {
+    if (!append) avatarGiphyGrid.innerHTML = '<div class="avatar-giphy-msg">erro de conexão</div>';
+  } finally {
+    avatarGiphyLoading = false;
+  }
+}
+
+avatarGiphyGrid.addEventListener('scroll', () => {
+  if (avatarGiphyGrid.scrollTop + avatarGiphyGrid.clientHeight >= avatarGiphyGrid.scrollHeight - 120) {
+    loadAvatarGiphy(avatarGiphyQuery, true);
+  }
+});
+
+async function chooseAvatarGiphy(gif, btn) {
+  if (avatarGiphySaving || !gif || !gif.id) return;
+  avatarGiphySaving = true;
+  profileInfoError.textContent = '';
+  profileInfoError.classList.remove('is-success');
+  avatarGiphyPanel.classList.add('is-saving');
+  btn.classList.add('is-picked');
+  const original = avatarUploadBtn.textContent;
+  avatarUploadBtn.disabled = true;
+  avatarUploadBtn.textContent = 'baixando gif...';
+  try {
+    const res = await fetch('/api/profile/avatar/giphy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: gif.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      currentUser = { ...currentUser, ...data.user };
+      applyUserToProfileBar(currentUser);
+      refreshLivePreview();
+      closeAvatarGiphy();
+      profileInfoError.textContent = 'avatar trocado';
+      profileInfoError.classList.add('is-success');
+    } else {
+      profileInfoError.textContent = data.error || 'não deu pra usar esse gif';
+    }
+  } catch (_) {
+    profileInfoError.textContent = 'erro de conexão';
+  } finally {
+    avatarGiphySaving = false;
+    avatarGiphyPanel.classList.remove('is-saving');
+    btn.classList.remove('is-picked');
+    avatarUploadBtn.disabled = false;
+    avatarUploadBtn.textContent = original;
+  }
+}
 
 async function uploadProfileImage(kind, input) {
   const file = input.files[0];

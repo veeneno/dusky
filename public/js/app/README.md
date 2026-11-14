@@ -13,7 +13,7 @@ Por que não módulos (`import`/`export`)? O estado do app (`currentChannel`, `p
 1. **A ordem importa.** O número no nome é a ordem de carga. Código que roda **na hora em que o arquivo carrega** (fora de função) só pode usar `const`/`let` de arquivos anteriores e funções de arquivos anteriores ou do próprio arquivo. Dentro de funções e de `addEventListener(..., () => …)` pode usar qualquer coisa de qualquer arquivo, porque isso só roda depois que todos carregaram.
 2. **Nomes são globais.** Antes de criar uma função ou variável no topo, procure o nome na pasta (`grep -rn "function nome" public/js/app/`). Dois `const` com o mesmo nome em arquivos diferentes derrubam o segundo arquivo inteiro. Evite nomes que o navegador já usa em `window` (`name`, `status`, `top`, `open`, `close`, `stop`, `focus`…).
 3. **Arquivo novo** entra na pasta com o número da posição certa e ganha uma linha `<script>` no `app.html`, no mesmo lugar da ordem.
-4. **Mudou qualquer arquivo? Suba o `?v=` de todos** no `app.html` (hoje `?v=47`). O servidor já manda tudo sem cache, mas o número igual em todos deixa claro que são do mesmo conjunto — numa call todo mundo precisa estar com a mesma versão.
+4. **Mudou qualquer arquivo? Suba o `?v=` de todos** no `app.html` (hoje `?v=48`). O servidor já manda tudo sem cache, mas o número igual em todos deixa claro que são do mesmo conjunto — numa call todo mundo precisa estar com a mesma versão.
 5. **Estado compartilhado** (o que vários assuntos usam) fica em `01-state.js`. Estado de um assunto só fica no arquivo dele.
 6. Cores, fontes e cantos sempre por variável CSS; comentários em português explicando o porquê. (Regras gerais do projeto, ver README da raiz.)
 
