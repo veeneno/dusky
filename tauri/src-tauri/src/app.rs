@@ -587,6 +587,11 @@ pub fn set_hardware_acceleration(app: &AppHandle, on: bool) {
         server::save_prefs(&st.data_dir, &prefs);
     }
     log::info(&format!("aceleração de hardware {} — reiniciando", if on { "ligada" } else { "desligada" }));
+    if on {
+        // o app reiniciado herda o ambiente deste, que (com a aceleração desligada) tem as
+        // WEBKIT_DISABLE_* — sem isso o novo abria com a placa desligada até fechar de vez
+        webview_setup::clear_own_webkit_env();
+    }
     st.quitting.store(true, Ordering::SeqCst);
     st.audio.stop();
     st.screencast.stop();

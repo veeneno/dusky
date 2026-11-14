@@ -38,6 +38,12 @@ pub fn init_hardware_acceleration(on: bool) {
     #[cfg(target_os = "linux")]
     {
         if on {
+            // O app reinicia (app.restart) herdando o ambiente do processo anterior. Se o anterior
+            // estava com a aceleração DESLIGADA, ele pôs as variáveis abaixo — e o novo nascia com a
+            // placa desligada mesmo com a opção ligada (página toda e WebGL no processador). Só tira
+            // o que foi o próprio app que pôs (marca DUSKY_WEBKIT_ENV_SET); a variável que a pessoa
+            // pôs no sistema fica.
+            clear_own_webkit_env();
             if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref() == Ok("1") {
                 crate::server::log::warn(
                     "WEBKIT_DISABLE_DMABUF_RENDERER=1 está no ambiente: o WebGL (mundinho, telas) fica bem mais lento. \
@@ -47,6 +53,24 @@ pub fn init_hardware_acceleration(on: bool) {
         } else {
             std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            std::env::set_var(OWN_ENV_MARK, "1");
+        }
+    }
+}
+
+/// marca de que as variáveis WEBKIT_DISABLE_* foram postas pelo app (aceleração desligada)
+#[cfg(target_os = "linux")]
+const OWN_ENV_MARK: &str = "DUSKY_WEBKIT_ENV_SET";
+
+/// Tira as variáveis WEBKIT_DISABLE_* que o próprio app pôs. Chamado ao abrir com a aceleração
+/// ligada e antes de reiniciar pra ligar (o processo novo herda o ambiente deste).
+pub fn clear_own_webkit_env() {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os(OWN_ENV_MARK).is_some() {
+            std::env::remove_var("WEBKIT_DISABLE_COMPOSITING_MODE");
+            std::env::remove_var("WEBKIT_DISABLE_DMABUF_RENDERER");
+            std::env::remove_var(OWN_ENV_MARK);
         }
     }
 }

@@ -1,7 +1,7 @@
 {
   "name": "dusky-tauri",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "App desktop do dusky em Rust (Tauri 2)",
   "scripts": {
     "dev": "node scripts/tauri.js dev",
