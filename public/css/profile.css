@@ -422,11 +422,12 @@
 /* neon: letra na 1ª cor, brilho nas duas, e uma piscadinha de lâmpada de vez em quando */
 .name-fx-neon {
   color: var(--nfx-c1) !important;
+  /* miolo da letra quase branco (tubo de neon aceso); sem color-mix fica na 1ª cor */
+  color: color-mix(in srgb, var(--nfx-c1) 40%, #fff) !important;
   text-shadow:
-    0 0 1px rgba(255, 255, 255, 0.6),
-    0 0 4px var(--nfx-c1),
-    0 0 10px var(--nfx-c1),
-    0 0 18px var(--nfx-c2);
+    0 0 2px var(--nfx-c1),
+    0 0 6px var(--nfx-c1),
+    0 0 14px var(--nfx-c2);
   animation: name-fx-neon 5s steps(1, end) infinite;
 }
 @keyframes name-fx-neon {
