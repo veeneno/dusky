@@ -44,6 +44,17 @@ pub fn init_hardware_acceleration(on: bool) {
             // o que foi o próprio app que pôs (marca DUSKY_WEBKIT_ENV_SET); a variável que a pessoa
             // pôs no sistema fica.
             clear_own_webkit_env();
+            // Versões até a 1.0.4 punham as duas SEM a marca — e o atualizador reinicia o app herdando
+            // o ambiente: quem atualizou de uma versão com a aceleração desligada (ou que tinha
+            // herdado de outra) continuava com a placa desligada. As DUAS juntas são a assinatura do
+            // "desligado" do app (ninguém põe COMPOSITING_MODE=1 querendo aceleração): tira as duas.
+            if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref() == Ok("1")
+                && std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref() == Ok("1")
+            {
+                std::env::remove_var("WEBKIT_DISABLE_COMPOSITING_MODE");
+                std::env::remove_var("WEBKIT_DISABLE_DMABUF_RENDERER");
+                crate::server::log::info("aceleração ligada: tirei WEBKIT_DISABLE_* herdadas de uma versão antiga do app");
+            }
             if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref() == Ok("1") {
                 crate::server::log::warn(
                     "WEBKIT_DISABLE_DMABUF_RENDERER=1 está no ambiente: o WebGL (mundinho, telas) fica bem mais lento. \
