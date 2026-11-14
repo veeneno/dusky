@@ -538,12 +538,46 @@ html[data-glass] .modal-backdrop { background: rgba(0, 0, 0, 0.45); }
 .toast.is-error { border-color: var(--danger); color: var(--text-heading); box-shadow: var(--shadow-lg), inset 3px 0 0 var(--danger); }
 .site-announcement { background: var(--accent); color: var(--accent-contrast); }
 
-/* cartão de perfil */
-.profile-card { background: var(--bg-floating); border: none; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
-.profile-card.is-panel { box-shadow: none; background: transparent; }
-.pc-avatar { border-color: var(--bg-solid-app) !important; border-radius: var(--radius-avatar) !important; }
-.pc-body { background: color-mix(in srgb, var(--bg-solid-app), black 10%); border-radius: var(--radius-md); }
-html[data-theme-mode="light"] .pc-body { background: var(--bg-solid-sidebar); }
+/* cartão de perfil — igual ao perfil com tema do Discord: o cartão INTEIRO nas cores da pessoa
+   (escurecidas pra leitura: em cima a 1ª cor, embaixo a 2ª), sem placa escura por dentro, banner
+   de ponta a ponta e o anel do avatar/bolinha da cor do topo do cartão. O texto do cartão é sempre
+   claro (o fundo é sempre escuro), inclusive no tema claro. Vale pro popout, painel da DM e prévia. */
+.profile-card,
+.profile-card.has-gradient,
+.profile-card.is-panel {
+  --card-top: color-mix(in srgb, var(--card-c1) 52%, #0c0b10);
+  --card-bottom: color-mix(in srgb, var(--card-c2) 32%, #0c0b10);
+  --text-heading: #f2f3f5;
+  --text-normal: #dbdee1;
+  --text-muted: #b5bac1;
+  --text-hi: #f2f3f5;
+  --text-lo: #c4c9ce;
+  --text-faint: #949ba4;
+  --border: rgba(255, 255, 255, 0.1);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--card-top) 0%, var(--card-bottom) 100%);
+  box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.profile-card.is-panel { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
+/* sem banner enviado: a 1ª cor, como no Discord */
+.profile-card .pc-banner {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background-color: color-mix(in srgb, var(--card-c1) 85%, #000);
+}
+.profile-card .pc-avatar { left: 18px; border-color: var(--card-top) !important; border-radius: var(--radius-avatar) !important; }
+.profile-card .pc-dot { border-color: var(--card-top); }
+/* espaço embaixo do avatar (cabe a moldura da decoração sem encostar no nome) */
+.profile-card .pc-avatar-row { height: 58px; }
+.pc-body,
+html[data-theme-mode="light"] .pc-body {
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: 0;
+  padding: 2px 16px 16px;
+}
 .pc-name { color: var(--text-heading); font-family: var(--font-heading); }
 .pc-status, .pc-bio { color: var(--text-normal); }
 .pc-section { border-color: var(--border); }

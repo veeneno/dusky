@@ -17,8 +17,9 @@
    cartão de perfil
    Um componente só (popout, prévia da edição e painel da DM). O cartão
    todo é pintado com as cores da pessoa: --card-c1 (destaque) e --card-c2
-   (segunda cor, opcional). O conteúdo fica numa placa escura por cima,
-   então o cartão vira uma moldura colorida — é a identidade de cada um.
+   (segunda cor, opcional). A aparência final (estilo Discord: o cartão todo
+   nas cores, sem placa escura por dentro) é a do design.css, que carrega
+   depois deste arquivo e manda.
    =================================================================== */
 .profile-card {
   --card-c1: #9D5CE8;
