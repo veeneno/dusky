@@ -617,6 +617,8 @@ pub fn run() {
         .setup(move |app| {
             let data_dir = app.path().app_data_dir()?;
             server::migrate_from_electron(&data_dir);
+            #[cfg(windows)]
+            server::close_electron_app();
             let site = env_url.clone().unwrap_or_else(|| server::saved_server_or_default(&data_dir));
             let http = reqwest::Client::builder()
                 .user_agent(concat!("dusky-desktop/", env!("CARGO_PKG_VERSION")))

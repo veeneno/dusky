@@ -132,3 +132,8 @@
 
 /* logo na tela de entrar */
 .auth-logo { display: block; width: 96px; height: 96px; margin: 0 auto; filter: drop-shadow(0 4px 14px rgba(168, 120, 255, .25)); }
+
+/* celular: 16px nos campos — abaixo disso o iPhone dá zoom na página ao tocar */
+@media (max-width: 760px) {
+  input, select, textarea { font-size: 16px; }
+}

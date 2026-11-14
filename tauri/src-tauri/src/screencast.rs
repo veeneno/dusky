@@ -139,13 +139,19 @@ fn encoder_args(enc: &str, kbps: u32, gop: u32) -> Vec<String> {
             "-c:v".into(), "h264_vaapi".into(), "-profile:v".into(), "constrained_baseline".into(), "-b:v".into(), k.clone(),
             "-maxrate".into(), k, "-g".into(), g, "-bf".into(), "0".into(),
         ],
+        // QSV e AMF, por padrão, só mandam SPS/PPS no PRIMEIRO quadro e podem fazer quadros-chave
+        // "I" que não são IDR. Quem começa a assistir depois (todo mundo: a tela entra na sala
+        // depois do 1º quadro) nunca consegue começar a decodificar → tela preta. Força IDR em todo
+        // quadro-chave e os cabeçalhos junto (o NVENC e o x264 — repeat-headers — já fazem isso).
         "h264_qsv" => vec![
             "-c:v".into(), "h264_qsv".into(), "-preset".into(), "veryfast".into(), "-profile:v".into(), "baseline".into(),
             "-b:v".into(), k.clone(), "-maxrate".into(), k, "-g".into(), g, "-bf".into(), "0".into(),
+            "-forced_idr".into(), "1".into(), "-idr_interval".into(), "0".into(), "-repeat_pps".into(), "1".into(),
         ],
         "h264_amf" => vec![
             "-c:v".into(), "h264_amf".into(), "-usage".into(), "ultralowlatency".into(), "-quality".into(), "speed".into(), "-rc".into(), "cbr".into(),
-            "-profile:v".into(), "constrained_baseline".into(), "-b:v".into(), k.clone(), "-maxrate".into(), k, "-g".into(), g, "-bf".into(), "0".into(),
+            "-profile:v".into(), "constrained_baseline".into(), "-b:v".into(), k.clone(), "-maxrate".into(), k, "-g".into(), g.clone(), "-bf".into(), "0".into(),
+            "-forced_idr".into(), "1".into(), "-header_spacing".into(), g,
         ],
         _ => vec![
             "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(), "-tune".into(), "zerolatency".into(), "-profile:v".into(), "baseline".into(),
@@ -301,11 +307,11 @@ async fn probe_wayland() -> ProbeInfo {
 
 /// testa de verdade quais codificadores um ffmpeg consegue usar (codificando alguns quadros) —
 /// "estar na lista" não garante que a placa/driver aceita
-async fn best_encoder_of(ffmpeg: &str) -> Option<&'static str> {
+async fn best_encoder_of(ffmpeg: &str, cpu_only: bool) -> Option<&'static str> {
     if !run(ffmpeg, &sv(&["-hide_banner", "-version"]), 15_000).await.ok {
         return None;
     }
-    for enc in ORDER {
+    for enc in ORDER.iter().filter(|e| !cpu_only || **e == "libx264") {
         let (pre, filter) = encoder_plumbing(enc, None);
         let mut args = sv(&["-hide_banner", "-loglevel", "error"]);
         args.extend(pre);
@@ -353,9 +359,16 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
         candidates.push(m.to_string_lossy().into_owned());
     }
 
+    // aceleração de hardware desligada (configurações do site / bandeja): a tela também vai pelo
+    // processador (x264) — saída pra driver de vídeo que dá tela preta ou trava no codificador
+    let cpu_only = !st.prefs.lock().unwrap().hardware_acceleration;
+    if cpu_only {
+        log::info("aceleração de hardware desligada — compartilhamento de tela pelo processador (x264)");
+    }
+
     let mut fallback: Option<ProbeInfo> = None;
     for ffmpeg in candidates {
-        let Some(enc) = best_encoder_of(&ffmpeg).await else { continue };
+        let Some(enc) = best_encoder_of(&ffmpeg, cpu_only).await else { continue };
         let info = ProbeInfo { available: true, ffmpeg: Some(ffmpeg.clone()), encoder: enc.into(), hardware: enc != "libx264", ..Default::default() };
         if info.hardware {
             log::info(&format!("compartilhamento nativo: {enc} ({ffmpeg})"));

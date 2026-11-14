@@ -1,0 +1,225 @@
+/* ===================================================================
+   celular (navegador, tela estreita)
+   -------------------------------------------------------------------
+   Em vez das 3 colunas (servidores | canais | chat), o chat ocupa a tela inteira e:
+   - servidores + canais viram uma GAVETA pela esquerda (botão ☰ no topo, ou arrastar da borda);
+   - a lista de membros vira uma gaveta pela direita (botão de membros);
+   - painéis (fixadas, busca), configurações e modais ocupam a tela toda.
+   Quem abre/fecha as gavetas é o js/app/29-mobile.js (classes no <body>).
+   Compartilhar tela não existe no navegador do celular: os botões somem.
+   Fica por último no app.html pra valer por cima dos outros arquivos.
+   =================================================================== */
+
+/* botão ☰ e fundo escuro das gavetas: só existem no celular */
+.m-nav-btn, .m-backdrop { display: none; }
+
+@media (max-width: 760px) {
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  body { -webkit-tap-highlight-color: transparent; }
+
+  /* ---------- casca: o chat na tela toda ---------- */
+  .app-shell,
+  html[data-translucent] .app-shell {
+    display: block;
+    position: relative;
+    height: 100vh;
+    height: 100dvh; /* barra de endereço do celular aparece/some: dvh acompanha */
+    padding: 0;
+    gap: 0;
+  }
+  .main-area,
+  html[data-translucent] .main-area {
+    position: absolute;
+    inset: 0;
+    border-radius: 0;
+    border: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* ---------- gaveta da esquerda: servidores + canais ---------- */
+  .server-rail,
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: 18; /* abaixo dos modais (20) e das configurações (40): eles abrem por cima da gaveta */
+    transform: translateX(-100%);
+    transition: transform 0.22s var(--ease-out, ease-out), visibility 0s linear 0.22s;
+    visibility: hidden;
+    padding-top: env(safe-area-inset-top);
+  }
+  .server-rail { left: 0; width: 72px; }
+  .rail-item { width: 72px; }
+  .sidebar {
+    left: 72px;
+    width: min(290px, calc(100vw - 72px - 48px)); /* sobra uma faixa do chat pra tocar e fechar */
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: 0 var(--radius-lg, 12px) var(--radius-lg, 12px) 0;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35);
+  }
+  html[data-translucent] .sidebar { background: var(--bg-sidebar, var(--panel)); }
+  body.m-nav-open .server-rail,
+  body.m-nav-open .sidebar {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.22s var(--ease-out, ease-out), visibility 0s;
+  }
+
+  /* ---------- gaveta da direita: membros (e o perfil na DM) ---------- */
+  .member-panel,
+  .dm-profile-panel {
+    display: block;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 18;
+    width: min(300px, 86vw);
+    overflow-y: auto;
+    padding-top: calc(8px + env(safe-area-inset-top));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    background: var(--bg-sidebar, var(--panel));
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 0.22s var(--ease-out, ease-out), visibility 0s linear 0.22s;
+  }
+  .member-panel[hidden], .dm-profile-panel[hidden] { display: block; } /* quem manda aqui é a classe */
+  body.m-members-open .chat-view:not(.is-dm) .member-panel,
+  body.m-members-open .chat-view.is-dm .dm-profile-panel {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.22s var(--ease-out, ease-out), visibility 0s;
+  }
+
+  /* fundo escuro atrás de qualquer gaveta aberta (tocar fecha) */
+  .m-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 17;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  body.m-nav-open .m-backdrop,
+  body.m-members-open .m-backdrop { opacity: 1; pointer-events: auto; }
+
+  /* ---------- topo do chat / da call ---------- */
+  .m-nav-btn { display: inline-flex; position: relative; margin-left: -6px; margin-right: 2px; flex-shrink: 0; }
+  /* bolinha no ☰: tem coisa não lida em outro canal/servidor */
+  .m-nav-badge {
+    display: none; position: absolute; top: 6px; right: 4px; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--danger, #f23f43); box-shadow: 0 0 0 2px var(--bg-chat);
+  }
+  .m-nav-btn[data-unread] .m-nav-badge { display: block; }
+  .chat-header, .call-header {
+    padding-left: 10px;
+    padding-right: 6px;
+    gap: 2px;
+    padding-top: env(safe-area-inset-top);
+    height: calc(52px + env(safe-area-inset-top));
+  }
+  .chat-header .icon-btn, .call-header .icon-btn { width: 40px; height: 40px; }
+  .chat-channel-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* busca: só a lupa; abre (largura cheia por cima do título) ao tocar */
+  .chat-search input { width: 36px; padding-left: 30px; padding-right: 4px; color: transparent; }
+  .chat-search input::placeholder { color: transparent; }
+  .chat-search input:focus { width: calc(100vw - 120px); color: inherit; }
+  .chat-search input:focus::placeholder { color: var(--text-faint); }
+  .chat-search:focus-within { position: absolute; right: 52px; z-index: 5; }
+
+  /* ---------- mensagens ---------- */
+  .chat-messages { padding-left: 0; padding-right: 0; }
+  .msg-text, .message-content { overflow-wrap: anywhere; }
+  .msg-text pre, .message-content pre { max-width: 100%; overflow-x: auto; }
+  .msg-attachment img, .msg-attachment-video, .msg-embed, .msg-embed-media { max-width: 100%; }
+
+  /* ---------- caixa de mensagem ---------- */
+  .chat-composer { margin-left: 8px; margin-right: 8px; gap: 2px; padding-left: 4px; padding-right: 4px; }
+  /* 16px: abaixo disso o iPhone dá zoom na página ao tocar no campo */
+  .chat-composer textarea, #chatInput, input, select, textarea { font-size: 16px; }
+  .composer-gif-btn { padding-left: 4px; padding-right: 4px; }
+  #chatInput::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* "enviar" vira só o aviãozinho (o texto continua lá pro leitor de tela) */
+  #chatSendBtn {
+    flex-shrink: 0; width: 40px; height: 40px; min-width: 0; padding: 0; border-radius: 50%;
+    font-size: 0; color: transparent; position: relative;
+  }
+  #chatSendBtn::before {
+    content: ''; position: absolute; inset: 0; margin: auto; width: 20px; height: 20px; background: #fff;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='22' y1='2' x2='11' y2='13'/%3E%3Cpolygon points='22 2 15 22 11 13 2 9 22 2'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='22' y1='2' x2='11' y2='13'/%3E%3Cpolygon points='22 2 15 22 11 13 2 9 22 2'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .typing-indicator { padding-left: 12px; }
+
+  /* ---------- painéis da direita (fixadas, busca): tela cheia ---------- */
+  .side-panel {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    z-index: 19;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .side-panel-close { width: 40px; height: 40px; font-size: 26px; }
+
+  /* ---------- call ---------- */
+  #callQuickScreenBtn, #callQuickScreenOptsBtn, #callViewScreenBtn,
+  .settings-tab[data-settings-tab="tela"] { display: none !important; }
+  /* 1 pessoa = quadro largo; 2+ = duas colunas (auto-fit some com as colunas vazias) */
+  .call-participants { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; padding: 8px; }
+  .call-participant-avatar { width: 56px; height: 56px; font-size: 1.1rem; }
+  .call-participant.is-spotlight .call-participant-frame { max-height: calc(100dvh - 300px); min-height: 160px; }
+  .call-controls { flex-wrap: wrap; justify-content: center; gap: 8px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+
+  /* ---------- modais ---------- */
+  .modal { width: calc(100vw - 24px); max-width: none; max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .modal-actions { flex-wrap: wrap; }
+  .modal-actions .btn { flex: 1 1 auto; }
+
+  /* configurações (as do app e as do servidor): abas numa faixa que rola de lado, conteúdo embaixo */
+  .settings-modal { flex-direction: column; }
+  .settings-nav {
+    flex: none;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-top: env(safe-area-inset-top);
+    scrollbar-width: none;
+  }
+  .settings-nav::-webkit-scrollbar { display: none; }
+  .settings-nav-inner {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 64px 8px 8px; /* sobra à direita pro X */
+  }
+  .settings-nav-group, .settings-nav-sep { display: none; }
+  .settings-tab { width: auto; flex: none; white-space: nowrap; margin: 0; }
+  .settings-content { flex: 1 1 auto; min-height: 0; }
+  .settings-content-inner { max-width: none; padding: 20px 16px calc(40px + env(safe-area-inset-bottom)); }
+  .settings-close {
+    top: calc(6px + env(safe-area-inset-top)); right: 6px; z-index: 2;
+    padding: 4px; border-radius: 50%; background: var(--bg-sidebar, var(--panel));
+    box-shadow: -12px 0 12px var(--bg-sidebar, var(--panel)); /* as abas somem por baixo do X */
+  }
+  .settings-close-key { display: none; }
+
+  /* perfil: popout vira folha embaixo */
+  .profile-popout { left: 8px !important; right: 8px !important; width: auto !important; max-width: none !important; }
+
+  /* ações da mensagem: aparecem ao tocar nela (classe m-actions, ver 29-mobile.js) e não com o
+     "hover grudado" do celular; botões maiores pro dedo */
+  .msg-group:hover .msg-actions, .msg-group:focus-within .msg-actions { display: none; }
+  .msg-group.m-actions .msg-actions { display: flex; top: -22px; right: 8px; }
+  .msg-group.m-actions { background: var(--bg-hover, rgba(255, 255, 255, 0.04)); }
+  .msg-actions > button, .msg-actions .msg-reply-btn, .msg-actions .msg-edit-btn, .msg-actions .msg-delete-btn { width: 40px; height: 36px; }
+}
+
+/* telas de toque sem mouse: o que só aparecia com o mouse em cima fica sempre visível */
+@media (max-width: 760px) and (hover: none) {
+  .channel-edit-btn, .channel-delete-btn { opacity: 0.7; }
+}

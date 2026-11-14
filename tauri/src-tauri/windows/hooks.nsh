@@ -33,6 +33,12 @@
     StrCpy $4 "$4 /S"
   dusky_legacy_run:
     DetailPrint "Removendo o app antigo ($2)…"
+    ; fecha o Electron antes: aberto, a desinstalação silenciosa dele pode falhar e ele continuava
+    ; rodando junto com o app novo (o som dele entrava no áudio da tela). nsExec = sem janela preta.
+    ; Sem /T: na migração este instalador é filho do próprio Electron e cairia junto.
+    nsExec::Exec '"$SYSDIR\taskkill.exe" /F /IM didiscord.exe'
+    Pop $3
+    Sleep 800
     ExecWait '$4'
   dusky_legacy_done:
 

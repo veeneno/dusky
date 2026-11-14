@@ -183,6 +183,62 @@ pub fn migrate_from_electron(data_dir: &Path) {
     }
 }
 
+/// Windows: fecha o app Electron antigo (didiscord.exe) se ele ainda estiver aberto. Os dois juntos
+/// dão problema: o som do Electron (a call inteira, se ele também estiver nela) entrava no áudio
+/// da tela — a captura da tela inteira só consegue deixar de fora UM programa (o dusky), ver
+/// audio/windows.rs. Ele sobra aberto quando a desinstalação silenciosa falhou (estava aberto na
+/// hora) e volta sozinho ao ligar o PC ("abrir com o Windows"). Confere agora e mais duas vezes
+/// (os dois podem abrir juntos com o Windows, em qualquer ordem).
+#[cfg(windows)]
+pub fn close_electron_app() {
+    std::thread::spawn(|| {
+        for wait in [0u64, 30, 90] {
+            std::thread::sleep(std::time::Duration::from_secs(wait));
+            let n = kill_by_exe_name("didiscord.exe");
+            if n > 0 {
+                log::info(&format!("fechei o app antigo (didiscord.exe, {n} processo(s)) — desinstale ele em Configurações > Aplicativos se ainda aparecer lá"));
+            }
+        }
+    });
+}
+
+#[cfg(windows)]
+fn kill_by_exe_name(name: &str) -> usize {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+
+    let me = std::process::id();
+    let mut killed = 0;
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snap == INVALID_HANDLE_VALUE || snap.is_null() {
+            return 0;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut ok = Process32FirstW(snap, &mut entry) != 0;
+        while ok {
+            let n = entry.szExeFile.iter().position(|c| *c == 0).unwrap_or(entry.szExeFile.len());
+            let exe = String::from_utf16_lossy(&entry.szExeFile[..n]);
+            if entry.th32ProcessID != me && exe.eq_ignore_ascii_case(name) {
+                let h = OpenProcess(PROCESS_TERMINATE, 0, entry.th32ProcessID);
+                if !h.is_null() {
+                    if TerminateProcess(h, 0) != 0 {
+                        killed += 1;
+                    }
+                    CloseHandle(h);
+                }
+            }
+            ok = Process32NextW(snap, &mut entry) != 0;
+        }
+        CloseHandle(snap);
+    }
+    killed
+}
+
 fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     // cache do motor web: grande e refeito sozinho
     const SKIP: &[&str] = &["Cache", "Code Cache", "GPUCache", "ShaderCache", "GrShaderCache", "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "Crashpad"];

@@ -223,6 +223,8 @@ Opção nas configurações do site (aba "app e versão") e na bandeja; mudar re
   (em notebook com duas placas, o WebView2 usava a integrada).
 - **Desligada.** Linux: `WEBKIT_DISABLE_COMPOSITING_MODE=1` + `WEBKIT_DISABLE_DMABUF_RENDERER=1` +
   política "nunca". Windows: `--disable-gpu --disable-gpu-compositing`. Pra driver que dá tela preta.
+  Também faz o compartilhamento de tela ir pelo processador (x264) em vez da placa — saída pra
+  driver que dá tela preta pra quem assiste.
 
 **Contador de fps no mundinho: F9** (lembra entre aberturas). Mostra fps, o pior quadro, a placa
 que o WebGL está usando, a escala de pixels, se a janela tem foco e, no app, o estado da aceleração.
