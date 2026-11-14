@@ -172,6 +172,7 @@ async fn extract(archive: &Path, dir: &Path, exe: &str) -> Result<(), String> {
         c
     };
     crate::screencast::hide_console(&mut cmd);
+    crate::screencast::clean_child_env(&mut cmd); // tar do sistema: sem as variáveis do AppImage
     let out = cmd.output().await.map_err(|e| format!("extração falhou: {e}"))?;
     if !out.status.success() {
         return Err(format!("extração falhou: {}", String::from_utf8_lossy(&out.stderr).trim()));

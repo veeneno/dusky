@@ -265,6 +265,19 @@ O que olhar quando o app tem menos fps que o navegador (Linux):
   instalado no servidor não vai junto: com `gstreamer1.0-plugins-bad` e `gstreamer1.0-libav`
   instalados antes do build, o AppImage também decodifica H.264 sozinho (tela dos outros). O
   `.deb` usa o GStreamer do sistema e não tem esse problema.
+- **Variáveis do AppImage NÃO vão pros programas do sistema (1.0.3):** os hooks do AppImage
+  exportam `GST_PLUGIN_SYSTEM_PATH_1_0`, `GST_PLUGIN_SCANNER_1_0`, `GTK_PATH`, `GIO_MODULE_DIR`,
+  `LD_LIBRARY_PATH`, `PATH`/`XDG_DATA_DIRS` com pedaços do pacote etc. O app precisa delas (o
+  WebKitWebProcess herda), mas o `gst-launch-1.0` do sistema que as herdasse carregaria os plugins
+  do Ubuntu empacotados: numa distro com outro GStreamer (Arch/CachyOS 1.28) TODOS os
+  codificadores falhavam no probe ("no element cudaupload/h264parse"), o compartilhamento nativo
+  virava "indisponível" e o site caía no `getDisplayMedia` do WebKitGTK, que abre o seletor do
+  sistema e trava o app (crash do WebKitWebProcess). Regra: **todo processo filho sai de
+  `screencast::child_command`** (ou usa `clean_child_env` / `clean_std_child_env`), que tira essas
+  variáveis via `system_child_env()`. Links externos no AppImage vão por `app::open_external`
+  (xdg-open com o ambiente limpo). E o site, no app Tauri do Linux, nunca cai no `getDisplayMedia`
+  (`nativeScreenShareOnly()` em `public/js/app/20-screencast-native.js`): mostra o motivo
+  (`reason` do `screencast_available`) em vez disso.
 
 ## Como é organizado
 

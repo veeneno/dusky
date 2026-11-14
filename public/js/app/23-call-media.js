@@ -68,6 +68,9 @@ async function startScreenShare(opts = {}) {
     const outcome = await startNativeScreenShare({ fps, width: resW, height: resH, wantAudio });
     if (outcome !== 'fallback') return;
   }
+  // app Tauri no Linux: o getDisplayMedia do WebKitGTK trava o app — nunca cai nele (o motivo já
+  // apareceu no aviso do startNativeScreenShare)
+  if (nativeScreenShareOnly()) return;
 
   try {
     localScreenStream = await navigator.mediaDevices.getDisplayMedia({

@@ -44,13 +44,99 @@ pub fn hide_console(cmd: &mut Command) {
     let _ = cmd;
 }
 
-/// ambiente pros programas do sistema: sem o LD_LIBRARY_PATH que o AppImage injeta, senão o
-/// gst-launch do sistema carrega bibliotecas do pacote do app e os plugins quebram
+/// variáveis que os hooks do AppImage (linuxdeploy-plugin-gstreamer e -gtk) e o AppRun exportam
+/// apontando pra DENTRO do pacote. Valem pro próprio app (o WebKitWebProcess precisa delas pro
+/// microfone e pros sons da call), mas NÃO pros programas do sistema que o app abre.
+const APPIMAGE_ONLY_VARS: &[&str] = &[
+    "LD_LIBRARY_PATH",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0",
+    "GST_PLUGIN_PATH",
+    "GST_PLUGIN_PATH_1_0",
+    "GST_PLUGIN_SCANNER",
+    "GST_PLUGIN_SCANNER_1_0",
+    "GST_PTP_HELPER",
+    "GST_PTP_HELPER_1_0",
+    "GST_REGISTRY_REUSE_PLUGIN_SCANNER",
+    "GTK_PATH",
+    "GTK_EXE_PREFIX",
+    "GTK_DATA_PREFIX",
+    "GTK_IM_MODULE_FILE",
+    "GIO_MODULE_DIR",
+    "GI_TYPELIB_PATH",
+    "GSETTINGS_SCHEMA_DIR",
+    "GDK_PIXBUF_MODULE_FILE",
+];
+
+/// marcas do AppImage que não atrapalham ninguém (e dizem a um filho de onde ele veio)
+const APPIMAGE_KEEP_VARS: &[&str] = &["APPIMAGE", "APPDIR", "ARGV0", "OWD"];
+
+/// Ajustes de ambiente pros programas do SISTEMA abertos de dentro do AppImage: (nome, None =
+/// remover | Some(valor) = trocar). Fora do AppImage (.deb, Windows, código-fonte), lista vazia.
+///
+/// Por que: o gst-launch-1.0 do sistema herdava GST_PLUGIN_SYSTEM_PATH_1_0 e companhia do
+/// AppImage e carregava os plugins do Ubuntu 24.04 empacotados (GStreamer 1.24) em vez dos da
+/// distro (Arch/CachyOS: 1.28). Sem nvcodec/videoparsers no pacote, TODOS os codificadores
+/// falhavam ("no element cudaupload", "no element h264parse") → o compartilhamento nativo ficava
+/// "indisponível" e o site caía no getDisplayMedia do WebKitGTK, que trava (1.0.2).
+///
+/// Além da lista fixa, qualquer variável de lista de caminhos (PATH, XDG_DATA_DIRS…) perde só os
+/// pedaços que apontam pra dentro do AppImage; se não sobrar nada, sai inteira.
+pub fn system_child_env() -> Vec<(String, Option<String>)> {
+    if !IS_LINUX || std::env::var_os("APPIMAGE").is_none() {
+        return Vec::new();
+    }
+    let appdir = std::env::var("APPDIR").ok().filter(|d| !d.is_empty());
+    let vars = std::env::vars_os().filter_map(|(k, v)| Some((k.to_str()?.to_string(), v.to_string_lossy().into_owned())));
+    appimage_env_fixes(vars, appdir.as_deref())
+}
+
+/// a parte que decide (sem ler o ambiente de verdade, pra dar pra testar)
+fn appimage_env_fixes(vars: impl Iterator<Item = (String, String)>, appdir: Option<&str>) -> Vec<(String, Option<String>)> {
+    let mut out: Vec<(String, Option<String>)> = Vec::new();
+    for (key, val) in vars {
+        if APPIMAGE_KEEP_VARS.contains(&key.as_str()) {
+            continue;
+        }
+        if APPIMAGE_ONLY_VARS.contains(&key.as_str()) {
+            out.push((key, None));
+            continue;
+        }
+        let Some(dir) = appdir else { continue };
+        if !val.contains(dir) {
+            continue;
+        }
+        let kept: Vec<&str> = val.split(':').filter(|p| !p.is_empty() && !p.contains(dir)).collect();
+        out.push((key, (!kept.is_empty()).then(|| kept.join(":"))));
+    }
+    out
+}
+
+/// aplica o system_child_env() num processo (tokio ou std)
+pub fn clean_child_env(cmd: &mut Command) {
+    for (k, v) in system_child_env() {
+        match v {
+            Some(v) => cmd.env(k, v),
+            None => cmd.env_remove(k),
+        };
+    }
+}
+
+pub fn clean_std_child_env(cmd: &mut std::process::Command) {
+    for (k, v) in system_child_env() {
+        match v {
+            Some(v) => cmd.env(k, v),
+            None => cmd.env_remove(k),
+        };
+    }
+}
+
+/// processo de um programa do sistema (gst-launch, gst-inspect, ffmpeg, pw-*, o auxiliar
+/// dusky-screencast — que por sua vez abre o gst-launch/ffmpeg com o ambiente que recebeu): sem as
+/// variáveis do AppImage (ver system_child_env). O próprio processo do app continua com elas.
 pub fn child_command(bin: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut cmd = Command::new(bin);
-    if IS_LINUX && std::env::var_os("APPIMAGE").is_some() {
-        cmd.env_remove("LD_LIBRARY_PATH");
-    }
+    clean_child_env(&mut cmd);
     hide_console(&mut cmd);
     cmd.kill_on_drop(true);
     cmd
@@ -408,6 +494,9 @@ pub async fn probe(app: &AppHandle) -> ProbeInfo {
         return info.clone();
     }
     let info = probe_uncached(app).await;
+    if !info.available {
+        log::info(&format!("compartilhamento nativo indisponível: {}", info.reason.as_deref().unwrap_or("?")));
+    }
     // "baixando" não fica guardado: assim que terminar, a próxima chamada detecta de novo
     if !info.downloading {
         *cache = Some(info.clone());
@@ -936,6 +1025,32 @@ mod tests {
         assert_eq!(fit_inside(1921, 1081, Some(1280), Some(720)), Some((1278, 720)));
         assert_eq!(auto_bitrate_kbps(1920, 1080, 60), 8000);
         assert_eq!(auto_bitrate_kbps(640, 360, 30), 2500);
+    }
+
+    #[test]
+    fn ambiente_do_appimage_nao_vaza() {
+        let d = "/tmp/.mount_dusky.abc";
+        let vars = [
+            ("GST_PLUGIN_SYSTEM_PATH_1_0", format!("{d}/usr/lib/gstreamer-1.0:")),
+            ("GST_REGISTRY_REUSE_PLUGIN_SCANNER", "no".into()),
+            ("LD_LIBRARY_PATH", format!("{d}/usr/lib")),
+            ("PATH", format!("{d}/usr/bin/:/usr/local/bin:/usr/bin")),
+            ("XDG_DATA_DIRS", format!("{d}/usr/share/:{d}/usr/share")),
+            ("APPDIR", d.into()),
+            ("HOME", "/home/x".into()),
+        ];
+        let mut fixes = appimage_env_fixes(vars.into_iter().map(|(k, v)| (k.to_string(), v)), Some(d));
+        fixes.sort();
+        assert_eq!(
+            fixes,
+            vec![
+                ("GST_PLUGIN_SYSTEM_PATH_1_0".to_string(), None),
+                ("GST_REGISTRY_REUSE_PLUGIN_SCANNER".to_string(), None),
+                ("LD_LIBRARY_PATH".to_string(), None),
+                ("PATH".to_string(), Some("/usr/local/bin:/usr/bin".to_string())),
+                ("XDG_DATA_DIRS".to_string(), None),
+            ]
+        );
     }
 
     #[test]

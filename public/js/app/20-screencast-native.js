@@ -22,6 +22,18 @@
 
 const nativeApi = () => (window.duskyDesktop && window.duskyDesktop.screencast) || null;
 
+// app Tauri no Linux: o "jeito normal" seria o getDisplayMedia do WebKitGTK, que abre o seletor do
+// sistema e TRAVA o app (1.0.2, Wayland). Lá não existe plano B: se a placa de vídeo/GStreamer não
+// der, mostra o motivo e para por aí.
+function nativeScreenShareOnly() {
+  const d = window.duskyDesktop;
+  return !!(d && d.shell === 'tauri' && d.platform === 'linux');
+}
+
+function explainNativeUnavailable(reason) {
+  toast(`não deu pra compartilhar a tela${reason ? `: ${reason}` : ''}`, 'error');
+}
+
 // a Metered manda cada servidor com "urls" em TEXTO ("turn:..."); o auxiliar (Pion) só aceita LISTA
 // e recusava o comando "start" inteiro ("invalid ICEServer") — o ffmpeg nem ligava e quem assistia
 // via preto. Aqui sempre vira lista.
@@ -44,6 +56,10 @@ function abandonNativeScreenShare(why) {
   clearTimeout(nativeStartTimer);
   nativeStartTimer = null;
   stopScreenShare();
+  if (nativeScreenShareOnly()) {
+    explainNativeUnavailable(why);
+    return;
+  }
   toast('não deu pra compartilhar pela placa de vídeo — escolha a tela de novo pra ir pelo jeito normal', 'error');
   startScreenShare({ skipNative: true });
 }
@@ -184,8 +200,18 @@ async function startNativeScreenShare({ fps, width, height, wantAudio }) {
   const api = nativeApi();
   if (!api) return 'fallback';
   let info;
-  try { info = await api.available(); } catch (_) { return 'fallback'; }
+  try { info = await api.available(); } catch (err) {
+    if (nativeScreenShareOnly()) { explainNativeUnavailable(String((err && err.message) || err || '')); return 'cancelled'; }
+    return 'fallback';
+  }
   if (!info || !info.available) {
+    if (nativeScreenShareOnly()) {
+      const downloading = info && info.deps && info.deps.state === 'downloading';
+      explainNativeUnavailable(downloading
+        ? `baixando o componente de compartilhamento (${Math.round((info.deps.progress || 0) * 100)}%) — tente de novo em instantes`
+        : (info && info.reason) || 'compartilhamento indisponível neste computador');
+      return 'cancelled';
+    }
     if (info && info.deps && info.deps.state === 'downloading') {
       toast(`baixando o componente de compartilhamento pela placa de vídeo (${Math.round((info.deps.progress || 0) * 100)}%) — por enquanto vai pelo jeito normal`);
     }
@@ -196,6 +222,7 @@ async function startNativeScreenShare({ fps, width, height, wantAudio }) {
   if (!res || res.cancelled) return 'cancelled';
   if (!res.ok) {
     console.warn('[screencast] não deu pra usar a placa de vídeo:', res.reason);
+    if (nativeScreenShareOnly()) { explainNativeUnavailable(res.reason); return 'cancelled'; }
     toast('não deu pra compartilhar pela placa de vídeo — indo pelo jeito normal', 'error');
     return 'fallback';
   }

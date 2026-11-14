@@ -1,6 +1,6 @@
 [package]
 name = "dusky"
-version = "1.0.2"
+version = "1.0.3"
 description = "App desktop do dusky (Tauri / Rust) — versão 1.0, codinome Mist"
 authors = ["veneno"]
 edition = "2021"

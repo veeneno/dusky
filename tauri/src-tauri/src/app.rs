@@ -152,6 +152,25 @@ pub fn is_local(url: &Url) -> bool {
         || url.origin().ascii_serialization() == local_base().origin().ascii_serialization()
 }
 
+/// abre um link no navegador do sistema. Dentro do AppImage vai pelo xdg-open com o ambiente
+/// limpo (screencast::system_child_env): o opener passaria GTK_PATH/GIO_MODULE_DIR/GST_* do
+/// pacote pro navegador, que carregaria módulos do Ubuntu empacotados e podia nem abrir.
+pub fn open_external(app: &AppHandle, url: &str) {
+    if cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_some() {
+        let mut cmd = std::process::Command::new("xdg-open");
+        cmd.arg(url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        crate::screencast::clean_std_child_env(&mut cmd);
+        if let Ok(mut child) = cmd.spawn() {
+            // o xdg-open sai logo; espera numa thread pra não ficar processo zumbi
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+            return;
+        }
+    }
+    let _ = app.opener().open_url(url, None::<&str>);
+}
+
 pub fn local_url(path: &str) -> Url {
     local_base().join(path).unwrap()
 }
@@ -273,14 +292,14 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
                 return matches!(url.scheme(), "http" | "https");
             }
             if matches!(url.scheme(), "http" | "https") {
-                let _ = nav_app.opener().open_url(url.as_str(), None::<&str>);
+                open_external(&nav_app, url.as_str());
             }
             false
         })
         // target=_blank / window.open: sempre no navegador do sistema
         .on_new_window(move |url, _features| {
             if matches!(url.scheme(), "http" | "https") {
-                let _ = open_app.opener().open_url(url.as_str(), None::<&str>);
+                open_external(&open_app, url.as_str());
             }
             NewWindowResponse::Deny
         })
