@@ -272,6 +272,20 @@ Ideias que ficaram de fora: acumular +2/+4, desafiar o +4, placar entre partidas
       peça, depois na casa; escolhe a peça na promoção), relógios, lances em notação brasileira
       (R D T B C) e os botões. Quem assiste abre o painel da mesa mais perto ("ver outra mesa" troca).
 
+### Etapa 5.1 — cobertura maior + tabuleiro do xadrez aparecendo ✅
+- [x] Tabuleiro 3D sumido: o `rbox` estica a peça pra fora pelo arredondado (`bevelSize`), então o
+      topo do tampo da `chessTable` ficava em ~0.761 e o tabuleiro (0.7462) ficava enterrado nele.
+      Agora o tampo é posicionado pelo topo de verdade (bounding box), 3 mm abaixo do tabuleiro.
+      Cuidado ao usar `rbox` com algo apoiado em cima: o topo é `y + h/2 + bevelSize`, não `y + h/2`.
+- [x] Casa de 24x16 m pra **36x24 m** (mezanino de 9x16 pra 13x24, borda em x = -5; escada em
+      x -5..-3.6). Cada área mudou de lugar inteira (móveis, assentos, colisores e mesas juntos) pelo
+      script `grow.py` (não ficou no repositório; a cena nova é a fonte). Hoje:
+      térreo — sala de TV no norte (TV em x 7.5, z -11.84), mesas de 21 em (-0.1, 8.3) e (8.2, 8.3),
+      piano em (14.9, 7.6), cozinha (noroeste) e jantar (sudoeste) embaixo do mezanino, nascer em
+      (4, 2.2); mezanino — pufes na borda olhando a sala e sofá azul no norte, xadrez em (-14.5, 0.2)
+      e (-9.5, 0.2), Duno em (-11.5, 7.5). Plantas a mais nos cantos.
+- [x] Piso: repetição da textura segue o tamanho da casa (`w/4, d/4`); prédios da cidade a ≥ 60 m.
+
 ### Próximas etapas (ideias combinadas com o dono do projeto)
 1. **Emotes/animação melhores**: personagens com rig (glTF CC0, ex.: Quaternius/Kenney),
    carregados sob demanda; escolher boneco/roupa no perfil.

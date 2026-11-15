@@ -15,7 +15,7 @@
 // { x, y, z, ry, action, seat } — y é a altura do PISO onde ele está (andar de baixo 0, mezanino 3.6).
 import * as THREE from '/vendor/three/0.170.0/three.module.min.js';
 import { createAvatar, AVATAR_HEAD_TOP } from './avatar.js?v=7';
-import { buildRoom, buildProps } from './props.js?v=8';
+import { buildRoom, buildProps } from './props.js?v=9';
 import { createTv } from './tv.js?v=7';
 
 const WALK_SPEED = 3.0;
@@ -30,7 +30,7 @@ const EYE_SITTING = 0.98;
 const CAMERA_PREF_KEY = 'dusky:worldCamera';
 const HINT_PREF_KEY = 'dusky:worldHintSeen';
 const CROSSHAIR_PREF_KEY = 'dusky:worldCrosshair';
-const ASSET_V = 8; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
+const ASSET_V = 9; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
 
 function lerpAngle(a, b, k) {
   const d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;

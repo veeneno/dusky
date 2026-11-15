@@ -684,7 +684,13 @@ function chessBoardTexture() {
 function chessTable(p) {
   const g = new THREE.Group();
   const w = p.w || 0.9;
-  g.add(rbox(w, 0.05, w, 0.02, WALNUT(), 0, 0.72, 0));
+  // o arredondado do rbox estica a peça pra fora (bevelSize), então o topo do tampo fica acima de
+  // y + h/2. Antes o tabuleiro (0.7462) ficava ENTERRADO no tampo e não aparecia: agora o tampo é
+  // posicionado pelo topo de verdade, 3 mm abaixo do tabuleiro (e das peças, em BOARD_Y = 0.747).
+  const top = rbox(w, 0.05, w, 0.02, WALNUT());
+  top.geometry.computeBoundingBox();
+  top.position.y = 0.743 - top.geometry.boundingBox.max.y;
+  g.add(top);
   const board = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.56), mat(0xffffff, { roughness: 0.35, map: chessBoardTexture() }));
   board.rotation.x = -Math.PI / 2;
   board.position.y = 0.7462;
@@ -813,7 +819,7 @@ function buildCity() {
   const rb = rng(21);
   for (let i = 0; i < 120; i++) {
     const a = rb() * Math.PI * 2;
-    const dist = 40 + rb() * 140;
+    const dist = 60 + rb() * 140; // longe o bastante pra nenhum prédio encostar na casa (36x24 m)
     const x = Math.cos(a) * dist;
     const z = Math.sin(a) * dist;
     const w = 10 + rb() * 18;
@@ -883,6 +889,7 @@ export function buildRoom(sceneDef) {
   const upper = new THREE.Group();
   const walkables = [];
   const tex = floorTexture();
+  tex.repeat.set(w / 4, d / 4); // uma "placa" da espinha de peixe a cada 4 m, qualquer que seja o tamanho
 
   ground.add(buildCity());
 
