@@ -30,7 +30,7 @@ const EYE_SITTING = 0.98;
 const CAMERA_PREF_KEY = 'dusky:worldCamera';
 const HINT_PREF_KEY = 'dusky:worldHintSeen';
 const CROSSHAIR_PREF_KEY = 'dusky:worldCrosshair';
-const ASSET_V = 11; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
+const ASSET_V = 12; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
 
 function lerpAngle(a, b, k) {
   const d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;

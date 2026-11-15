@@ -416,7 +416,8 @@ export function createPool({ scene, container, api, defs, world }) {
     else if (l.cont) parts.push('joga de novo');
     else if (!balls.length) parts.push(l.wasBreak ? 'saída sem bola caída' : 'nada caiu');
     if (l.assigned) parts.push(`o time ${SIDE[l.team]} ficou com as ${GROUP_PLURAL[l.assigned]}`);
-    if (l.penaltyBall) parts.push(`punição: o ${teamWord(st, l.team === 'a' ? 'b' : 'a')} derrubou a ${l.penaltyBall}`);
+    if (l.penaltyBall) parts.push(`punição: caiu a ${l.penaltyBall} do ${teamWord(st, l.team === 'a' ? 'b' : 'a')}`);
+    else if (l.foul && !l.wasGroup) parts.push('sem grupo definido, sem punição');
     return `${who}: ${parts.join(' · ')}`;
   }
   function modeText(st) {
@@ -426,7 +427,6 @@ export function createPool({ scene, container, api, defs, world }) {
   function statusText(st) {
     if (st.phase === 'playing') {
       if (animating(st)) return st.shot ? `tacada de ${name(st.shot.userId)}…` : 'bolas rolando…';
-      if (st.stage === 'penalty') return `falta! o ${teamWord(st, st.penalty.team)} escolhe uma bola pra derrubar`;
       const mine = st.shooter === me();
       return mine ? `sua vez${st.isBreak ? ' — saída!' : ''}` : `vez de ${name(st.shooter)} (${teamWord(st, st.turnTeam)})`;
     }
@@ -670,27 +670,7 @@ export function createPool({ scene, container, api, defs, world }) {
     const myTeam = st.you.team;
     const anim = animating(st);
     if (st.phase === 'playing' && !anim) {
-      if (st.stage === 'penalty') {
-        if (myTeam === st.penalty.team) {
-          const p = document.createElement('p');
-          p.className = 'pool-note';
-          p.textContent = 'falta do outro time! escolha uma bola sua pra derrubar:';
-          box.appendChild(p);
-          const row = document.createElement('div');
-          row.className = 'pool-chips is-pick';
-          for (const id of st.penalty.options) {
-            const b = chip(id, false);
-            b.setAttribute('role', 'button');
-            b.tabIndex = 0;
-            b.title = `derrubar a ${id}`;
-            b.addEventListener('click', () => send('penalty', { ball: id }));
-            row.appendChild(b);
-          }
-          box.appendChild(row);
-        } else {
-          box.innerHTML = `<p class="duno-empty">o ${teamWord(st, st.penalty.team)} está escolhendo a bola da punição…</p>`;
-        }
-      } else if (st.shooter === me()) {
+      if (st.shooter === me()) {
         const pw = document.createElement('label');
         pw.className = 'pool-power';
         pw.innerHTML = '<span>força</span><input type="range" min="2" max="100" step="1"><b></b>';
@@ -785,8 +765,8 @@ export function createPool({ scene, container, api, defs, world }) {
     }
     const rules = document.createElement('details');
     rules.className = 'pool-rules';
-    rules.innerHTML = `<summary>regras</summary><p>Ninguém começa par ou ímpar: a <b>mesa é aberta</b> e o primeiro time que derrubar uma bolinha (sem falta) fica com o grupo dela — ímpares 3 5 7 9 11 13 15 ou pares 2 4 6 8 10 12 14 — e o outro time com o outro. A <b>1</b> é a bola final: depois de derrubar as suas, quem derruba a 1 ganha (derrubar antes da hora perde).</p>
-      <p>É <b>falta</b> errar todas as bolas, acertar primeiro a do outro grupo (ou a 1 antes da hora), deixar a branca cair ou estourar o tempo. Na falta, o outro time escolhe uma bola dele pra derrubar e ganha a vez — a punição nunca derruba a 1${st.spareLast ? ' nem a última bolinha do time' : ''}. Com a mesa ainda aberta, a falta só passa a vez.</p>
+    rules.innerHTML = `<summary>regras</summary><p>Ninguém começa par ou ímpar: a <b>mesa é aberta</b> e o primeiro time que derrubar uma bolinha (mesmo numa tacada com falta) fica com o grupo dela — ímpares 3 5 7 9 11 13 15 ou pares 2 4 6 8 10 12 14 — e o outro time com o outro. A <b>1</b> é a bola final: depois de derrubar as suas, quem derruba a 1 ganha (derrubar antes da hora perde).</p>
+      <p>É <b>falta</b> errar todas as bolas, acertar primeiro a do outro grupo (ou a 1 antes da hora), deixar a branca cair ou estourar o tempo. Na falta, cai a bola de <b>menor número</b> do outro time e ele ganha a vez — a punição nunca derruba a 1${st.spareLast ? ' nem a última bolinha do time' : ''}. Sem grupo definido não tem punição: a falta só passa a vez.</p>
       <p>Derrubou bola sua sem falta: joga de novo. Em dupla, os dois de cada time se revezam.</p>`;
     panel.appendChild(rules);
     drawTable();
@@ -835,11 +815,10 @@ export function createPool({ scene, container, api, defs, world }) {
     const satNow = iSitHere && !(prev && prev.seated.some((s) => s.userId === me()));
     const startedNow = inGame && !(prev && prev.phase === 'playing' && prev.round === next.round);
     const myTurnNow = inGame && next.shooter === me() && !(prev && prev.shooter === me() && prev.phase === 'playing');
-    const penaltyMine = inGame && next.stage === 'penalty' && next.penalty.team === next.you.team;
     if (iSitHere || inGame) focusId = next.table;
     // começou a minha vez: a mira começa apontando pro meio da mesa
     if (myTurnNow) { const c = tb && tb.cur.get(0); if (c && Math.hypot(c.x, c.z) > 0.05) aim.angle = Math.atan2(-c.z, -c.x); }
-    if (!open && (satNow || startedNow || myTurnNow || penaltyMine)) setOpen(true);
+    if (!open && (satNow || startedNow || myTurnNow)) setOpen(true);
     else if (open && next.table === focusId) render();
     kick();
   }

@@ -6,7 +6,7 @@ const { createPool, simulate, rack, TABLE, GROUPS } = require('../server/games/p
 const { HX, HZ, R } = TABLE;
 const DEF = { id: 'sinuca', game: 'pool', seats: ['s1', 's2', 's3', 's4'] };
 
-function setup(players = { 1: 's1', 2: 's3' }) {
+function setup(players = { 1: 's1', 2: 's3' }, simulateFn) {
   let clock = 1000;
   const timers = [];
   const pool = createPool({
@@ -14,6 +14,7 @@ function setup(players = { 1: 's1', 2: 's3' }) {
     random: () => 0.42,
     setTimer: (fn, ms) => { const tm = { fn, at: clock + ms, live: true }; timers.push(tm); return tm; },
     clearTimer: (tm) => { if (tm) tm.live = false; },
+    ...(simulateFn ? { simulateFn } : {}),
   });
   for (const [uid, seat] of Object.entries(players)) pool.onSeat(7, Number(uid), DEF, seat, null);
   for (const uid of Object.keys(players)) pool.handle(7, DEF, Number(uid), { op: 'ready' });
@@ -93,22 +94,19 @@ test('1x1 e 2x2: só começa com times do mesmo tamanho e todo mundo pronto', ()
 });
 
 // ---------- faltas e punição ----------
-test('errar tudo é falta: o outro time escolhe uma bola dele pra derrubar (nunca a 1)', () => {
+test('errar tudo é falta: cai a bola de menor número do outro time (nunca a 1) e ele ganha a vez', () => {
   const s = setup();
   s.g().isBreak = false;
   s.g().group = { a: 'impar', b: 'par' }; // grupos já decididos
-  s.place({ 0: [-0.8, 0], 3: [0.5, 0.3], 5: [0.6, -0.3], 2: [0.2, 0.4], 4: [0.3, -0.4], 1: [0.9, 0] });
+  s.place({ 0: [-0.8, 0], 3: [0.5, 0.3], 5: [0.6, -0.3], 4: [0.2, 0.4], 2: [0.3, -0.4], 6: [0.0, 0.3], 1: [0.9, 0] });
   s.shoot(1, Math.PI / 2, 0.05); // fraquinho pro lado: não encosta em nada
   const g = s.g();
   assert.strictEqual(g.last.foul, 'nada');
-  assert.strictEqual(g.stage, 'penalty');
-  assert.strictEqual(g.turnTeam, 'b');
-  assert.deepStrictEqual(g.penalty.options.sort((a, b) => a - b), [2, 4]);
-  assert.ok(s.pool.handle(7, DEF, 1, { op: 'penalty', ball: 2 }).error); // quem escolhe é o par
-  assert.ok(s.pool.handle(7, DEF, 2, { op: 'penalty', ball: 1 }).error); // a 1 nunca
-  assert.deepStrictEqual(s.pool.handle(7, DEF, 2, { op: 'penalty', ball: 4 }), {});
-  assert.ok(!g.balls.has(4));
+  assert.strictEqual(g.last.penaltyBall, 2);
+  assert.ok(!g.balls.has(2));
+  assert.ok(g.balls.has(4) && g.balls.has(6) && g.balls.has(1));
   assert.strictEqual(g.stage, 'aim');
+  assert.strictEqual(g.turnTeam, 'b');
   assert.strictEqual(g.shooter, 2);
 });
 
@@ -196,17 +194,15 @@ test('2x2: a vez passa alternando os times e os parceiros', () => {
   assert.deepStrictEqual(order, [1, 3, 2, 4]);
 });
 
-test('tempo estourado é falta com punição; a escolha da punição também tem tempo', () => {
+test('tempo estourado é falta: cai a menor do outro time', () => {
   const s = setup();
   s.g().isBreak = false;
-  s.g().group = { a: 'impar', b: 'par' }; // grupos já decididos
+  s.g().group = { a: 'impar', b: 'par' };
   s.place({ 0: [-0.8, 0], 3: [0.5, 0.3], 2: [0.2, 0.4], 4: [0.3, -0.4], 1: [0.9, 0] });
   assert.ok(s.fire());
   assert.strictEqual(s.g().last.foul, 'tempo');
-  assert.strictEqual(s.g().stage, 'penalty');
-  assert.ok(s.fire());
   assert.strictEqual(s.g().stage, 'aim');
-  assert.ok(!s.g().balls.has(2)); // escolheu sozinho a menor
+  assert.ok(!s.g().balls.has(2));
   assert.strictEqual(s.g().shooter, 2);
 });
 
@@ -264,21 +260,56 @@ test('mesa aberta: acertar qualquer bola primeiro vale; falta só passa a vez (s
   assert.deepStrictEqual(s.g().group, { a: null, b: null });
 });
 
-test('mesa aberta: bola que cai junto com falta não decide o grupo; a 1 antes da hora perde', () => {
-  const s = setup();
-  s.g().isBreak = false;
-  // a branca segue a 3 pra caçapa (bate de raspão e as duas vão pro canto)
+test('mesa aberta: a 1 antes da hora perde', () => {
   const cue = [HX - 0.5, HZ - 0.5];
-  const b3 = [HX - 0.2, HZ - 0.2];
-  s.place({ 0: cue, 3: b3, 2: [0, 0], 1: [-0.9, 0] });
-  const r = s.pool.handle(7, DEF, 1, { op: 'shoot', angle: angleTo(cue, b3), power: 0.35 });
-  assert.deepStrictEqual(r, {});
-  s.settle();
-  if (s.g().last.foul) assert.deepStrictEqual(s.g().group, { a: null, b: null });
+  const b1 = [HX - 0.2, HZ - 0.2];
   const one = setup();
   one.g().isBreak = false;
-  one.place({ 0: cue, 1: b3, 2: [0, 0], 3: [-0.5, 0] });
-  one.shoot(1, angleTo(cue, b3), 0.35);
+  one.place({ 0: cue, 1: b1, 2: [0, 0], 3: [-0.5, 0] });
+  one.shoot(1, angleTo(cue, b1), 0.35);
   assert.strictEqual(one.t.phase, 'over');
   assert.deepStrictEqual(one.g().result, { winner: 'b', reason: 'bola-1-cedo' });
+});
+
+// tacadas combinadas (sem física) pra testar as regras de falta com bola caindo
+function fakeSim(result) {
+  return (balls) => {
+    const final = new Map([...balls].filter(([id]) => !result.pocketed.includes(id)));
+    return { final, first: result.first, pocketed: result.pocketed.map((id, f) => ({ id, f: f + 1, pocket: 0 })), frames: [[]] };
+  };
+}
+
+test('mesa aberta: a primeira que cai decide o grupo mesmo com falta, e sem grupo não tem punição', () => {
+  const s = setup(undefined, fakeSim({ first: 3, pocketed: [10, 5, 0] })); // a 10 cai, depois a 5 e a branca
+  s.g().isBreak = false;
+  s.place({ 0: [-0.5, 0], 3: [0, 0], 10: [0.3, 0.2], 5: [0.3, -0.2], 2: [0.5, 0], 4: [0.6, 0.1], 7: [0.6, -0.1], 1: [0.9, 0] });
+  s.shoot(1, 0, 0.5);
+  const g = s.g();
+  assert.strictEqual(g.last.foul, 'branca');
+  assert.deepStrictEqual(g.group, { a: 'par', b: 'impar' }); // a 10 caiu primeiro: o time A é par
+  assert.strictEqual(g.last.assigned, 'par');
+  assert.strictEqual(g.last.penaltyBall, null); // o grupo não existia quando a falta aconteceu
+  assert.ok(g.balls.has(3) && g.balls.has(7));
+  assert.ok(g.balls.has(0)); // a branca voltou pra mesa
+  assert.strictEqual(g.turnTeam, 'b');
+});
+
+test('com grupo definido, a falta derruba a menor do outro time (e nunca a última dele)', () => {
+  const s = setup(undefined, fakeSim({ first: 4, pocketed: [] })); // ímpar acertou primeiro a 4 (par)
+  s.g().isBreak = false;
+  s.g().group = { a: 'impar', b: 'par' };
+  s.place({ 0: [-0.5, 0], 3: [0, 0.3], 4: [0, 0], 6: [0.3, 0.2], 12: [0.5, 0], 1: [0.9, 0] });
+  s.shoot(1, 0, 0.5);
+  assert.strictEqual(s.g().last.foul, 'adversaria');
+  assert.strictEqual(s.g().last.penaltyBall, 4);
+  assert.ok(!s.g().balls.has(4) && s.g().balls.has(6) && s.g().balls.has(12));
+
+  const last = setup(undefined, fakeSim({ first: 4, pocketed: [] }));
+  last.g().isBreak = false;
+  last.g().group = { a: 'impar', b: 'par' };
+  last.place({ 0: [-0.5, 0], 3: [0, 0.3], 4: [0, 0], 1: [0.9, 0] }); // a 4 é a última do par
+  last.shoot(1, 0, 0.5);
+  assert.strictEqual(last.g().last.foul, 'adversaria');
+  assert.strictEqual(last.g().last.penaltyBall, null);
+  assert.ok(last.g().balls.has(4));
 });

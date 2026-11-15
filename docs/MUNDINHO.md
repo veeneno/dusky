@@ -299,20 +299,20 @@ Ideias que ficaram de fora: acumular +2/+4, desafiar o +4, placar entre partidas
       `startAt`/`endsAt`; o cliente só anima. Triângulo sorteado com folguinhas de ~1 mm (sem isso a
       saída vira pêndulo de Newton e não abre).
       Regras: 1x1 ou 2x2 (times iguais, todos "pronto"); MESA ABERTA — ninguém começa par ou ímpar:
-      o primeiro time que derrubar uma bolinha numa tacada sem falta (saída inclusive; se caírem
+      o primeiro time que derrubar uma bolinha (saída inclusive, MESMO numa tacada com falta; se caírem
       várias, vale a primeira que caiu) fica com o grupo dela (`game.group = { a, b }`), o outro com o
-      outro. Com a mesa aberta qualquer bola pode ser acertada primeiro (menos a 1) e falta só passa a
-      vez (ninguém tem bola pra derrubar). Ímpares 3..15, pares 2..14, bola 1 = final
+      outro. Com a mesa aberta qualquer bola pode ser acertada primeiro (menos a 1); sem grupo definido
+      na hora da falta não tem punição (só passa a vez). Ímpares 3..15, pares 2..14, bola 1 = final
       (derrubar depois das suas ganha; antes da hora ou com falta perde; na saída volta pra mesa).
       Falta: não acertar nada, acertar primeiro a do outro time, a 1 antes da hora (ou outra quando é
-      a vez da 1), branca caída (volta pra marca da cabeceira) ou tempo (45 s). Punição: o outro time
-      escolhe uma bola DELE pra derrubar (20 s, senão cai a menor) e ganha a vez — nunca a 1 e nunca a
-      última bolinha do time (`PENALTY_SPARES_LAST`). Derrubou bola sua sem falta = joga de novo; em
+      a vez da 1), branca caída (volta pra marca da cabeceira) ou tempo (45 s). Punição: cai sozinha a
+      bola de MENOR número do grupo do outro time e ele ganha a vez — nunca a 1 e nunca a última
+      bolinha do time (`PENALTY_SPARES_LAST`). Derrubou bola sua sem falta = joga de novo; em
       dupla os parceiros se revezam. Levantar não tira da partida; sair da call sim (time vazio perde).
 - [x] Site: `public/world/games/pool.js` (carrega junto com o mundo): bolas numeradas em 3D rolando,
       caindo nas caçapas, taco que puxa e bate; na sua vez, linha de mira + bola fantasma no 3D. Painel
       (dock 🎱 / tecla N): times e bolas que faltam, a mesa vista de cima pra mirar (mouse mira; clicar,
-      puxar pra trás e soltar taca; ou ←/→, ↑/↓ e espaço), punição clicando na bola, resultado.
+      puxar pra trás e soltar taca; ou ←/→, ↑/↓ e espaço), qual bola caiu de punição, resultado.
 
 Ideias que ficaram de fora: efeito na branca (spin), bola na mão depois da branca cair, som das
 batidas, ver a mira de quem está jogando (hoje só quem joga vê a própria mira), placar entre partidas.

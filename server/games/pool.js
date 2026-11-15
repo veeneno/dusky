@@ -7,16 +7,16 @@
 // - 15 bolas numeradas + a branca. Ímpares: 3 5 7 9 11 13 15. Pares: 2 4 6 8 10 12 14. A bola 1 é a
 //   FINAL: só pode ser encaçapada depois que o time derrubou todas as dele; quem encaçapa a 1 certo
 //   ganha. Derrubar a 1 antes da hora (ou cometendo falta) perde. Na saída, a 1 volta pra mesa.
-// - MESA ABERTA: ninguém começa sendo par ou ímpar. O primeiro time que derrubar uma bolinha numa
-//   tacada sem falta (saída inclusive) fica com o grupo dela — par ou ímpar — e o outro time com o
-//   outro. Se caírem várias na mesma tacada, vale a primeira que caiu. Com a mesa aberta, qualquer
-//   bola pode ser acertada primeiro (menos a 1).
+// - MESA ABERTA: ninguém começa sendo par ou ímpar. O primeiro time que derrubar uma bolinha (saída
+//   inclusive, e mesmo numa tacada com falta) fica com o grupo dela — par ou ímpar — e o outro time
+//   com o outro. Se caírem várias na mesma tacada, vale a primeira que caiu. Com a mesa aberta,
+//   qualquer bola pode ser acertada primeiro (menos a 1).
 // - Falta: errar todas as bolas, acertar primeiro uma bola do outro grupo, acertar primeiro a 1 antes
 //   da hora (ou outra bola quando já é a vez da 1), encaçapar a branca ou estourar o tempo.
-//   Punição: o OUTRO time escolhe uma bola dele pra derrubar (tirar da mesa) e ganha a vez.
+//   Punição: cai (sai da mesa) a bola de MENOR número do grupo do outro time, e ele ganha a vez.
 //   A punição nunca derruba a bola 1 e nunca derruba a última bolinha do time (essa tem que ser
-//   encaçapada jogando) — ver PENALTY_SPARES_LAST. Com a mesa ainda aberta não tem bola "dele" pra
-//   derrubar: a falta só passa a vez.
+//   encaçapada jogando) — ver PENALTY_SPARES_LAST. Sem grupo definido (mesa aberta quando a falta
+//   aconteceu) não tem punição: a falta só passa a vez.
 // - Encaçapou bola sua sem falta = joga de novo. Bola do outro grupo que cair fica caída (é dele).
 //   Na saída, encaçapar qualquer bola (menos a branca) também dá direito de jogar de novo.
 //
@@ -76,7 +76,6 @@ const STOP_SPEED = 0.004;
 
 // ---------- tempos ----------
 const AIM_MS = 45000;           // tempo pra tacar
-const PENALTY_MS = 20000;       // tempo pro outro time escolher a bola da punição
 const CUE_MS = 450;             // animação do taco antes das bolas andarem
 const PENALTY_SPARES_LAST = true; // punição não derruba a última bolinha do time
 
@@ -296,7 +295,7 @@ function createPool({
   setTimer = (fn, ms) => { const t = setTimeout(fn, ms); if (t.unref) t.unref(); return t; },
   clearTimer = (t) => clearTimeout(t),
   aimMs = AIM_MS,
-  penaltyMs = PENALTY_MS,
+  simulateFn = simulate, // os testes trocam por um resultado combinado
 } = {}) {
   const tables = new Map();
   const key = (channelId, tableId) => `${channelId}:${tableId}`;
@@ -374,23 +373,24 @@ function createPool({
     t.log = { type: 'end', winner, reason };
   }
 
-  // depois da falta: o outro time ganha a vez e (se der) escolhe uma bola dele pra derrubar
-  function passTurnWithPenalty(t, foulTeam, from) {
+  // depois da falta: o outro time ganha a vez e cai a bola de menor número do grupo dele (se o grupo
+  // já estava definido quando a falta aconteceu e não for a última bolinha dele)
+  function passTurnWithPenalty(t, foulTeam, from, withPenalty) {
     const g = t.game;
     const ben = other(foulTeam);
     g.turnTeam = ben;
     g.shooter = nextShooter(g, ben);
-    const options = groupLeft(g, g.balls, ben) || []; // mesa aberta: nada pra derrubar
+    const options = withPenalty ? groupLeft(g, g.balls, ben) || [] : [];
     const canRemove = PENALTY_SPARES_LAST ? options.length >= 2 : options.length >= 1;
     if (canRemove) {
-      g.stage = 'penalty';
-      g.penalty = { team: ben, options, deadline: from + penaltyMs };
-      g.deadline = g.penalty.deadline;
-    } else {
-      g.stage = 'aim';
-      g.penalty = null;
-      g.deadline = from + aimMs;
+      const id = Math.min(...options);
+      g.balls.delete(id);
+      g.down.push({ id, by: 'punicao' });
+      if (g.last) g.last.penaltyBall = id;
     }
+    g.stage = 'aim';
+    g.penalty = null;
+    g.deadline = from + aimMs;
     arm(t, g.deadline);
     return canRemove;
   }
@@ -418,7 +418,7 @@ function createPool({
     g.balls = sim.final;
     for (const id of ids) if (id !== 0) g.down.push({ id, by: 'tacada' });
     if (cueIn) g.balls.set(0, freeSpot(g.balls, HEAD.x, HEAD.z, -1));
-    const last = { seq: g.seq, team, userId: uid, foul, first: sim.first, pocketed: ids, penaltyBall: null, cont: false, wasBreak: g.isBreak, assigned: null };
+    const last = { seq: g.seq, team, userId: uid, foul, first: sim.first, pocketed: ids, penaltyBall: null, cont: false, wasBreak: g.isBreak, assigned: null, wasGroup: !open };
     g.last = last;
 
     if (oneIn) {
@@ -435,8 +435,8 @@ function createPool({
         return;
       }
     }
-    // mesa aberta: a primeira bolinha que caiu (sem falta) decide quem é par e quem é ímpar
-    if (open && !foul) {
+    // mesa aberta: a primeira bolinha que caiu decide quem é par e quem é ímpar (mesmo com falta)
+    if (open) {
       const firstDown = ids.find((id) => id > 1);
       if (firstDown) {
         g.group[team] = groupOfBall(firstDown);
@@ -453,7 +453,7 @@ function createPool({
       g.deadline = endsAt + aimMs;
       arm(t, g.deadline);
     } else if (foul) {
-      passTurnWithPenalty(t, team, endsAt);
+      passTurnWithPenalty(t, team, endsAt, !open); // grupo ainda não definido na hora da falta: sem punição
     } else {
       g.turnTeam = opp;
       g.shooter = nextShooter(g, opp);
@@ -466,14 +466,13 @@ function createPool({
   function shoot(t, uid, msg) {
     const g = t.game;
     if (t.phase !== 'playing' || !g) return { error: 'não tem partida em andamento' };
-    if (g.stage !== 'aim') return { error: 'espere a escolha da punição' };
     if (uid !== g.shooter) return { error: 'não é a sua vez' };
     if (g.shot && now() < g.shot.endsAt - 150) return { error: 'espere as bolas pararem' };
     const angle = Number(msg.angle);
     const power = Number(msg.power);
     if (!Number.isFinite(angle) || !Number.isFinite(power)) return { error: 'tacada inválida' };
     const start = [...g.balls.entries()].map(([id, b]) => [id, round3(b.x), round3(b.z)]);
-    const sim = simulate(g.balls, angle, Math.min(1, Math.max(MIN_POWER, power)));
+    const sim = simulateFn(g.balls, angle, Math.min(1, Math.max(MIN_POWER, power)));
     g.seq++;
     const startAt = now() + CUE_MS;
     const endsAt = startAt + sim.frames.length * FRAME_MS + 250;
@@ -487,47 +486,20 @@ function createPool({
     return {};
   }
 
-  function choosePenalty(t, uid, ball) {
-    const g = t.game;
-    if (t.phase !== 'playing' || !g || g.stage !== 'penalty') return { error: 'não tem punição pra escolher' };
-    if (teamOfUser(g, uid) !== g.penalty.team) return { error: 'quem escolhe é o outro time' };
-    if (g.shot && now() < g.shot.endsAt - 150) return { error: 'espere as bolas pararem' };
-    const id = Number(ball);
-    if (!g.penalty.options.includes(id) || !g.balls.has(id)) return { error: 'essa bola não pode' };
-    removePenaltyBall(t, id, uid);
-    changed(t);
-    return {};
-  }
-  function removePenaltyBall(t, id, uid) {
-    const g = t.game;
-    g.balls.delete(id);
-    g.down.push({ id, by: 'punicao' });
-    if (g.last) g.last.penaltyBall = id;
-    g.penalty = null;
-    g.stage = 'aim';
-    g.deadline = now() + aimMs;
-    t.log = { type: 'penalty', ball: id, userId: uid };
-    arm(t, g.deadline);
-  }
-
   function onTimeout(t) {
     const g = t.game;
     if (t.phase !== 'playing' || !g) return;
     if (now() < g.deadline - 50) { arm(t, g.deadline); return; }
-    if (g.stage === 'penalty') {
-      removePenaltyBall(t, Math.min(...g.penalty.options.filter((id) => g.balls.has(id))), null);
-    } else {
-      const team = g.turnTeam;
-      g.last = { seq: g.seq, team, userId: g.shooter, foul: 'tempo', first: null, pocketed: [], penaltyBall: null, cont: false, wasBreak: g.isBreak };
-      g.isBreak = false;
-      passTurnWithPenalty(t, team, now());
-      t.log = { type: 'timeout', team };
-    }
+    const team = g.turnTeam;
+    g.last = { seq: g.seq, team, userId: g.shooter, foul: 'tempo', first: null, pocketed: [], penaltyBall: null, cont: false, wasBreak: g.isBreak, assigned: null, wasGroup: !!g.group[team] };
+    g.isBreak = false;
+    passTurnWithPenalty(t, team, now(), !!g.group[team]);
+    t.log = { type: 'timeout', team };
     changed(t);
   }
 
   // ---------- pedidos ----------
-  // msg.op: ready (on) | shoot (angle, power) | penalty (ball) | resign
+  // msg.op: ready (on) | shoot (angle, power) | resign
   function handle(channelId, def, uid, msg) {
     const t = getTable(channelId, def, true);
     const op = msg && msg.op;
@@ -540,7 +512,6 @@ function createPool({
       return {};
     }
     if (op === 'shoot') return shoot(t, uid, msg);
-    if (op === 'penalty') return choosePenalty(t, uid, msg.ball);
     if (op === 'resign') {
       const g = t.game;
       if (t.phase !== 'playing' || !g) return { error: 'não tem partida em andamento' };
@@ -637,5 +608,5 @@ function createPool({
 module.exports = {
   createPool, simulate, rack, freeSpot, teamOfBall,
   TABLE: { L, W, HX, HZ, R, CORNER_GAP, MID_GAP, POCKETS, HEAD, FOOT },
-  GROUPS, GROUP_NAME, FRAME_MS, AIM_MS, PENALTY_MS, PENALTY_SPARES_LAST,
+  GROUPS, GROUP_NAME, FRAME_MS, AIM_MS, PENALTY_SPARES_LAST,
 };
