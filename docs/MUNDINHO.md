@@ -288,8 +288,8 @@ Ideias que ficaram de fora: acumular +2/+4, desafiar o +4, placar entre partidas
 
 ### Etapa 6 — sinuca "par x ímpar" no meio do térreo ✅
 - [x] Cena: mesa `sinuca` (game `pool`) em (4, 1.0), comprimento no eixo x, com 4 banquetas: `sinuca-1`
-      e `sinuca-2` a oeste = time ÍMPAR; `sinuca-3` e `sinuca-4` a leste = time PAR (as primeiras
-      metades de `seats` são do ímpar). Tapete, 3 luminárias e colisor; o nascer foi pra (4, 4.5).
+      e `sinuca-2` a oeste = time A (da esquerda); `sinuca-3` e `sinuca-4` a leste = time B (da
+      direita) — a primeira metade de `seats` é o time A. Tapete, 3 luminárias e colisor; o nascer foi pra (4, 4.5).
       `props.js` (`poolTable`): área de jogo 2.24 x 1.12 m, pano em y 0.80 — as MESMAS medidas de
       `server/games/pool.js` e `public/world/games/pool.js` (mudou uma, muda as três).
 - [x] `server/games/pool.js` (testes em `tests/pool.test.js`): a física roda no servidor (passo de
@@ -298,7 +298,11 @@ Ideias que ficaram de fora: acumular +2/+4, desafiar o +4, placar entre partidas
       9 m/s) vira quadros a cada 1/30 s (só quem mexeu, em mm) que vão pra todo mundo junto com
       `startAt`/`endsAt`; o cliente só anima. Triângulo sorteado com folguinhas de ~1 mm (sem isso a
       saída vira pêndulo de Newton e não abre).
-      Regras: 1x1 ou 2x2 (times iguais, todos "pronto"); ímpar 3..15, par 2..14, bola 1 = final
+      Regras: 1x1 ou 2x2 (times iguais, todos "pronto"); MESA ABERTA — ninguém começa par ou ímpar:
+      o primeiro time que derrubar uma bolinha numa tacada sem falta (saída inclusive; se caírem
+      várias, vale a primeira que caiu) fica com o grupo dela (`game.group = { a, b }`), o outro com o
+      outro. Com a mesa aberta qualquer bola pode ser acertada primeiro (menos a 1) e falta só passa a
+      vez (ninguém tem bola pra derrubar). Ímpares 3..15, pares 2..14, bola 1 = final
       (derrubar depois das suas ganha; antes da hora ou com falta perde; na saída volta pra mesa).
       Falta: não acertar nada, acertar primeiro a do outro time, a 1 antes da hora (ou outra quando é
       a vez da 1), branca caída (volta pra marca da cabeceira) ou tempo (45 s). Punição: o outro time

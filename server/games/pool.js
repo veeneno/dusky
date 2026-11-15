@@ -1,19 +1,23 @@
-'use strict';
 // Sinuca "par x ímpar" nas mesas de sinuca do mundinho (docs/MUNDINHO.md, public/world/games/pool.js).
 //
 // Regras (combinadas com o dono do projeto):
-// - 1x1 ou 2x2. Os times saem das banquetas: as duas primeiras da mesa (`def.seats`) são do time
-//   ÍMPAR, as duas últimas do PAR. Começa quando todo mundo sentado está "pronto" e os times têm o
-//   mesmo tamanho (1 contra 1 ou 2 contra 2). Em dupla, os dois de cada time se revezam.
-// - 15 bolas numeradas + a branca. Ímpar: 3 5 7 9 11 13 15. Par: 2 4 6 8 10 12 14. A bola 1 é a
+// - 1x1 ou 2x2. Os times saem das banquetas: as duas primeiras da mesa (`def.seats`) são o time A
+//   (da esquerda), as duas últimas o time B (da direita). Começa quando todo mundo sentado está
+//   "pronto" e os times têm o mesmo tamanho (1 contra 1 ou 2 contra 2). Em dupla, os parceiros se revezam.
+// - 15 bolas numeradas + a branca. Ímpares: 3 5 7 9 11 13 15. Pares: 2 4 6 8 10 12 14. A bola 1 é a
 //   FINAL: só pode ser encaçapada depois que o time derrubou todas as dele; quem encaçapa a 1 certo
 //   ganha. Derrubar a 1 antes da hora (ou cometendo falta) perde. Na saída, a 1 volta pra mesa.
-// - Falta: errar todas as bolas, acertar primeiro uma bola do outro time, acertar primeiro a 1 antes
+// - MESA ABERTA: ninguém começa sendo par ou ímpar. O primeiro time que derrubar uma bolinha numa
+//   tacada sem falta (saída inclusive) fica com o grupo dela — par ou ímpar — e o outro time com o
+//   outro. Se caírem várias na mesma tacada, vale a primeira que caiu. Com a mesa aberta, qualquer
+//   bola pode ser acertada primeiro (menos a 1).
+// - Falta: errar todas as bolas, acertar primeiro uma bola do outro grupo, acertar primeiro a 1 antes
 //   da hora (ou outra bola quando já é a vez da 1), encaçapar a branca ou estourar o tempo.
 //   Punição: o OUTRO time escolhe uma bola dele pra derrubar (tirar da mesa) e ganha a vez.
 //   A punição nunca derruba a bola 1 e nunca derruba a última bolinha do time (essa tem que ser
-//   encaçapada jogando) — ver PENALTY_SPARES_LAST.
-// - Encaçapou bola sua sem falta = joga de novo. Bola do outro time que cair fica caída (é dele).
+//   encaçapada jogando) — ver PENALTY_SPARES_LAST. Com a mesa ainda aberta não tem bola "dele" pra
+//   derrubar: a falta só passa a vez.
+// - Encaçapou bola sua sem falta = joga de novo. Bola do outro grupo que cair fica caída (é dele).
 //   Na saída, encaçapar qualquer bola (menos a branca) também dá direito de jogar de novo.
 //
 // A física é do servidor: a tacada (ângulo + força) chega aqui, a mesa é simulada até as bolas
@@ -79,9 +83,12 @@ const PENALTY_SPARES_LAST = true; // punição não derruba a última bolinha do
 const ODD = [3, 5, 7, 9, 11, 13, 15];
 const EVEN = [2, 4, 6, 8, 10, 12, 14];
 const GROUPS = { impar: ODD, par: EVEN };
-const TEAM_NAME = { impar: 'ímpar', par: 'par' };
+const GROUP_NAME = { impar: 'ímpar', par: 'par' };
+// grupo (par/ímpar) de uma bola; times são 'a' (banquetas da esquerda) e 'b' (da direita)
 const teamOfBall = (id) => (id >= 2 ? (id % 2 ? 'impar' : 'par') : null);
-const other = (team) => (team === 'impar' ? 'par' : 'impar');
+const groupOfBall = teamOfBall;
+const otherGroup = (gr) => (gr === 'impar' ? 'par' : 'impar');
+const other = (team) => (team === 'a' ? 'b' : 'a');
 const round3 = (v) => Math.round(v * 1000) / 1000;
 
 // triângulo: a 1 no meio, o resto embaralhado, os dois cantos de trás de times diferentes
@@ -303,10 +310,10 @@ function createPool({
   function changed(t) { if (onChange) onChange(t.channelId, t.def.id); }
   const teamOfSeat = (def, seat) => {
     const i = def.seats.indexOf(seat);
-    return i < 0 ? null : i < def.seats.length / 2 ? 'impar' : 'par';
+    return i < 0 ? null : i < def.seats.length / 2 ? 'a' : 'b';
   };
   function lobbyTeams(t) {
-    const out = { impar: [], par: [] };
+    const out = { a: [], b: [] };
     const idx = (uid) => t.def.seats.indexOf(t.seated.get(uid).seat);
     for (const uid of [...t.seated.keys()].sort((a, b) => idx(a) - idx(b))) {
       const team = teamOfSeat(t.def, t.seated.get(uid).seat);
@@ -314,8 +321,9 @@ function createPool({
     }
     return out;
   }
-  const teamOfUser = (g, uid) => (g.teams.impar.includes(uid) ? 'impar' : g.teams.par.includes(uid) ? 'par' : null);
-  const groupLeft = (balls, team) => GROUPS[team].filter((id) => balls.has(id));
+  const teamOfUser = (g, uid) => (g.teams.a.includes(uid) ? 'a' : g.teams.b.includes(uid) ? 'b' : null);
+  // bolas do grupo do time que ainda estão na mesa (null = mesa aberta, o time ainda não tem grupo)
+  const groupLeft = (g, balls, team) => (g.group[team] ? GROUPS[g.group[team]].filter((id) => balls.has(id)) : null);
 
   function disarm(t) { if (t.timer) clearTimer(t.timer); t.timer = null; }
   function arm(t, at) {
@@ -333,9 +341,9 @@ function createPool({
   function startGame(t) {
     const teams = lobbyTeams(t);
     t.round++;
-    const breaker = t.round % 2 ? 'impar' : 'par';
+    const breaker = t.round % 2 ? 'a' : 'b';
     const g = {
-      teams, rot: { impar: 0, par: 0 }, turnTeam: breaker, shooter: null, balls: rack(random), down: [],
+      teams, group: { a: null, b: null }, rot: { a: 0, b: 0 }, turnTeam: breaker, shooter: null, balls: rack(random), down: [],
       stage: 'aim', deadline: 0, shot: null, seq: 0, last: null, penalty: null, isBreak: true, result: null,
     };
     g.shooter = nextShooter(g, breaker);
@@ -350,7 +358,7 @@ function createPool({
   function maybeStart(t) {
     if (t.phase === 'playing') return;
     const teams = lobbyTeams(t);
-    if (!teams.impar.length || teams.impar.length !== teams.par.length) return;
+    if (!teams.a.length || teams.a.length !== teams.b.length) return;
     for (const uid of t.seated.keys()) if (!t.ready.has(uid)) return;
     startGame(t);
   }
@@ -372,7 +380,7 @@ function createPool({
     const ben = other(foulTeam);
     g.turnTeam = ben;
     g.shooter = nextShooter(g, ben);
-    const options = groupLeft(g.balls, ben);
+    const options = groupLeft(g, g.balls, ben) || []; // mesa aberta: nada pra derrubar
     const canRemove = PENALTY_SPARES_LAST ? options.length >= 2 : options.length >= 1;
     if (canRemove) {
       g.stage = 'penalty';
@@ -393,8 +401,11 @@ function createPool({
     const team = g.turnTeam;
     const opp = other(team);
     const before = g.balls;
-    const onFinal = groupLeft(before, team).length === 0;
-    const ids = sim.pocketed.map((p) => p.id);
+    const open = !g.group[team];
+    const mine = groupLeft(g, before, team);
+    const onFinal = !open && mine.length === 0;
+    // pela ordem em que caíram (a primeira que cai decide o grupo com a mesa aberta)
+    const ids = [...sim.pocketed].sort((x, y) => x.f - y.f).map((p) => p.id);
     const cueIn = ids.includes(0);
     const oneIn = ids.includes(1);
     let foul = null;
@@ -402,12 +413,12 @@ function createPool({
     else if (sim.first == null) foul = 'nada';
     else if (!g.isBreak) {
       if (onFinal) { if (sim.first !== 1) foul = 'nao-1'; } else if (sim.first === 1) foul = 'bola-1';
-      else if (teamOfBall(sim.first) === opp) foul = 'adversaria';
+      else if (!open && groupOfBall(sim.first) !== g.group[team]) foul = 'adversaria';
     }
     g.balls = sim.final;
     for (const id of ids) if (id !== 0) g.down.push({ id, by: 'tacada' });
     if (cueIn) g.balls.set(0, freeSpot(g.balls, HEAD.x, HEAD.z, -1));
-    const last = { seq: g.seq, team, userId: uid, foul, first: sim.first, pocketed: ids, penaltyBall: null, cont: false, wasBreak: g.isBreak };
+    const last = { seq: g.seq, team, userId: uid, foul, first: sim.first, pocketed: ids, penaltyBall: null, cont: false, wasBreak: g.isBreak, assigned: null };
     g.last = last;
 
     if (oneIn) {
@@ -424,7 +435,16 @@ function createPool({
         return;
       }
     }
-    const ownIn = ids.filter((id) => teamOfBall(id) === team);
+    // mesa aberta: a primeira bolinha que caiu (sem falta) decide quem é par e quem é ímpar
+    if (open && !foul) {
+      const firstDown = ids.find((id) => id > 1);
+      if (firstDown) {
+        g.group[team] = groupOfBall(firstDown);
+        g.group[opp] = otherGroup(g.group[team]);
+        last.assigned = g.group[team];
+      }
+    }
+    const ownIn = g.group[team] ? ids.filter((id) => groupOfBall(id) === g.group[team]) : [];
     const cont = !foul && (g.isBreak ? ids.some((id) => id > 1) : ownIn.length > 0);
     g.isBreak = false;
     last.cont = cont;
@@ -580,6 +600,7 @@ function createPool({
   function viewFor(channelId, def, viewerId) {
     const t = getTable(channelId, def, false);
     const base = { game: 'pool', table: def.id, groups: GROUPS, spareLast: PENALTY_SPARES_LAST };
+    const g0 = t && t.game;
     const seatedList = t ? [...t.seated.entries()].map(([userId, s]) => ({ userId, seat: s.seat, team: teamOfSeat(def, s.seat) })) : [];
     const g = t && t.game;
     const nowMs = now();
@@ -592,7 +613,8 @@ function createPool({
       round: t ? t.round : 0,
       seated: seatedList,
       ready: t ? [...t.ready] : [],
-      teams: g ? g.teams : t ? lobbyTeams(t) : { impar: [], par: [] },
+      teams: g ? g.teams : t ? lobbyTeams(t) : { a: [], b: [] },
+      group: g0 ? g0.group : { a: null, b: null },
       balls: ballList(g ? g.balls : IDLE_RACK),
       down: g ? g.down : [],
       turnTeam: g ? g.turnTeam : null,
@@ -615,5 +637,5 @@ function createPool({
 module.exports = {
   createPool, simulate, rack, freeSpot, teamOfBall,
   TABLE: { L, W, HX, HZ, R, CORNER_GAP, MID_GAP, POCKETS, HEAD, FOOT },
-  GROUPS, TEAM_NAME, FRAME_MS, AIM_MS, PENALTY_MS, PENALTY_SPARES_LAST,
+  GROUPS, GROUP_NAME, FRAME_MS, AIM_MS, PENALTY_MS, PENALTY_SPARES_LAST,
 };

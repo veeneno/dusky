@@ -24,7 +24,9 @@ const POCKETS = [
 ];
 const CUE_LEAD_MS = 450;   // o servidor deixa esse tempo pro taco puxar e bater antes das bolas andarem
 const DROP_MS = 260;
-const TEAM_NAME = { impar: 'ímpar', par: 'par' };
+const GROUP_NAME = { impar: 'ímpar', par: 'par' };
+const GROUP_PLURAL = { impar: 'ímpares', par: 'pares' };
+const SIDE = { a: 'da esquerda', b: 'da direita' }; // times: banquetas da esquerda (a) e da direita (b)
 const BALL_COLORS = {
   1: '#f2c40c', 2: '#1d4ed8', 3: '#dc2626', 4: '#6d28d9', 5: '#f97316', 6: '#15803d', 7: '#7f1d1d', 8: '#111111',
   9: '#f2c40c', 10: '#1d4ed8', 11: '#dc2626', 12: '#6d28d9', 13: '#f97316', 14: '#15803d', 15: '#7f1d1d',
@@ -372,7 +374,7 @@ export function createPool({ scene, container, api, defs, world }) {
   }
 
   const mySeatTable = () => {
-    for (const [id, st] of states) if (st.seated.some((s) => s.userId === me()) || st.teams.impar.includes(me()) || st.teams.par.includes(me())) return id;
+    for (const [id, st] of states) if (st.seated.some((s) => s.userId === me()) || st.teams.a.includes(me()) || st.teams.b.includes(me())) return id;
     return null;
   };
   function nearestTable() {
@@ -387,12 +389,13 @@ export function createPool({ scene, container, api, defs, world }) {
     return best.id;
   }
 
-  const teamWord = (team) => `time ${TEAM_NAME[team]}`;
+  // depois que a mesa fecha, o time vira "time ímpar"/"time par"; antes, é o lado da mesa
+  const teamWord = (st, team) => (st.group && st.group[team] ? `time ${GROUP_NAME[st.group[team]]}` : `time ${SIDE[team]}`);
   function resultText(st) {
     const r = st.result;
     if (!r) return '';
-    const w = teamWord(r.winner);
-    const l = teamWord(r.winner === 'impar' ? 'par' : 'impar');
+    const w = teamWord(st, r.winner);
+    const l = teamWord(st, r.winner === 'a' ? 'b' : 'a');
     switch (r.reason) {
       case 'bola-1': return `🏆 ${w} derrubou a 1 e venceu!`;
       case 'bola-1-cedo': return `a 1 caiu antes da hora — ${w} venceu`;
@@ -405,31 +408,32 @@ export function createPool({ scene, container, api, defs, world }) {
   function lastText(st) {
     const l = st.last;
     if (!l) return '';
-    const who = l.userId != null ? name(l.userId) : teamWord(l.team);
+    const who = l.userId != null ? name(l.userId) : teamWord(st, l.team);
     const parts = [];
     const balls = l.pocketed.filter((id) => id !== 0);
     if (balls.length) parts.push(`${balls.length > 1 ? 'caíram' : 'caiu'} a ${balls.join(', a ')}`);
     if (l.foul) parts.push(`falta: ${FOUL_TEXT[l.foul] || 'falta'}`);
     else if (l.cont) parts.push('joga de novo');
     else if (!balls.length) parts.push(l.wasBreak ? 'saída sem bola caída' : 'nada caiu');
-    if (l.penaltyBall) parts.push(`punição: o ${teamWord(l.team === 'impar' ? 'par' : 'impar')} derrubou a ${l.penaltyBall}`);
+    if (l.assigned) parts.push(`o time ${SIDE[l.team]} ficou com as ${GROUP_PLURAL[l.assigned]}`);
+    if (l.penaltyBall) parts.push(`punição: o ${teamWord(st, l.team === 'a' ? 'b' : 'a')} derrubou a ${l.penaltyBall}`);
     return `${who}: ${parts.join(' · ')}`;
   }
   function modeText(st) {
-    const n = Math.max(st.teams.impar.length, st.teams.par.length);
+    const n = Math.max(st.teams.a.length, st.teams.b.length);
     return n >= 2 ? '2x2' : n === 1 ? '1x1' : '';
   }
   function statusText(st) {
     if (st.phase === 'playing') {
       if (animating(st)) return st.shot ? `tacada de ${name(st.shot.userId)}…` : 'bolas rolando…';
-      if (st.stage === 'penalty') return `falta! o ${teamWord(st.penalty.team)} escolhe uma bola pra derrubar`;
+      if (st.stage === 'penalty') return `falta! o ${teamWord(st, st.penalty.team)} escolhe uma bola pra derrubar`;
       const mine = st.shooter === me();
-      return mine ? `sua vez${st.isBreak ? ' — saída!' : ''}` : `vez de ${name(st.shooter)} (${teamWord(st.turnTeam)})`;
+      return mine ? `sua vez${st.isBreak ? ' — saída!' : ''}` : `vez de ${name(st.shooter)} (${teamWord(st, st.turnTeam)})`;
     }
     if (st.phase === 'over' && !animating(st)) return resultText(st);
     const t = st.teams;
-    if (!t.impar.length && !t.par.length) return 'mesa livre — sente numa banqueta pra jogar';
-    if (t.impar.length !== t.par.length) return 'os times precisam ficar do mesmo tamanho (1x1 ou 2x2)';
+    if (!t.a.length && !t.b.length) return 'mesa livre — sente numa banqueta pra jogar';
+    if (t.a.length !== t.b.length) return 'os times precisam ficar do mesmo tamanho (1x1 ou 2x2)';
     return 'esperando todo mundo ficar pronto';
   }
 
@@ -439,7 +443,8 @@ export function createPool({ scene, container, api, defs, world }) {
     card.className = `pool-team is-${team}` + (playing && st.turnTeam === team && !animating(st) ? ' is-turn' : '');
     const head = document.createElement('div');
     head.className = 'pool-team-head';
-    head.innerHTML = `<strong>time ${TEAM_NAME[team]}</strong><small>${team === 'impar' ? 'banquetas da esquerda' : 'banquetas da direita'}</small>`;
+    const gr = st.group && st.group[team];
+    head.innerHTML = `<strong>time ${SIDE[team]}</strong><span class="pool-group${gr ? ' is-set' : ''}">${gr ? GROUP_PLURAL[gr] : 'a decidir'}</span>`;
     card.appendChild(head);
     const people = document.createElement('div');
     people.className = 'pool-team-people';
@@ -464,7 +469,8 @@ export function createPool({ scene, container, api, defs, world }) {
     const chips = document.createElement('div');
     chips.className = 'pool-chips';
     const on = new Set(st.balls.map((b) => b[0]));
-    for (const id of st.groups[team]) chips.appendChild(chip(id, st.phase !== 'waiting' && !on.has(id)));
+    if (gr) for (const id of st.groups[gr]) chips.appendChild(chip(id, st.phase !== 'waiting' && !on.has(id)));
+    else chips.innerHTML = '<span class="pool-muted">a primeira bolinha que esse time derrubar decide se ele é par ou ímpar</span>';
     card.appendChild(chips);
     return card;
   }
@@ -682,7 +688,7 @@ export function createPool({ scene, container, api, defs, world }) {
           }
           box.appendChild(row);
         } else {
-          box.innerHTML = `<p class="duno-empty">o ${teamWord(st.penalty.team)} está escolhendo a bola da punição…</p>`;
+          box.innerHTML = `<p class="duno-empty">o ${teamWord(st, st.penalty.team)} está escolhendo a bola da punição…</p>`;
         }
       } else if (st.shooter === me()) {
         const pw = document.createElement('label');
@@ -705,7 +711,7 @@ export function createPool({ scene, container, api, defs, world }) {
     }
     if (st.phase === 'playing') return box;
     if (!seated) {
-      box.innerHTML = '<p class="duno-empty">sente numa banqueta pra jogar: as da esquerda são do time ímpar, as da direita do par</p>';
+      box.innerHTML = '<p class="duno-empty">sente numa banqueta pra jogar: as da esquerda são um time, as da direita o outro</p>';
       return box;
     }
     const ready = st.ready.includes(me());
@@ -744,7 +750,7 @@ export function createPool({ scene, container, api, defs, world }) {
 
     const teams = document.createElement('div');
     teams.className = 'pool-teams';
-    teams.appendChild(teamCard(st, 'impar'));
+    teams.appendChild(teamCard(st, 'a'));
     const one = document.createElement('div');
     one.className = 'pool-final';
     one.appendChild(chip(1, false));
@@ -752,7 +758,7 @@ export function createPool({ scene, container, api, defs, world }) {
     small.textContent = 'bola final';
     one.appendChild(small);
     teams.appendChild(one);
-    teams.appendChild(teamCard(st, 'par'));
+    teams.appendChild(teamCard(st, 'b'));
     panel.appendChild(teams);
 
     // resultado, última jogada e botões ficam ACIMA da mesa (o painel não pode esconder a punição)
@@ -779,8 +785,8 @@ export function createPool({ scene, container, api, defs, world }) {
     }
     const rules = document.createElement('details');
     rules.className = 'pool-rules';
-    rules.innerHTML = `<summary>regras</summary><p>Time ímpar: 3 5 7 9 11 13 15 · time par: 2 4 6 8 10 12 14. A <b>1</b> é a bola final: depois de derrubar as suas, quem derruba a 1 ganha (derrubar antes da hora perde).</p>
-      <p>É <b>falta</b> errar todas as bolas, acertar primeiro a do outro time (ou a 1 antes da hora), deixar a branca cair ou estourar o tempo. Na falta, o outro time escolhe uma bola dele pra derrubar e ganha a vez — a punição nunca derruba a 1${st.spareLast ? ' nem a última bolinha do time' : ''}.</p>
+    rules.innerHTML = `<summary>regras</summary><p>Ninguém começa par ou ímpar: a <b>mesa é aberta</b> e o primeiro time que derrubar uma bolinha (sem falta) fica com o grupo dela — ímpares 3 5 7 9 11 13 15 ou pares 2 4 6 8 10 12 14 — e o outro time com o outro. A <b>1</b> é a bola final: depois de derrubar as suas, quem derruba a 1 ganha (derrubar antes da hora perde).</p>
+      <p>É <b>falta</b> errar todas as bolas, acertar primeiro a do outro grupo (ou a 1 antes da hora), deixar a branca cair ou estourar o tempo. Na falta, o outro time escolhe uma bola dele pra derrubar e ganha a vez — a punição nunca derruba a 1${st.spareLast ? ' nem a última bolinha do time' : ''}. Com a mesa ainda aberta, a falta só passa a vez.</p>
       <p>Derrubou bola sua sem falta: joga de novo. Em dupla, os dois de cada time se revezam.</p>`;
     panel.appendChild(rules);
     drawTable();
