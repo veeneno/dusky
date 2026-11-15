@@ -37,6 +37,11 @@ A galeria usa imagens estáticas, busca sem acentos e páginas de 36 itens. A es
 atualiza a prévia e só persiste ao salvar o perfil. Molduras fora da tela usam a
 imagem estática. Plaquinhas carregam vídeo sem som ao receber hover/foco.
 
+Efeitos de perfil são desenhados pelo Discord numa tela de 450 × 880 (1,5× um cartão de 300 px).
+As camadas ficam dentro de um palco (`.catalog-fx-stage`) com essa proporção, preso no topo e com a
+largura do cartão — nunca esticam; o cartão com efeito tem no mínimo essa altura (300 × 587 no popout)
+e o que passar dela é cortado embaixo. Por isso o cartão de perfil tem 300 px de largura.
+
 Efeitos de perfil só iniciam quando visíveis. As camadas são pré-carregadas e
 compartilham a mesma origem de tempo; cada repetição recebe um novo blob URL para
 reiniciar o APNG, preservando o cache de rede. São respeitados início, duração,

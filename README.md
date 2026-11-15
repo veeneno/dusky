@@ -1,6 +1,6 @@
 # dusky
 
-Um Discord próprio, feito pra mim e pros meus amigos. Tem servidores com convite, canais de texto e voz, DMs, cargos, chamadas de voz/vídeo, compartilhamento de tela pela placa de vídeo, bot de música e um app desktop. Tudo roda num PC de casa, com banco SQLite e um front-end em JavaScript puro (sem framework, sem build).
+Um Discord próprio, feito pra mim e pros meus amigos. Tem servidores com convite, canais de texto e voz organizados em categorias, DMs, cargos, chamadas de voz/vídeo, compartilhamento de tela pela placa de vídeo, soundboard, bot de música, um **mundinho 3D** com jogos (Duno, 21, xadrez e sinuca) e um app desktop em Rust. Tudo roda num PC de casa, com banco SQLite e um front-end em JavaScript puro (sem framework, sem build).
 
 O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O repositório é privado: [`veeneno/dusky`](https://github.com/veeneno/dusky).
 
@@ -8,7 +8,10 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O re
 
 **Contas e perfil**
 - Cadastro aberto e login. Conta nova não vê nada até entrar num servidor por convite.
-- Perfil com avatar e banner (podem ser gif), cor de destaque (sólida ou degradê), bio e status.
+- Perfil com avatar e banner (podem ser gif, inclusive do GIPHY), cor de destaque (sólida ou degradê), bio e status.
+- **Cartão de perfil no tamanho do Discord** (300 px de largura), com o cartão inteiro nas cores da pessoa.
+- **Efeito no nome**: LED RGB, neon, degradê, brilho ou pulso (com as cores escolhidas), aparecendo no chat, na lista de membros e no cartão.
+- **Decorações do Discord**: decoração do avatar (molduras), placa do nome e efeito de perfil, escolhidas numa galeria com busca (catálogo com ~1.400 itens, ver [`docs/decor-catalog.md`](docs/decor-catalog.md)). Os efeitos de perfil animados mantêm a proporção original (feitos pra um cartão de 300 × 587) e só tocam quando estão na tela.
 - Troca de senha. Senha redefinida ou conta suspensa derruba todas as sessões abertas.
 
 **Servidores**
@@ -16,7 +19,12 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O re
 - Convites por link (`https://dusky.veneno.space/invite/CODIGO`), com limite de usos e validade.
 - Cargos com permissões independentes: gerenciar canais/categorias, apagar mensagens de outros, expulsar membros e moderar calls. Administrador mantém acesso completo.
 - Restrições por canal e cargo: ver, entrar na call, enviar mensagens, anexar/GIFs, reagir e fixar. Sem restrição, mantém o comportamento anterior.
-- Categorias com nome, posição e recolhimento lembrado no aparelho. Texto e voz podem ficar juntos; apagar categoria conserva canais e histórico.
+- **Canais e categorias no estilo do Discord**:
+  - canais sem categoria ficam no topo, sem título; cada categoria tem a setinha de recolher (lembrado no aparelho) e o **+** pra criar canal nela, que aparece ao passar o mouse;
+  - **botão direito**: no espaço vazio (criar canal, criar categoria, convidar), na categoria (recolher, recolher todas, criar canal, editar, apagar, copiar ID) e no canal (convidar, editar, apagar, copiar ID);
+  - **arrastar pra reordenar**: canais (inclusive de uma categoria pra outra, ou pro topo) e categorias; texto sempre antes de voz dentro de cada categoria;
+  - **criar canal** com o tipo em lista (texto, voz ou mundinho), `#` no nome (vira `nome-assim` enquanto digita) e **canal privado** (já abre a escolha de quais cargos veem);
+  - servidor novo já nasce com as categorias "canais de texto" e "canais de voz"; apagar categoria conserva canais e histórico.
 - **Configurações do servidor em tela cheia, no estilo do Discord** (cada aba só aparece pra quem tem a permissão dela):
   - **perfil do servidor**: nome, ícone, banner (aparece no topo da lista de canais) e descrição, com prévia ao vivo;
   - **visão geral**: canal de mensagens do sistema (com frases de boas-vindas aleatórias quando alguém entra) e canal AFK (quem fica sem falar por 1 min a 1 h é levado pra lá);
@@ -50,7 +58,7 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O re
 
 **Calls (voz, câmera e tela)**
 - **Quem está falando** fica com o círculo verde em todo lugar: no card da call, na lista de quem está no canal de voz (na barra lateral, mesmo pra quem não entrou) e na sua barra de perfil.
-- WebRTC direto entre as pessoas (malha: cada um tem uma conexão com cada outro).
+- WebRTC direto entre as pessoas (malha: cada um tem uma conexão com cada outro) ou, com `SFU=livekit`, passando pelo servidor de mídia do PC (ver "Servidor de mídia" abaixo).
 - Mutar, ensurdecer e volume de cada pessoa de 0 a 200% (botão direito na pessoa).
 - Áudio em qualidade alta: voz em Opus 96 kbps com correção de perda, som da tela em 192 kbps estéreo.
 - Supressão de ruído: avançada (DeepFilterNet3, parecida com a Krisp), leve (RNNoise) ou nenhuma.
@@ -64,10 +72,16 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O re
 - Cada um ouve com o próprio volume (configurações → som → volume do soundboard); botão direito no som = ouvir só você. Ensurdecido não ouve, e silenciar alguém só pra você silencia os sons dele também.
 
 **Mundinho 3D** (canal do tipo "mundinho")
-- Uma call que vira uma **cobertura de luxo em 3D com 2 andares** (sala com pé-direito duplo e vista da cidade à noite, cozinha, jantar, mezanino): cada pessoa é um ursinho que anda (WASD ou clique), sobe a escada, senta nos sofás/pufes/banquetas, acena e dança. Câmera em 1ª ou 3ª pessoa (tecla V).
+- Uma call que vira uma **cobertura de luxo em 3D com 2 andares** (36 × 24 m: sala de TV com pé-direito duplo e vista da cidade à noite, cozinha, jantar, piano, mezanino com pufes): cada pessoa é um ursinho que anda (WASD ou clique), sobe a escada, senta nos sofás/pufes/banquetas, acena e dança. Câmera em 1ª ou 3ª pessoa (tecla V).
 - **TV da sala**: mostra a tela que alguém compartilhou ou um **vídeo do YouTube sincronizado** pra todo mundo. Cada um pode mutar a TV só pra si, mudar o volume ou pôr em tela cheia.
+- **Jogos nas mesas** (sentar na cadeira = entrar; quem chega perto assiste; o servidor decide tudo):
+  - **Duno** (estilo Uno, até 8) no mezanino, com as cartas em 3D na mão;
+  - **21 (blackjack)** em 2 mesas no térreo, com fichas;
+  - **xadrez** em 2 mesas no mezanino (clássico, rápido e blitz), com relógio e peças em 3D;
+  - **sinuca "par x ímpar"** no meio do térreo, 1×1 ou 2×2: mesa aberta (a primeira bola que cai decide quem é par e quem é ímpar), a 1 é a bola final, e falta derruba a bola de menor número do outro time. A física roda no servidor e todo mundo vê a mesma jogada;
+  - **piano** de cauda (tocar pelo teclado, todo mundo ouve).
 - A **call é espacial**: você ouve cada um vindo da direção e da distância do boneco (melhor com fone).
-- Não pesa pra ninguém: o Three.js e o código 3D só são baixados quando a pessoa abre um mundinho, e ele só desenha enquanto está na tela. Plano completo, protocolo e próximos passos (jogos nas mesas, TV com a tela compartilhada): [`docs/MUNDINHO.md`](docs/MUNDINHO.md).
+- Não pesa pra ninguém: o Three.js e o código 3D só são baixados quando a pessoa abre um mundinho, e ele só desenha enquanto está na tela. Regras de cada jogo, protocolo, cena e próximos passos: [`docs/MUNDINHO.md`](docs/MUNDINHO.md).
 
 **Bot de música** (um por servidor, toca na call de quem pediu)
 
@@ -88,7 +102,7 @@ O áudio sempre vem do YouTube (a API do Spotify só dá o nome, o artista e a c
 - Servidores: ver e apagar.
 - Aviso geral que aparece pra todo mundo conectado.
 
-**App desktop — dusky Mist 1.0** (Rust/Tauri, Linux e Windows): abre direto no site, compartilha a tela pela placa de vídeo, mostra o jogo aberto ("jogando X"), o contador de menções, volta sozinho quando o servidor cai e **se atualiza sozinho**. Os amigos instalam pela página **https://dusky.veneno.space/baixar** (com o guia de dependências de cada distro Linux). Quem tem o app antigo (Electron) migra sozinho pelo atualizador. Detalhes em [`tauri/README.md`](tauri/README.md).
+**App desktop — dusky Mist 1.0.x** (Rust/Tauri, Linux e Windows): abre direto no site, faz a call pelo Rust no Linux (o WebKitGTK não tem WebRTC), compartilha a tela pela placa de vídeo, mostra o jogo aberto ("jogando X"), o contador de menções, volta sozinho quando o servidor cai e **se atualiza sozinho**. Os amigos instalam pela página **https://dusky.veneno.space/baixar** (com o guia de dependências de cada distro Linux). Quem tem o app antigo (Electron) migra sozinho pelo atualizador. Detalhes em [`tauri/README.md`](tauri/README.md).
 
 ## Como rodar
 
@@ -163,7 +177,7 @@ Referências de implementação: [Web Push](https://github.com/web-push-libs/web
 
 ## Verificação
 
-`npm test` executa testes HTTP com SQLite em memória, cobrindo permissões, isolamento entre servidores, categorias e push. Nenhum teste usa o banco real. `DUSKY_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/dusky.db`; o nome antigo `DIDISCORD_DB_PATH` também vale, e um `didiscord.db` antigo é renomeado sozinho pra `dusky.db` na primeira vez). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
+`npm test` executa os testes (`tests/*.test.js`) com SQLite em memória: permissões, isolamento entre servidores, categorias e a ordem da lateral (`channel-layout`), configurações do servidor, push, decorações e efeito no nome, e as regras do mundinho e de cada jogo (Duno, 21, xadrez com perft e sinuca, com física e faltas). Nenhum teste usa o banco real. `DUSKY_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/dusky.db`; o nome antigo `DIDISCORD_DB_PATH` também vale, e um `didiscord.db` antigo é renomeado sozinho pra `dusky.db` na primeira vez). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
 
 ## Estrutura do projeto
 
@@ -177,6 +191,12 @@ dusky/
 │   ├── audit.js            # registro de auditoria (quem fez o quê em cada servidor)
 │   ├── soundboard.js       # regras do soundboard e corte/conversão do som com ffmpeg
 │   ├── world.js            # mundinho 3D: spawn, limites e assentos (lê public/world/scenes/*.json)
+│   ├── games/              # jogos das mesas do mundinho: duno.js, blackjack.js, chess.js, pool.js (sinuca, com a física)
+│   ├── decor.js            # decorações do perfil (presets + catálogo do Discord)
+│   ├── nameStyle.js        # efeito no nome (validação)
+│   ├── chatExtras.js       # extras do chat (menções, reações, fixadas)
+│   ├── push.js             # Web Push (chaves VAPID, envio, limpeza)
+│   ├── sfu/livekit.js      # servidor de mídia opcional (LiveKit)
 │   ├── upload.js           # multer: avatar, banner, ícone, anexos
 │   ├── wsTickets.js        # ticket de uso único pra autenticar o WebSocket
 │   ├── middleware/auth.js  # requireAuth: exige login (e derruba conta suspensa / sessão antiga)
@@ -184,9 +204,11 @@ dusky/
 │   ├── bots/musicBot/      # bot de música: comandos, fila, yt-dlp → ffmpeg → mp3, Spotify
 │   └── routes/
 │       ├── auth.js         # cadastro, login, logout, /me
-│       ├── servers.js      # servidores, configurações, membros, banimentos, convites, cargos, auditoria, moderação de voz
+│       ├── servers.js      # servidores, canais (criar, ordem da lateral), configurações, membros, banimentos, convites, cargos, auditoria, moderação de voz
 │       ├── soundboard.js   # sons do soundboard (lista de todos os servidores + enviar/editar/apagar)
 │       ├── channels.js     # editar/apagar canal, quem está em qual call
+│       ├── categories.js   # criar/editar/apagar categoria
+│       ├── push.js         # inscrição de Web Push
 │       ├── messages.js     # histórico, enviar (texto, anexo, gif), editar, apagar
 │       ├── dms.js          # conversas diretas
 │       ├── activity.js     # não lidas (com menções) e busca de mensagens
@@ -207,27 +229,34 @@ dusky/
 │   ├── css/                # theme.css (variáveis e componentes base), um arquivo por área,
 │   │                       #   design.css (o visual atual, por cima de tudo) e media.css (imagens/vídeos)
 │   ├── js/themes.js        # motor de temas: aplica as variáveis, temas prontos, editor da aba "temas"
-│   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 25
+│   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 29
 │   │                       #   arquivos por assunto, carregados em ordem — o mapa está em js/app/README.md
+│   ├── js/decor-catalog.js, js/decor-picker.js  # decorações do Discord (tocar efeitos/placas, galeria)
+│   ├── decor/              # catálogo das decorações (catalog.json/.js); as mídias em decor/media/ ficam fora do git
 │   ├── js/realtime.js      # cliente WebSocket (reconexão, eventos)
 │   ├── js/markdown.js      # Markdown do chat (monta os elementos direto, sem innerHTML)
 │   ├── js/emoji.js         # seletor de emoji e busca por :atalho:
 │   ├── baixar.html         # página de instalação do app desktop
 │   ├── js/auth.js          # tela de login/cadastro
-│   ├── world/              # mundinho 3D (módulos ES, carregados sob demanda): world.js, avatar.js, props.js, tv.js, scenes/
+│   ├── world/              # mundinho 3D (módulos ES, carregados sob demanda): world.js, avatar.js, props.js,
+│   │                       #   tv.js, piano.js, scenes/penthouse.json e games/ (duno, blackjack, chess, pool)
 │   ├── vendor/             # DeepFilterNet3 e RNNoise (supressão de ruído, em WebAssembly) e Three.js
 │   └── uploads/            # arquivos enviados pelo pessoal (fora do git)
 ├── tauri/                  # app desktop dusky Mist (Rust/Tauri) — ver tauri/README.md
 ├── electron/               # app desktop ANTIGO (Electron) + auxiliares nativos (native/) usados pelos dois
+├── docs/                   # MUNDINHO.md (plano e status do 3D e dos jogos), decor-catalog.md
+├── tests/                  # npm test (SQLite em memória)
 ├── scripts/start.js        # npm start: servidor + túnel
+├── scripts/import-decor-catalog.py  # importa/restaura o catálogo de decorações
 └── deploy/setup-vm.sh      # instalação numa VM Ubuntu (alternativa ao túnel)
 ```
 
 ## Modelo de dados
 
-- **`users`**: contas. Perfil, `theme_json` (o tema e os "meus temas" da pessoa), `is_site_admin`, suspensão (`banned_at`) e `session_version` (sobe quando a senha é redefinida, pra derrubar sessões antigas).
+- **`users`**: contas. Perfil, `theme_json` (o tema e os "meus temas" da pessoa), `name_style` (efeito no nome), `nameplate`/`avatar_deco`/`profile_fx` (decorações), `is_site_admin`, suspensão (`banned_at`) e `session_version` (sobe quando a senha é redefinida, pra derrubar sessões antigas).
 - **`servers`**, **`server_members`**, **`invites`**: servidores, quem está em cada um, e convites (usos, validade).
-- **`channels`**: canais de texto/voz de um servidor. `server_id` nulo = DM, com os 2 participantes em **`dm_members`**.
+- **`channels`**: canais de texto/voz de um servidor, com `category_id` e `position` (a ordem da lateral) e `world_scene` (preenchido = mundinho 3D). `server_id` nulo = DM, com os 2 participantes em **`dm_members`**.
+- **`channel_categories`**: categorias de cada servidor (nome e posição).
 - **`messages`**: mensagens, com anexo, resposta (`reply_to_id`), edição, e `embed_json` pras respostas do bot de música.
 - **`roles`**, **`member_roles`**, **`channel_role_access`**: cargos, quem tem cada um, e quais cargos veem/entram em cada canal restrito.
 - **`channel_reads`**: até qual mensagem cada pessoa leu cada canal (as não lidas).
@@ -235,7 +264,9 @@ dusky/
 - **`server_bans`**, **`audit_log`**, **`soundboard_sounds`**: banimentos, registro de auditoria e sons do soundboard. As configurações novas do servidor (banner, descrição, canal do sistema, AFK, cargo de entrada, permissões do @everyone) são colunas de **`servers`**; mensagens do sistema usam `messages.system_type`.
 - **`messages_fts`**: índice de busca (FTS5), mantido em dia por gatilhos.
 - **`voice_state`**: quem está em qual call (sobrevive a um reinício; enquanto o servidor está de pé, quem manda é a memória do `realtime.js`).
+- **`push_subscriptions`**, **`app_secrets`**: inscrições de Web Push e as chaves VAPID.
 - **`server_settings`**: resto do modelo antigo de um servidor só (migrado pra `servers` automaticamente).
+- Os jogos do mundinho (partidas, fichas do 21) ficam só em memória no servidor: reiniciar zera.
 
 ## Como o tempo real e as calls funcionam
 
@@ -368,5 +399,6 @@ electron/native/build-cross.sh
 ## Próximos passos
 
 Pra depois:
-- Status "jogando X" automático.
-- Um servidor de mídia (SFU) se o grupo passar de umas 6 pessoas por call: hoje cada um envia o próprio vídeo separado pra cada outro, e a internet de quem envia não aguenta muito mais que isso.
+- **Compartilhar janela no Wayland** às vezes cai depois de alguns segundos (erro do GStreamer com janela de tamanho "quebrado", ex.: 1900×1006); a tela inteira funciona.
+- **Processos do WebKit que ficam rodando** depois de fechar o app desktop no Linux (ocupam RAM até reiniciar).
+- Mundinho: efeito na branca da sinuca, som das tacadas, mais jogos (truco, poker, damas), personagens com animação de verdade, mais cenas. Lista completa em [`docs/MUNDINHO.md`](docs/MUNDINHO.md).

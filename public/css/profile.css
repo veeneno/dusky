@@ -26,7 +26,7 @@
   --card-c2: var(--card-c1);
   --card-plate: rgba(8, 6, 12, 0.84);
   position: relative;
-  width: 340px;
+  width: 300px; /* largura do cartão de perfil do Discord (os efeitos de perfil são feitos pra ela) */
   padding: 4px;
   border-radius: 20px;
   color: var(--text-hi);
@@ -976,7 +976,15 @@ html[data-reduce-motion] .pc-fx::after { animation: none !important; }
 .catalog-nameplate-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1; pointer-events: none; opacity: 0; border-radius: inherit; mask-image: linear-gradient(90deg, #0003, #000b 45%, #000); }
 .catalog-nameplate-video.playing { opacity: 1; }
 .catalog-profile-fx::before, .catalog-profile-fx::after { content: none; }
-.catalog-profile-fx > .catalog-fx-layer { position: absolute; object-fit: fill; }
-.catalog-profile-fx > .catalog-fx-poster[hidden] { display: none; }
+/* efeitos do Discord: palco de 450x880 com a largura do cartão, preso no topo (decor-catalog.js) —
+   as camadas se posicionam dentro dele e nunca esticam; o que passar da altura do cartão é cortado */
+.catalog-fx-stage { position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: 450 / 880; }
+.catalog-fx-stage > .catalog-fx-layer { position: absolute; object-fit: fill; }
+.catalog-fx-stage > .catalog-fx-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+.catalog-fx-stage > .catalog-fx-poster[hidden] { display: none; }
+/* cartão com efeito do Discord: no mínimo a altura do efeito (300 x 587 no popout), cresce se o
+   conteúdo pedir — o efeito aparece inteiro, do jeito que foi desenhado */
+.profile-card:has(> .catalog-profile-fx) { aspect-ratio: 450 / 880; }
+.profile-card.is-popout:has(> .catalog-profile-fx) { aspect-ratio: auto; min-height: min(calc(300px * 880 / 450), calc(100vh - 16px)); }
 html[data-reduce-motion] .catalog-nameplate-video { display: none; }
 @media (prefers-reduced-motion: reduce) { .catalog-nameplate-video { display: none; } }

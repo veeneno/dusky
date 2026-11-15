@@ -91,9 +91,15 @@
 
   function profile(fx, item) {
     fx.classList.add('catalog-profile-fx');
+    // o efeito do Discord é desenhado numa tela de 450x880 (1,5x o cartão de 300 px): as camadas ficam
+    // dentro de um "palco" com essa proporção, preso no topo e com a largura do cartão — assim nada
+    // estica quando o cartão é mais alto ou mais baixo (o que passa da altura é cortado embaixo)
+    const stage = document.createElement('div');
+    stage.className = 'catalog-fx-stage';
+    fx.appendChild(stage);
     const poster = document.createElement('img');
     poster.className = 'catalog-fx-poster'; poster.src = item.preview; poster.alt = '';
-    fx.appendChild(poster);
+    stage.appendChild(poster);
     watch(fx, () => {
       let stopped = false;
       const timers = new Set();
@@ -127,7 +133,7 @@
             img.style.top = `${(layer.position?.y || 0) / 880 * 100}%`;
             img.style.width = `${(layer.width || 450) / 450 * 100}%`;
             img.style.height = `${(layer.height || 880) / 880 * 100}%`;
-            img.src = url; fx.appendChild(img);
+            img.src = url; stage.appendChild(img);
             later(() => {
               remove(img);
               if (layer.loop) later(run, layer.loopDelay || 0);

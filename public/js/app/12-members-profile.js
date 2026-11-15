@@ -549,7 +549,7 @@ function showProfilePopout(user, mutuals, anchorEl) {
 // primeiro à direita do elemento (como o Discord), e vira pra esquerda se não couber
 function positionProfilePopout(anchorEl) {
   const popout = viewProfileCard;
-  const w = popout.offsetWidth || 340;
+  const w = popout.offsetWidth || 300;
   const h = popout.offsetHeight || 420;
   let left;
   let top;
