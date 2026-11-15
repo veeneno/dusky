@@ -286,6 +286,33 @@ Ideias que ficaram de fora: acumular +2/+4, desafiar o +4, placar entre partidas
       e (-9.5, 0.2), Duno em (-11.5, 7.5). Plantas a mais nos cantos.
 - [x] Piso: repetição da textura segue o tamanho da casa (`w/4, d/4`); prédios da cidade a ≥ 60 m.
 
+### Etapa 6 — sinuca "par x ímpar" no meio do térreo ✅
+- [x] Cena: mesa `sinuca` (game `pool`) em (4, 1.0), comprimento no eixo x, com 4 banquetas: `sinuca-1`
+      e `sinuca-2` a oeste = time ÍMPAR; `sinuca-3` e `sinuca-4` a leste = time PAR (as primeiras
+      metades de `seats` são do ímpar). Tapete, 3 luminárias e colisor; o nascer foi pra (4, 4.5).
+      `props.js` (`poolTable`): área de jogo 2.24 x 1.12 m, pano em y 0.80 — as MESMAS medidas de
+      `server/games/pool.js` e `public/world/games/pool.js` (mudou uma, muda as três).
+- [x] `server/games/pool.js` (testes em `tests/pool.test.js`): a física roda no servidor (passo de
+      1/600 s, menor quando a bola está rápida; bola com bola e tabela com perda; bocas das caçapas com
+      "quinas"; atrito de rolamento). A tacada (`op: 'shoot'`, ângulo + força 0..1, curva p^1.5 até
+      9 m/s) vira quadros a cada 1/30 s (só quem mexeu, em mm) que vão pra todo mundo junto com
+      `startAt`/`endsAt`; o cliente só anima. Triângulo sorteado com folguinhas de ~1 mm (sem isso a
+      saída vira pêndulo de Newton e não abre).
+      Regras: 1x1 ou 2x2 (times iguais, todos "pronto"); ímpar 3..15, par 2..14, bola 1 = final
+      (derrubar depois das suas ganha; antes da hora ou com falta perde; na saída volta pra mesa).
+      Falta: não acertar nada, acertar primeiro a do outro time, a 1 antes da hora (ou outra quando é
+      a vez da 1), branca caída (volta pra marca da cabeceira) ou tempo (45 s). Punição: o outro time
+      escolhe uma bola DELE pra derrubar (20 s, senão cai a menor) e ganha a vez — nunca a 1 e nunca a
+      última bolinha do time (`PENALTY_SPARES_LAST`). Derrubou bola sua sem falta = joga de novo; em
+      dupla os parceiros se revezam. Levantar não tira da partida; sair da call sim (time vazio perde).
+- [x] Site: `public/world/games/pool.js` (carrega junto com o mundo): bolas numeradas em 3D rolando,
+      caindo nas caçapas, taco que puxa e bate; na sua vez, linha de mira + bola fantasma no 3D. Painel
+      (dock 🎱 / tecla N): times e bolas que faltam, a mesa vista de cima pra mirar (mouse mira; clicar,
+      puxar pra trás e soltar taca; ou ←/→, ↑/↓ e espaço), punição clicando na bola, resultado.
+
+Ideias que ficaram de fora: efeito na branca (spin), bola na mão depois da branca cair, som das
+batidas, ver a mira de quem está jogando (hoje só quem joga vê a própria mira), placar entre partidas.
+
 ### Próximas etapas (ideias combinadas com o dono do projeto)
 1. **Emotes/animação melhores**: personagens com rig (glTF CC0, ex.: Quaternius/Kenney),
    carregados sob demanda; escolher boneco/roupa no perfil.

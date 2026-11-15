@@ -15,7 +15,7 @@
 // { x, y, z, ry, action, seat } — y é a altura do PISO onde ele está (andar de baixo 0, mezanino 3.6).
 import * as THREE from '/vendor/three/0.170.0/three.module.min.js';
 import { createAvatar, AVATAR_HEAD_TOP } from './avatar.js?v=7';
-import { buildRoom, buildProps } from './props.js?v=9';
+import { buildRoom, buildProps } from './props.js?v=10';
 import { createTv } from './tv.js?v=7';
 
 const WALK_SPEED = 3.0;
@@ -30,7 +30,7 @@ const EYE_SITTING = 0.98;
 const CAMERA_PREF_KEY = 'dusky:worldCamera';
 const HINT_PREF_KEY = 'dusky:worldHintSeen';
 const CROSSHAIR_PREF_KEY = 'dusky:worldCrosshair';
-const ASSET_V = 9; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
+const ASSET_V = 10; // módulos carregados sob demanda (jogos, piano) — sobe junto com os imports acima
 
 function lerpAngle(a, b, k) {
   const d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
@@ -124,13 +124,14 @@ export function createWorld(container, api) {
     <button type="button" class="world-dock-btn" data-act="duno" hidden><span class="world-dock-emoji">🃏</span><span class="world-dock-label">Duno</span></button>
     <button type="button" class="world-dock-btn" data-act="blackjack" hidden><span class="world-dock-emoji">♠️</span><span class="world-dock-label">21</span></button>
     <button type="button" class="world-dock-btn" data-act="chess" hidden><span class="world-dock-emoji">♟️</span><span class="world-dock-label">xadrez</span></button>
+    <button type="button" class="world-dock-btn" data-act="pool" hidden><span class="world-dock-emoji">🎱</span><span class="world-dock-label">sinuca</span></button>
     ${tv ? '<button type="button" class="world-dock-btn" data-act="tv"><span class="world-dock-emoji">📺</span><span class="world-dock-label">TV</span></button>' : ''}
     <button type="button" class="world-dock-btn" data-act="fullscreen"><span class="world-dock-emoji world-dock-glyph">⛶</span><span class="world-dock-label">tela cheia</span></button>`;
   container.appendChild(hud);
   const hint = document.createElement('div');
   hint.className = 'world-hint';
   hint.innerHTML = `
-    <span><b>WASD</b> anda · <b>shift</b> corre · clique no chão ou num assento · arraste pra olhar · <b>V</b> 1ª/3ª pessoa · <b>C</b> mira · <b>G</b> Duno · <b>B</b> 21 · <b>K</b> xadrez · <b>F</b> tela cheia</span>
+    <span><b>WASD</b> anda · <b>shift</b> corre · clique no chão ou num assento · arraste pra olhar · <b>V</b> 1ª/3ª pessoa · <b>C</b> mira · <b>G</b> Duno · <b>B</b> 21 · <b>K</b> xadrez · <b>N</b> sinuca · <b>F</b> tela cheia</span>
     <button type="button" aria-label="fechar dica">✕</button>`;
   hint.hidden = pref(HINT_PREF_KEY, '') === '1';
   hint.querySelector('button').addEventListener('click', () => { hint.hidden = true; savePref(HINT_PREF_KEY, '1'); });
@@ -358,7 +359,7 @@ export function createWorld(container, api) {
   let hudState = '';
   function refreshHud() {
     const p = me();
-    const key = `${p ? p.action : ''}|${camMode}|${cardMode}|${crosshairOn}|${pointerLocked}|${lockFailed}|${dunoVisibleKey()}|${bjVisibleKey()}|${chessVisibleKey()}|${anyPanelOpen()}`;
+    const key = `${p ? p.action : ''}|${camMode}|${cardMode}|${crosshairOn}|${pointerLocked}|${lockFailed}|${dunoVisibleKey()}|${bjVisibleKey()}|${chessVisibleKey()}|${poolVisibleKey()}|${anyPanelOpen()}`;
     if (key === hudState) return;
     hudState = key;
     hud.querySelector('[data-act="stand"]').hidden = !p || p.action !== 'sit';
@@ -377,6 +378,8 @@ export function createWorld(container, api) {
     hud.querySelector('[data-act="blackjack"]').classList.toggle('is-on', !!(bj && bj.isOpen()));
     hud.querySelector('[data-act="chess"]').hidden = !(chess && chess.isActive());
     hud.querySelector('[data-act="chess"]').classList.toggle('is-on', !!(chess && chess.isOpen()));
+    hud.querySelector('[data-act="pool"]').hidden = !(pool && pool.isActive());
+    hud.querySelector('[data-act="pool"]').classList.toggle('is-on', !!(pool && pool.isOpen()));
   }
 
   hud.addEventListener('click', (e) => {
@@ -389,6 +392,7 @@ export function createWorld(container, api) {
     else if (act === 'duno') { if (duno) duno.toggle(); }
     else if (act === 'blackjack') { if (bj) bj.toggle(); }
     else if (act === 'chess') { if (chess) chess.toggle(); }
+    else if (act === 'pool') { if (pool) pool.toggle(); }
     else if (act === 'fullscreen') toggleWorldFullscreen();
     else if (act === 'tv') { if (tv) { tv.togglePanel(); onPanelChange(); } }
     else if (!p) return;
@@ -409,6 +413,11 @@ export function createWorld(container, api) {
   let chess = null;
   let chessLoading = null;
   const chessLast = new Map();
+  // sinuca: também carrega junto com o mundo (as bolas ficam sempre na mesa)
+  const poolDefs = (sceneDef.tables || []).filter((t) => t.game === 'pool');
+  let pool = null;
+  let poolLoading = null;
+  const poolLast = new Map();
   let duno = null;
   let dunoLoading = null;
   let dunoLast = null;
@@ -466,8 +475,32 @@ export function createWorld(container, api) {
   }
   function chessVisibleKey() { return chess ? `${chess.isActive()}${chess.isOpen()}` : ''; }
   if (chessDefs.length) ensureChess();
+  // sinuca: um módulo pra todas as mesas de sinuca (public/world/games/pool.js)
+  function ensurePool() {
+    if (pool || !poolDefs.length) return Promise.resolve(pool);
+    if (!poolLoading) {
+      poolLoading = import(`./games/pool.js?v=${ASSET_V}`).then((mod) => {
+        pool = mod.createPool({ scene, container, api, defs: poolDefs, world: worldApiForModules });
+        for (const st of poolLast.values()) pool.setState(st);
+        hudState = '';
+        refreshHud();
+        return pool;
+      }).catch((err) => { console.error('[mundinho] sinuca não carregou:', err); poolLoading = null; return null; });
+    }
+    return poolLoading;
+  }
+  function poolVisibleKey() { return pool ? `${pool.isActive()}${pool.isOpen()}` : ''; }
+  if (poolDefs.length) ensurePool();
 
   function setGame(state) {
+    if (state.game === 'pool') {
+      poolLast.set(state.table, state);
+      if (pool) pool.setState(state);
+      else ensurePool();
+      hudState = '';
+      refreshHud();
+      return;
+    }
     if (state.game === 'chess') {
       chessLast.set(state.table, state);
       if (chess) chess.setState(state);
@@ -540,10 +573,11 @@ export function createWorld(container, api) {
     if (tableDef && seat && tableDef.seats.includes(seat)) ensureDuno();
     if (seat && bjDefs.some((d) => d.seats.includes(seat))) ensureBlackjack().then((b) => { if (b) b.onMySeat(seat); });
     if (seat && chessDefs.some((d) => d.seats.includes(seat))) ensureChess().then((c) => { if (c) c.onMySeat(seat); });
+    if (seat && poolDefs.some((d) => d.seats.includes(seat))) ensurePool().then((pl) => { if (pl) pl.onMySeat(seat); });
   }
 
   function anyPanelOpen() {
-    return !!((tv && tv.isPanelOpen()) || (duno && duno.isOpen()) || (bj && bj.isOpen()) || (chess && chess.isOpen()) || (piano && piano.isOpen()));
+    return !!((tv && tv.isPanelOpen()) || (duno && duno.isOpen()) || (bj && bj.isOpen()) || (chess && chess.isOpen()) || (pool && pool.isOpen()) || (piano && piano.isOpen()));
   }
   // abriu um painel: solta o mouse (precisa do cursor pra clicar nele)
   function onPanelChange() {
@@ -831,6 +865,7 @@ export function createWorld(container, api) {
     else if (e.code === 'KeyG' && duno) duno.toggle();
     else if (e.code === 'KeyB' && bjDefs.length) ensureBlackjack().then((b) => { if (b) b.toggle(); });
     else if (e.code === 'KeyK' && chessDefs.length) ensureChess().then((c) => { if (c) c.toggle(); });
+    else if (e.code === 'KeyN' && poolDefs.length) ensurePool().then((pl) => { if (pl) pl.toggle(); });
     else if (e.code === 'F9') { e.preventDefault(); toggleFpsMeter(); }
   }
   function onKeyUp(e) { keys.delete(e.code); }
@@ -1142,6 +1177,7 @@ export function createWorld(container, api) {
     if (duno) duno.destroy();
     if (bj) bj.destroy();
     if (chess) chess.destroy();
+    if (pool) pool.destroy();
     if (piano) piano.destroy();
     if (document.fullscreenElement === fsTarget) document.exitFullscreen().catch(() => {});
     for (const id of [...people.keys()]) removePerson(id);

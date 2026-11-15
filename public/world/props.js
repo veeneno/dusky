@@ -706,10 +706,68 @@ function chessTable(p) {
   return g;
 }
 
+// mesa de sinuca: as medidas são as mesmas de server/games/pool.js (área de jogo 2.24 x 1.12 m, pano
+// em y = 0.80, bocas das caçapas de canto com 0.09 m de tabela a menos e as do meio com 0.068 m de
+// cada lado). As bolas e o taco são desenhados por public/world/games/pool.js. Comprimento no eixo x.
+const POOL = { L: 2.24, W: 1.12, Y: 0.8, CUSH: 0.05, RAIL: 0.13, CG: 0.09, MG: 0.068 };
+function poolTable() {
+  const g = new THREE.Group();
+  const { L, W, Y, CUSH, RAIL, CG, MG } = POOL;
+  const HX = L / 2;
+  const HZ = W / 2;
+  const felt = mat(0x1d6a48, { roughness: 0.95 });
+  const feltCush = mat(0x185c3d, { roughness: 0.95 });
+  const wood = mat(0x5a3522, { roughness: 0.45 });
+  const woodDark = mat(0x3e2416, { roughness: 0.5 });
+  const black = mat(0x0b0b0d, { roughness: 0.9 });
+  // pano (passa por baixo das tabelas)
+  g.add(box(L + 2 * CUSH, 0.04, W + 2 * CUSH, felt, 0, Y - 0.02, 0));
+  // tabelas de borracha forradas, só entre as bocas das caçapas
+  for (const s of [-1, 1]) {
+    for (const [a, b] of [[-HX + CG, -MG], [MG, HX - CG]]) g.add(box(b - a, 0.04, CUSH, feltCush, (a + b) / 2, Y + 0.02, s * (HZ + CUSH / 2)));
+    g.add(box(CUSH, 0.04, W - 2 * CG, feltCush, s * (HX + CUSH / 2), Y + 0.02, 0));
+  }
+  // moldura de madeira
+  const outL = L + 2 * (CUSH + RAIL);
+  const outW = W + 2 * (CUSH + RAIL);
+  for (const s of [-1, 1]) {
+    g.add(box(outL, 0.09, RAIL, wood, 0, Y - 0.005, s * (HZ + CUSH + RAIL / 2)));
+    g.add(box(RAIL, 0.09, W + 2 * CUSH, wood, s * (HX + CUSH + RAIL / 2), Y - 0.005, 0));
+  }
+  // saia e pés
+  g.add(box(outL - 0.08, 0.2, outW - 0.08, woodDark, 0, Y - 0.15, 0));
+  for (const x of [-HX, 0, HX]) {
+    for (const s of [-1, 1]) {
+      g.add(cyl(0.065, 0.085, Y - 0.25, woodDark, 16, x, (Y - 0.25) / 2, s * (HZ - 0.02)));
+      g.add(cyl(0.1, 0.1, 0.03, BRASS(), 16, x, 0.015, s * (HZ - 0.02)));
+    }
+  }
+  // caçapas: buraco preto (por cima da madeira e da borracha) com a boquinha de latão
+  for (const [x, z, r] of [[-HX - 0.015, -HZ - 0.015, 0.062], [0, -HZ - 0.036, 0.06], [HX + 0.015, -HZ - 0.015, 0.062],
+    [-HX - 0.015, HZ + 0.015, 0.062], [0, HZ + 0.036, 0.06], [HX + 0.015, HZ + 0.015, 0.062]]) {
+    g.add(cyl(r + 0.004, r + 0.004, 0.1, black, 24, x, Y - 0.009, z));
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(r + 0.006, 0.006, 6, 24), BRASS());
+    lip.rotation.x = Math.PI / 2;
+    lip.position.set(x, Y + 0.042, z);
+    g.add(lip);
+  }
+  // diamantes (marcas de mira) na madeira
+  const pearl = mat(0xf4efe6, { roughness: 0.3 });
+  for (let i = 1; i < 8; i++) {
+    if (i === 4) continue;
+    for (const s of [-1, 1]) g.add(cyl(0.008, 0.008, 0.004, pearl, 10, -HX + (L / 8) * i, Y + 0.041, s * (HZ + CUSH + RAIL / 2)));
+  }
+  for (const k of [1, 2, 3]) for (const s of [-1, 1]) g.add(cyl(0.008, 0.008, 0.004, pearl, 10, s * (HX + CUSH + RAIL / 2), Y + 0.041, -HZ + (W / 4) * k));
+  // marca da branca (cabeceira) e do triângulo (pé)
+  for (const x of [-HX / 2, HX / 2]) g.add(cyl(0.006, 0.006, 0.002, pearl, 10, x, Y + 0.001, 0));
+  return g;
+}
+
 const BUILDERS = {
   gameTable,
   blackjackTable,
   chessTable,
+  poolTable,
   sofa, loungeChair, beanbag, chair, barStool, marbleTable, sideTable, roundTable, diningTable,
   island, kitchenRun, fridge, sideboard, mediaConsole, woodPanel, shelf, plantTall, arcLamp,
   pendant, pendantRow, chandelier, piano, art, rug,
