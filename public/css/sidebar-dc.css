@@ -1,0 +1,319 @@
+/* dusky — lateral de canais e categorias no estilo do Discord (04-sidebar.js):
+   título da categoria com setinha, "+" no hover, menus de botão direito, arrastar pra reordenar
+   e os modais de criar canal/categoria. Carregado depois dos outros CSS, então ganha deles. */
+
+/* ---------- grupos ---------- */
+.channel-group + .channel-group { margin-top: 0; }
+.channel-group { padding-top: 16px; }
+.channel-group-loose { padding-top: 0; }
+.channel-group-loose:empty { min-height: 0; }
+/* arrastando um canal: deixa um espacinho no topo pra soltar e tirar da categoria */
+.channel-groups.is-sorting-channel .channel-group-loose { min-height: 14px; border-radius: var(--radius-xs); }
+
+.channel-group-label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 24px;
+  margin-bottom: 2px;
+  padding: 0 2px 0 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.channel-group-label:hover { color: var(--text-normal); }
+.channel-group-label[draggable="true"] { cursor: pointer; }
+
+.category-heading {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: 0;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.category-heading-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.category-chevron { flex-shrink: 0; width: 12px; height: 12px; transition: transform 0.15s var(--ease); }
+.channel-group.is-collapsed .category-chevron { transform: rotate(-90deg); }
+
+/* "+" e "⋯" só aparecem com o mouse em cima (no celular ficam sempre) */
+.channel-group-label .channel-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 1rem;
+  line-height: 1;
+}
+.channel-group-label .channel-add-btn:hover { color: var(--text-heading); background: transparent; }
+.channel-group-label .channel-add-btn { opacity: 0; transition: opacity 0.1s var(--ease); }
+.channel-group-label:hover .channel-add-btn,
+.channel-group-label .channel-add-btn:focus-visible { opacity: 1; }
+.category-more-btn { display: none !important; }
+@media (hover: none) {
+  .category-more-btn { display: inline-flex !important; }
+  .channel-group-label .channel-add-btn { opacity: 1; }
+}
+
+/* recolhida: some tudo menos o canal aberto (e quem está na call dele), igual ao Discord */
+.channel-group.is-collapsed > :not(.channel-group-label) { display: none; }
+.channel-group.is-collapsed > .channel-item.active { display: flex; }
+.channel-group.is-collapsed > .channel-item.active + .channel-voice-preview:not([hidden]) { display: flex; }
+
+/* ---------- canal: convidar + editar no hover (sem lixeira — apagar fica no botão direito) ---------- */
+.channel-item { padding-right: 8px; }
+.channel-item:hover, .channel-item.active { padding-right: 52px; }
+.channel-delete-btn { display: none !important; }
+.channel-invite-btn,
+.channel-item .channel-edit-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+}
+.channel-invite-btn { right: 26px; }
+.channel-item .channel-edit-btn { right: 4px; }
+/* quem não gerencia canais só tem o convite: encosta ele na direita */
+.channel-item:not(:has(.channel-edit-btn)) .channel-invite-btn { right: 4px; }
+.channel-item:not(:has(.channel-edit-btn)):hover,
+.channel-item:not(:has(.channel-edit-btn)).active { padding-right: 30px; }
+.channel-item:hover .channel-invite-btn,
+.channel-item.active .channel-invite-btn,
+.channel-item:hover .channel-edit-btn,
+.channel-item.active .channel-edit-btn { display: flex; }
+.channel-invite-btn:hover, .channel-item .channel-edit-btn:hover { color: var(--text-heading); background: transparent; }
+.channel-item .channel-mention-badge { margin-left: auto; }
+.channel-item:hover .channel-mention-badge { display: none; }
+.channel-groups > .channel-empty { padding: 12px 8px; }
+
+/* ---------- arrastar pra reordenar ---------- */
+.channel-item[draggable="true"] { -webkit-user-drag: element; }
+.channel-item.is-dragging,
+.channel-group.is-dragging { opacity: 0.35; }
+.channel-item.drop-before::after,
+.channel-item.drop-after::after,
+.channel-group.drop-before::before,
+.channel-group.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 2;
+}
+.channel-item.drop-before::after { top: -2px; }
+.channel-item.drop-after::after { bottom: -2px; }
+.channel-group { position: relative; }
+.channel-group.drop-before::before { top: 6px; }
+.channel-group.drop-after::after { bottom: -2px; }
+.channel-group.drop-into { background: var(--accent-softer); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* ---------- menu de botão direito ---------- */
+.sidebar-ctx-menu {
+  position: fixed;
+  z-index: 400;
+  min-width: 200px;
+  max-width: 260px;
+  padding: 6px 8px;
+  background: var(--bg-floating);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  animation: fade-in 0.08s ease both;
+}
+.sidebar-ctx-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 32px;
+  margin: 2px 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-normal);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar-ctx-item:hover, .sidebar-ctx-item:focus-visible { background: var(--accent); color: var(--accent-contrast); outline: none; }
+.sidebar-ctx-item.is-danger { color: var(--danger); }
+.sidebar-ctx-item.is-danger:hover, .sidebar-ctx-item.is-danger:focus-visible { background: var(--danger); color: #fff; }
+.sidebar-ctx-icon { display: inline-flex; opacity: 0.9; }
+.sidebar-ctx-check {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  opacity: 0.8;
+}
+.sidebar-ctx-check.is-checked {
+  background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center / 13px no-repeat;
+  border-color: var(--accent);
+  opacity: 1;
+}
+.sidebar-ctx-item:hover .sidebar-ctx-check.is-checked { background-color: var(--accent-contrast); border-color: var(--accent-contrast); filter: invert(1); }
+.sidebar-ctx-sep { height: 1px; margin: 4px 4px; background: var(--border); }
+
+/* ---------- modais de criar canal e categoria ---------- */
+.modal.create-channel-modal,
+.modal.create-category-modal { position: relative; max-width: 460px; padding: 24px 24px 0; overflow: hidden; }
+.create-channel-modal h3.display,
+.create-category-modal h3.display { margin: 0; font-size: 1.25rem; }
+.dc-modal-sub { margin: 2px 0 0; font-size: 0.8125rem; color: var(--text-muted); }
+.dc-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.dc-modal-close:hover { color: var(--text-heading); }
+.create-channel-modal .field,
+.create-category-modal .field { margin-top: 20px; }
+
+.create-channel-modal .channel-type-picker { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.create-channel-modal .channel-type-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg-solid-sidebar);
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.create-channel-modal .channel-type-option:hover { background: var(--bg-hover); border-color: transparent; }
+.create-channel-modal .channel-type-option.active { background: var(--bg-selected); color: var(--text-heading); border-color: transparent; }
+.create-channel-modal .cto-icon { display: inline-flex; flex-shrink: 0; color: var(--text-muted); }
+.create-channel-modal .channel-type-option.active .cto-icon { color: var(--text-heading); }
+.create-channel-modal .cto-text { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 2px; }
+.create-channel-modal .cto-text strong { color: var(--text-heading); font-size: 1rem; font-weight: 600; }
+.create-channel-modal .cto-text small { color: var(--text-muted); font-size: 0.8125rem; line-height: 1.3; }
+.create-channel-modal .cto-radio {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border: 2px solid var(--text-muted);
+  border-radius: 50%;
+}
+.create-channel-modal .channel-type-option.active .cto-radio { border-color: var(--text-heading); box-shadow: inset 0 0 0 4px var(--bg-selected), inset 0 0 0 10px var(--text-heading); }
+
+.dc-name-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 0 10px;
+  background: var(--bg-solid-app);
+  border-radius: var(--radius-sm);
+}
+.dc-name-prefix { display: inline-flex; color: var(--text-muted); font-size: 1.25rem; font-weight: 500; line-height: 1; }
+.dc-name-input input[type="text"] { flex: 1; min-width: 0; padding-left: 0; padding-right: 0; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.dc-name-input:focus-within { box-shadow: 0 0 0 2px var(--accent); }
+
+.dc-private-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  cursor: pointer;
+}
+.dc-private-icon { display: inline-flex; color: var(--text-muted); }
+.dc-private-text { display: flex; flex-direction: column; flex: 1; gap: 2px; }
+.dc-private-text strong { color: var(--text-heading); font-size: 1rem; font-weight: 600; }
+.dc-private-text small { color: var(--text-muted); font-size: 0.8125rem; line-height: 1.35; }
+/* chave liga/desliga */
+.dc-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 24px;
+  margin: 0;
+  border-radius: 12px;
+  background: var(--text-faint);
+  cursor: pointer;
+  transition: background 0.15s var(--ease);
+}
+.dc-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s var(--ease);
+}
+.dc-switch:checked { background: var(--accent); }
+.dc-switch:checked::after { transform: translateX(16px); }
+.dc-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.dc-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 24px -24px 0;
+  padding: 16px 24px;
+  background: var(--bg-solid-sidebar);
+}
+.dc-modal-footer .btn-danger { margin-right: auto; }
+.dc-modal-footer .btn-ghost { background: transparent; }
+.dc-modal-footer .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.create-channel-modal .field-error:empty,
+.create-category-modal .field-error:empty { display: none; }
+.create-channel-modal .field-error,
+.create-category-modal .field-error { margin-top: 12px; }
+
+@media (max-width: 600px) {
+  .modal.create-channel-modal, .modal.create-category-modal { padding: 20px 16px 0; }
+  .dc-modal-footer { margin: 20px -16px 0; padding: 12px 16px; }
+  .channel-item .channel-invite-btn { display: none !important; }
+  .channel-item .channel-edit-btn { display: flex; }
+  .channel-item { padding-right: 30px; }
+}

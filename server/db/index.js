@@ -293,8 +293,13 @@ function createDefaultChannels(serverId, createdBy) {
   const insert = db.prepare(
     'INSERT INTO channels (name, type, position, created_by, server_id) VALUES (?, ?, ?, ?, ?)'
   );
-  insert.run('geral', 'text', 0, createdBy, serverId);
-  insert.run('Geral', 'voice', 0, createdBy, serverId);
+  // igual ao Discord: servidor novo já vem com as categorias "canais de texto" e "canais de voz"
+  const category = db.prepare('INSERT INTO channel_categories (server_id, name, position) VALUES (?, ?, ?)');
+  const textCat = category.run(serverId, 'canais de texto', 0).lastInsertRowid;
+  const voiceCat = category.run(serverId, 'canais de voz', 1).lastInsertRowid;
+  const setCat = db.prepare('UPDATE channels SET category_id = ? WHERE id = ?');
+  setCat.run(textCat, insert.run('geral', 'text', 0, createdBy, serverId).lastInsertRowid);
+  setCat.run(voiceCat, insert.run('Geral', 'voice', 0, createdBy, serverId).lastInsertRowid);
 }
 
 db.createDefaultChannels = createDefaultChannels;

@@ -704,7 +704,8 @@ function editCategory(category = null) {
   if (!hasCurrentPermission('manage_channels')) return;
   editingCategoryId = category ? category.id : null;
   document.getElementById('categoryName').value = category ? category.name : '';
-  document.getElementById('categoryPosition').value = category ? category.position : channelCategories.length;
+  document.getElementById('categoryTitle').textContent = category ? 'editar categoria' : 'criar categoria';
+  document.getElementById('categorySave').textContent = category ? 'salvar' : 'criar categoria';
   document.getElementById('categoryDelete').hidden = !category;
   document.getElementById('categoryError').textContent = '';
   categoryBackdrop.hidden = false; document.getElementById('categoryName').focus();
@@ -720,6 +721,7 @@ function renderCategorySettings() {
   if (!channelCategories.length) { const p = document.createElement('p'); p.className = 'field-help'; p.textContent = 'Ainda sem categorias. Crie uma para organizar seus canais.'; list.appendChild(p); }
 }
 document.getElementById('categoryCreateBtn').addEventListener('click', () => editCategory());
+document.getElementById('categoryName').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveCategory(); });
 async function saveCategory(remove = false) {
   if (remove && !confirm('Apagar esta categoria? Os canais e as mensagens serão mantidos, sem categoria.')) return;
   const sid = currentServerId;
@@ -727,7 +729,7 @@ async function saveCategory(remove = false) {
   try {
     const res = await fetch(`/api/servers/${sid}/categories${editingCategoryId ? '/' + editingCategoryId : ''}`, {
       method: remove ? 'DELETE' : editingCategoryId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: document.getElementById('categoryName').value, position: Number(document.getElementById('categoryPosition').value) }),
+      body: JSON.stringify({ name: document.getElementById('categoryName').value }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw Error(data.error || 'não deu pra salvar a categoria');

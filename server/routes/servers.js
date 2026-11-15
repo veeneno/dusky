@@ -447,21 +447,74 @@ router.post('/:serverId/channels', requireAuth, loadMemberServer, requirePermiss
   let cleanName = name.trim().slice(0, CHANNEL_NAME_MAX);
   if (type === 'text') cleanName = cleanName.toLowerCase().replace(/\s+/g, '-');
 
+  // vai pro fim da categoria (ou da lista sem categoria) onde foi criado
   const maxPos = db.prepare(
-    'SELECT COALESCE(MAX(position), -1) AS m FROM channels WHERE server_id = ? AND type = ?'
-  ).get(req.server.id, dbType).m;
+    'SELECT COALESCE(MAX(position), -1) AS m FROM channels WHERE server_id = ? AND category_id IS ?'
+  ).get(req.server.id, categoryId).m;
+
+  // "canal privado" (igual ao Discord): nasce visível só pro dono/administradores; quem criou escolhe
+  // os cargos logo depois, na tela de editar canal
+  const isPrivate = req.body.private === true;
 
   const result = db.prepare(
     'INSERT INTO channels (name, type, position, created_by, server_id) VALUES (?, ?, ?, ?, ?)'
   ).run(cleanName, dbType, maxPos + 1, req.user.id, req.server.id);
 
-  db.prepare('UPDATE channels SET category_id = ?, world_scene = ? WHERE id = ?').run(categoryId, worldScene, result.lastInsertRowid);
+  db.prepare('UPDATE channels SET category_id = ?, world_scene = ?, private_view = ? WHERE id = ?').run(categoryId, worldScene, isPrivate ? 1 : 0, result.lastInsertRowid);
   const created = access.getChannel(result.lastInsertRowid);
+  if (isPrivate) {
+    // canal privado: só quem consegue ver fica sabendo dele (cada um recarrega a própria lista)
+    realtime.broadcastToServer(req.server.id, { type: 'channels_updated', serverId: req.server.id });
+    // (quem gerencia canais sem ser admin não vê o privado até se pôr num cargo dele)
+    const channel = listChannels(req.server.id, req.user.id).find((c) => c.id === created.id) || null;
+    audit.log(req.server.id, req.user.id, 'channel_create', { type: 'channel', id: created.id, name: created.name }, { channel_type: dbType, world: !!worldScene, private: true });
+    return res.status(201).json({ channel });
+  }
   // canal novo nasce aberto pra todo mundo do servidor
   const channel = { ...created, private_view: false, private_connect: false, can_connect: dbType === 'voice' ? true : undefined };
   realtime.broadcastToServer(req.server.id, { type: 'channel_created', serverId: req.server.id, channel });
   audit.log(req.server.id, req.user.id, 'channel_create', { type: 'channel', id: channel.id, name: channel.name }, { channel_type: dbType, world: !!worldScene });
   res.status(201).json({ channel });
+});
+
+// PUT /api/servers/:serverId/layout — nova ordem da lateral depois de arrastar (igual ao Discord)
+// body: { categories: [{ id, position }], channels: [{ id, category_id, position }] } — os dois opcionais;
+// só mexe no que veio (canal privado que essa pessoa não vê fica onde estava)
+router.put('/:serverId/layout', requireAuth, loadMemberServer, requirePermission('manage_channels'), (req, res) => {
+  const body = req.body || {};
+  const cats = body.categories === undefined ? [] : body.categories;
+  const chans = body.channels === undefined ? [] : body.channels;
+  if (!Array.isArray(cats) || !Array.isArray(chans) || cats.length > 500 || chans.length > 2000) return res.status(400).json({ error: 'ordem inválida' });
+  const sid = req.server.id;
+  const catIds = new Set(db.prepare('SELECT id FROM channel_categories WHERE server_id = ?').all(sid).map((r) => r.id));
+  const chanIds = new Set(db.prepare('SELECT id FROM channels WHERE server_id = ?').all(sid).map((r) => r.id));
+  const okPos = (p) => Number.isSafeInteger(p) && p >= 0;
+  for (const c of cats) if (!c || !catIds.has(c.id) || !okPos(c.position)) return res.status(400).json({ error: 'categoria inválida' });
+  for (const c of chans) {
+    if (!c || !chanIds.has(c.id) || !okPos(c.position)) return res.status(400).json({ error: 'canal inválido' });
+    if (c.category_id !== null && !catIds.has(c.category_id)) return res.status(400).json({ error: 'categoria inválida' });
+  }
+  // canais que essa pessoa não vê não podem ser movidos por ela
+  const visible = new Set(listChannels(sid, req.user.id).map((c) => c.id));
+  if (chans.some((c) => !visible.has(c.id))) return res.status(403).json({ error: 'canal inválido' });
+
+  const moved = chans.filter((c) => {
+    const cur = db.prepare('SELECT category_id FROM channels WHERE id = ?').get(c.id);
+    return cur && cur.category_id !== c.category_id;
+  });
+  db.transaction(() => {
+    const setCat = db.prepare('UPDATE channel_categories SET position = ? WHERE id = ? AND server_id = ?');
+    for (const c of cats) setCat.run(c.position, c.id, sid);
+    const setChan = db.prepare('UPDATE channels SET category_id = ?, position = ? WHERE id = ? AND server_id = ?');
+    for (const c of chans) setChan.run(c.category_id, c.position, c.id, sid);
+  })();
+  realtime.broadcastToServer(sid, { type: 'channels_updated', serverId: sid });
+  // trocar de categoria fica no registro de auditoria; só reordenar não (seria muito barulho)
+  for (const c of moved) {
+    const ch = access.getChannel(c.id);
+    audit.log(sid, req.user.id, 'channel_update', { type: 'channel', id: ch.id, name: ch.name }, { changed: ['category_id'] });
+  }
+  res.json({ ok: true });
 });
 
 // ------------------------------------------------------------------

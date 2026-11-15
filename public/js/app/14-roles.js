@@ -255,7 +255,6 @@ function openChannelEdit(ch) {
   select.replaceChildren(new Option('sem categoria', ''));
   for (const c of channelCategories) select.add(new Option(c.name, c.id));
   select.value = ch.category_id || '';
-  document.getElementById('channelEditPosition').value = ch.position;
   const extra = document.getElementById('channelExtraPermissions'); extra.replaceChildren();
   if (ch.type === 'text') for (const [key, title] of Object.entries({ send: 'enviar mensagens', attach: 'enviar anexos e GIFs', react: 'adicionar reações', pin: 'fixar mensagens' })) {
     const block = document.createElement('section'); block.className = 'perm-block';
@@ -276,6 +275,13 @@ function openChannelEdit(ch) {
   channelEditName.focus();
 }
 
+document.getElementById('channelEditDeleteBtn').addEventListener('click', async () => {
+  if (!editingChannel) return;
+  const ch = editingChannel;
+  closeChannelEdit();
+  await deleteChannel(ch);
+});
+
 channelEditPrivateView.addEventListener('change', () => {
   fillRoleChecks(channelEditViewRoles, checkedRoleIds(channelEditViewRoles), channelEditPrivateView.checked);
 });
@@ -289,7 +295,6 @@ channelEditSaveBtn.addEventListener('click', async () => {
   const body = {
     name: channelEditName.value,
     category_id: Number(document.getElementById('channelEditCategory').value) || null,
-    position: Number(document.getElementById('channelEditPosition').value),
     private_view: channelEditPrivateView.checked,
     view_role_ids: checkedRoleIds(channelEditViewRoles),
   };
