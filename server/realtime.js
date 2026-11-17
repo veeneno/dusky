@@ -71,6 +71,7 @@ function init(server) {
       const entry = ticket ? wsTickets.consume(ticket) : null;
       if (!entry) return cb(false, 401, 'unauthorized');
       info.req.userId = entry.userId;
+      info.req.sessionVersion = entry.sv || 0;
       cb(true);
     },
   });
@@ -84,6 +85,7 @@ function init(server) {
 
   wss.on('connection', (ws, req) => {
     ws.userId = req.userId;
+    ws.sv = req.sessionVersion || 0;
     ws.lastPongAt = Date.now(); // considera viva no momento em que conecta
     clients.add(ws);
     console.log(`[ws] conexão aberta — userId=${ws.userId} (total de clientes: ${clients.size})`);
@@ -770,6 +772,20 @@ function dropUserConnections(userId, finalEvent) {
   }
 }
 
+// senha trocada: derruba as conexões das OUTRAS sessões (as abertas antes), mantém a atual
+function dropOtherSessions(userId, keepSv, finalEvent) {
+  for (const ws of [...clients]) {
+    if (ws.userId !== userId || ws.sv === keepSv) continue;
+    try {
+      if (finalEvent) ws.send(JSON.stringify(finalEvent));
+      ws.close(4001, 'sessão encerrada');
+    } catch (_) { /* já fechada */ }
+  }
+}
+
+// quantas conexões em tempo real abertas agora (página /admin)
+function connectionCount() { return clients.size; }
+
 // quem está em qual call agora, em todo o site (só o painel de admin usa)
 function voiceOccupancyAll() {
   const out = [...voiceStates.entries()].map(([userId, s]) => ({ userId, channelId: s.channelId, serverId: s.serverId }));
@@ -808,7 +824,7 @@ module.exports = {
   init, broadcast, sendToUsers, broadcastToServer, broadcastToChannel,
   isOnline, onlineUserIds, voiceOccupancy, kickFromServerVoice, kickFromChannelVoice,
   voiceStateOf, disconnectUser, moveUser, enforceVoicePermissions, onVoiceLeave,
-  dropUserConnections, voiceOccupancyAll, activityOf, presenceStatusOf,
+  dropUserConnections, dropOtherSessions, voiceOccupancyAll, connectionCount, activityOf, presenceStatusOf,
   BOT_USER_ID, botJoinVoice, botLeaveVoice,
   humansInChannel, voiceChannelOf,
 };

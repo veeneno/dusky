@@ -20,11 +20,8 @@ const BIO_MAX_LEN = 190;
 const STATUS_MAX_LEN = 80;
 const { cleanNameStyle } = require('../nameStyle'); // efeito no nome (LED, neon…)
 
-function publicUser(row) {
-  if (!row) return null;
-  const { password_hash, ...rest } = row;
-  return rest;
-}
+// sem senha, e-mail e segredos das 2 etapas: isto vai pra quem divide servidor com a pessoa
+const { stripPrivate: publicUser } = require('../userPrivate');
 
 // só quem divide servidor/DM com a pessoa recebe a atualização (inclui ela mesma, pras outras abas)
 function broadcastProfileUpdate(user) {
@@ -77,6 +74,9 @@ router.patch('/', requireAuth, (req, res) => {
     }
     if (!USERNAME_RE.test(cleanUsername)) {
       return res.status(400).json({ error: 'usuário só pode ter letras, números, espaço, _ ou -' });
+    }
+    if (require('../accountDeletion').DELETED_NAME.test(cleanUsername)) {
+      return res.status(400).json({ error: 'esse nome é reservado' });
     }
     const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?')
       .get(cleanUsername, req.user.id);
@@ -158,8 +158,11 @@ router.post('/password', requireAuth, limits.perUser('password', 10, 15 * 60 * 1
   if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
     return res.status(400).json({ error: 'preencha a senha atual e a nova' });
   }
-  if (newPassword.length < 6) {
-    return res.status(400).json({ error: 'a nova senha precisa ter pelo menos 6 caracteres' });
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'a nova senha precisa ter pelo menos 8 caracteres' });
+  }
+  if (newPassword.length > 200) {
+    return res.status(400).json({ error: 'senha comprida demais (máximo 200 caracteres)' });
   }
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
@@ -169,7 +172,11 @@ router.post('/password', requireAuth, limits.perUser('password', 10, 15 * 60 * 1
   }
 
   const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, req.user.id);
+  // senha nova desloga os OUTROS aparelhos (session_version); este continua entrado
+  db.prepare('UPDATE users SET password_hash = ?, session_version = COALESCE(session_version, 0) + 1 WHERE id = ?').run(newHash, req.user.id);
+  const sv = db.prepare('SELECT session_version FROM users WHERE id = ?').get(req.user.id).session_version;
+  req.session.sv = sv;
+  realtime.dropOtherSessions(req.user.id, sv, { type: 'session_revoked' });
   res.json({ ok: true });
 });
 

@@ -45,15 +45,18 @@ function fmtDate(iso) {
 
 function openAdminPanel() {
   if (!currentUser || !currentUser.is_site_admin) return;
+  // fora de call vai direto pra página completa (/admin); em call fica o painel rápido aqui, pra não cair
+  if (!voiceChannel) { window.location.href = '/admin.html'; return; }
   adminBackdrop.hidden = false;
   showAdminTab(adminTab);
+  if (adminTab !== 'reports') refreshAdminReportsBadge();
 }
 
 function showAdminTab(tab) {
   adminTab = tab;
   adminTabs.querySelectorAll('[data-admin-tab]').forEach((b) => b.classList.toggle('active', b.dataset.adminTab === tab));
   adminBody.innerHTML = '<p class="admin-loading">carregando…</p>';
-  const render = { overview: renderAdminOverview, users: renderAdminUsers, servers: renderAdminServers, announce: renderAdminAnnounce }[tab];
+  const render = { overview: renderAdminOverview, users: renderAdminUsers, servers: renderAdminServers, reports: renderAdminReports, announce: renderAdminAnnounce }[tab];
   render().catch((err) => { adminBody.innerHTML = ''; adminBody.append(Object.assign(document.createElement('p'), { className: 'field-error', textContent: err.message })); });
 }
 

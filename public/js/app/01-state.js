@@ -166,7 +166,7 @@ const unreadChannels = new Map(); // channelId -> { serverId (null = DM), mentio
 let voiceChannel = null; // canal de voz que estou ocupando de verdade (pode diferir do currentChannel se eu for ver um canal de texto durante a call)
 let appAudioCaptureStream = null; // só no app desktop Electron: stream extra de getUserMedia quando
                                    // o plano de áudio da tela é 'app' (isolamento por app via PipeWire
-                                   // — ver window.duskyDesktop em electron/preload.js). Guardado
+                                   // — ver window.duskyDesktop em tauri/src-tauri/src/bridge.js). Guardado
                                    // aqui só pra poder parar a track e devolver o roteamento no
                                    // stopScreenShare(); nunca é usado quando o plano é 'system' ou 'none'.
 let pcmAudioGenerator = null; // só no app desktop Electron/Windows: MediaStreamTrackGenerator usado

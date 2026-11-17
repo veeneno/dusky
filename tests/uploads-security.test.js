@@ -8,6 +8,7 @@ const files=[];let server,base,html,png,avatar;
 function make(folder,ext,body){const name=crypto.randomBytes(16).toString('hex')+ext;const file=path.join(UPLOADS_ROOT,folder,name);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,body);files.push(file);return '/uploads/'+folder+'/'+name;}
 before(async()=>{
  for(let i=1;i<=3;i++) db.prepare('INSERT INTO users(id,username,password_hash) VALUES(?,?,?)').run(i,'upload-test-'+i,'unused');
+ db.prepare("UPDATE users SET email = username || '@teste.local' WHERE email IS NULL").run(); // conta sem e-mail confirmado fica presa na tela de confirmar
  db.prepare("INSERT INTO servers(id,name,owner_id) VALUES(1,'test',1)").run();
  db.prepare('INSERT INTO server_members(server_id,user_id) VALUES(1,1),(1,2)').run();
  db.prepare("INSERT INTO channels(id,name,type,server_id) VALUES(1,'chat','text',1),(2,'dm','text',NULL)").run();

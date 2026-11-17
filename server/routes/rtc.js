@@ -81,7 +81,7 @@ router.get('/ice-servers', requireAuth, async (req, res) => {
 });
 
 // Com &screen=1 o ingresso é pro auxiliar de tela do app desktop: ele entra na mesma sala como um
-// participante à parte, "tela-<id da conta>", que só envia o vídeo da tela (ver electron/native/
+// participante à parte, "tela-<id da conta>", que só envia o vídeo da tela (ver native/
 // screencast/sfu.go). O site junta esse vídeo à pessoa certa pelo número no nome.
 // GET /api/rtc/sfu?channelId=N — as calls passam pelo servidor de mídia (LiveKit) deste PC?
 // { enabled: false } = não: o site usa a malha (conexão direta entre as pessoas), como sempre.

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="/js/compat.js"></script>
+  <script src="/js/themes.js"></script>
+  <script src="/js/theme-boot.js"></script>
+  <title>admin — dusky</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/theme.css">
+  <link rel="stylesheet" href="/css/admin.css?v=1">
+</head>
+<body class="adm">
+  <aside class="adm-side">
+    <a class="adm-brand" href="/app.html" title="voltar pro dusky"><img src="/favicon-32.png" alt=""><span>dusky <em>admin</em></span></a>
+    <nav class="adm-nav" id="admNav">
+      <button type="button" data-view="overview">visão geral</button>
+      <button type="button" data-view="live">ao vivo</button>
+      <button type="button" data-view="users">usuários</button>
+      <button type="button" data-view="servers">servidores</button>
+      <button type="button" data-view="reports">denúncias <span class="adm-badge" id="badgeReports" hidden></span></button>
+      <button type="button" data-view="logs">logs <span class="adm-badge warn" id="badgeLogs" hidden></span></button>
+      <button type="button" data-view="actions">registro</button>
+      <button type="button" data-view="announce">aviso geral</button>
+    </nav>
+    <div class="adm-side-foot">
+      <span id="admMe"></span>
+      <a href="/app.html">← voltar pro dusky</a>
+    </div>
+  </aside>
+  <main class="adm-main">
+    <header class="adm-head">
+      <h1 id="admTitle">visão geral</h1>
+      <div class="adm-head-actions">
+        <span class="adm-updated" id="admUpdated"></span>
+        <button type="button" class="btn btn-ghost btn-sm" id="admRefresh">atualizar</button>
+      </div>
+    </header>
+    <section class="adm-body" id="admBody"></section>
+  </main>
+  <aside class="adm-drawer" id="admDrawer" hidden>
+    <button type="button" class="adm-drawer-close" id="admDrawerClose" aria-label="fechar">×</button>
+    <div id="admDrawerBody"></div>
+  </aside>
+  <div class="adm-toasts" id="admToasts"></div>
+  <script src="/js/admin.js?v=1"></script>
+</body>
+</html>

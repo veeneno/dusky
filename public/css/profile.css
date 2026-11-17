@@ -988,3 +988,23 @@ html[data-reduce-motion] .pc-fx::after { animation: none !important; }
 .profile-card.is-popout:has(> .catalog-profile-fx) { aspect-ratio: auto; min-height: min(calc(300px * 880 / 450), calc(100vh - 16px)); }
 html[data-reduce-motion] .catalog-nameplate-video { display: none; }
 @media (prefers-reduced-motion: reduce) { .catalog-nameplate-video { display: none; } }
+
+/* ---------- conta e segurança: e-mail e 2 etapas (31-account-security.js) ---------- */
+.account-security .profile-edit-group { margin-bottom: 18px; }
+.account-security .sec-value { font-weight: 600; color: var(--text-hi); margin: 6px 0 2px; overflow-wrap: anywhere; }
+.account-security .sec-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.account-security .sec-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08)); }
+.account-security .sec-row:first-of-type { border-top: 0; }
+.account-security .sec-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.account-security .sec-row-text small { color: var(--text-lo); font-size: 12.5px; line-height: 1.35; }
+.account-security .sec-badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--elevated, rgba(255, 255, 255, 0.06)); color: var(--text-lo); white-space: nowrap; }
+.account-security .sec-badge.on { background: rgba(87, 242, 135, 0.14); color: #57f287; }
+.account-security .sec-qr { display: inline-block; padding: 10px; background: #fff; border-radius: 10px; margin: 6px 0; }
+.account-security .sec-qr img { display: block; width: 180px; height: 180px; }
+.account-security .sec-secret { font-size: 12.5px; color: var(--text-lo); overflow-wrap: anywhere; }
+.account-security .sec-secret code { font-size: 13px; color: var(--text-hi); }
+.account-security .sec-code-input { font-family: var(--font-mono, ui-monospace, monospace); letter-spacing: 3px; font-size: 18px; }
+.account-security .sec-codes { display: grid; grid-template-columns: repeat(2, max-content); gap: 6px 22px; padding: 12px 14px; margin: 8px 0; border-radius: 8px; background: var(--elevated, rgba(0, 0, 0, 0.25)); }
+.account-security .sec-codes code { font-size: 15px; letter-spacing: 1px; }
+.account-security .sec-warn { color: #f0b232; }
+.account-security .sec-error { margin-top: 6px; }

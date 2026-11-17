@@ -2,17 +2,21 @@
 
 Um Discord próprio, feito pra mim e pros meus amigos. Tem servidores com convite, canais de texto e voz organizados em categorias, DMs, cargos, chamadas de voz/vídeo, compartilhamento de tela pela placa de vídeo, soundboard, bot de música, um **mundinho 3D** com jogos (Duno, 21, xadrez e sinuca) e um app desktop em Rust. Tudo roda num PC de casa, com banco SQLite e um front-end em JavaScript puro (sem framework, sem build).
 
-O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O repositório é privado: [`veeneno/dusky`](https://github.com/veeneno/dusky).
+O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O código é aberto, sob a [AGPL-3.0](#licença): [`veeneno/dusky`](https://github.com/veeneno/dusky).
 
 ## O que tem
 
 **Contas e perfil**
-- Cadastro aberto e login. Conta nova não vê nada até entrar num servidor por convite.
+- Cadastro aberto, com **e-mail confirmado por código** (6 dígitos, enviado pelo [Resend](https://resend.com)), caixinha de **13 anos ou mais** e aceite dos termos, e **anti-robô** (Cloudflare Turnstile). Conta antiga sem e-mail confirmado fica presa na tela de confirmar até adicionar um. Conta nova não vê nada até entrar num servidor por convite.
+- Entrar com **nick ou e-mail**. **Esqueci minha senha** por código no e-mail.
+- **Verificação em 2 etapas** opcional: app autenticador (com QR code e 8 códigos de recuperação), código por e-mail, ou os dois.
 - Perfil com avatar e banner (podem ser gif, inclusive do GIPHY), cor de destaque (sólida ou degradê), bio e status.
 - **Cartão de perfil no tamanho do Discord** (300 px de largura), com o cartão inteiro nas cores da pessoa.
 - **Efeito no nome**: LED RGB, neon, degradê, brilho ou pulso (com as cores escolhidas), aparecendo no chat, na lista de membros e no cartão.
 - **Decorações do Discord**: decoração do avatar (molduras), placa do nome e efeito de perfil, escolhidas numa galeria com busca (catálogo com ~1.400 itens, ver [`docs/decor-catalog.md`](docs/decor-catalog.md)). Os efeitos de perfil animados mantêm a proporção original (feitos pra um cartão de 300 × 587) e só tocam quando estão na tela.
-- Troca de senha. Senha redefinida ou conta suspensa derruba todas as sessões abertas.
+- Troca de senha (mínimo 8 caracteres): derruba os outros aparelhos e mantém o atual. Senha redefinida ou conta suspensa derruba todas as sessões.
+- **Seus dados (LGPD)**: baixar tudo num JSON e **excluir a conta** (os dados pessoais somem e a conta vira "conta excluída N"; a pessoa escolhe se as mensagens vão junto). Páginas de [termos de uso](https://dusky.veneno.space/termos) e [privacidade](https://dusky.veneno.space/privacidade).
+- **Denunciar** mensagem ou pessoa (bandeira na mensagem, "denunciar" no perfil). O texto e o anexo ficam guardados como prova mesmo se apagarem depois.
 
 **Servidores**
 - Criar servidor, trocar nome e ícone, apagar, sair.
@@ -96,13 +100,14 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O re
 
 O áudio sempre vem do YouTube (a API do Spotify só dá o nome, o artista e a capa). Ele é mandado como um "rádio" em mp3 pra cada pessoa da call.
 
-**Painel de admin do site** (só a conta marcada como admin)
-- Números gerais (usuários, mensagens, quem está em call, memória, espaço em disco).
-- Usuários: suspender, reativar, gerar senha temporária.
-- Servidores: ver e apagar.
-- Aviso geral que aparece pra todo mundo conectado.
+**Página de admin** (`/admin`, só a conta marcada como admin do site)
+- **Visão geral**: números do site, gráficos dos últimos 30 dias (mensagens, pessoas ativas, contas novas), memória/disco/carga do PC, versão, quais serviços estão no ar (e-mail, anti-robô, LiveKit) e quanto espaço cada coisa ocupa.
+- **Ao vivo**: quem está online (e jogando o quê) e quem está em cada call.
+- **Usuários**: busca e filtros; cada conta abre um painel com e-mail, 2 etapas, servidores, mensagens, anexos e denúncias, e as ações suspender/reativar, deslogar de tudo, senha temporária, limite de anexos e excluir conta.
+- **Servidores**, **denúncias** (apagar a mensagem, suspender, resolver, descartar, baixar a prova), **logs do servidor** ao vivo (últimas 3000 linhas, com filtro), **registro** do que cada admin fez e **aviso geral** pra todo mundo conectado.
+- Em call, o botão de admin abre a versão rápida (janela por cima do app), pra não cair da call.
 
-**App desktop — dusky Mist 1.0.x** (Rust/Tauri, Linux e Windows): abre direto no site, faz a call pelo Rust no Linux (o WebKitGTK não tem WebRTC), compartilha a tela pela placa de vídeo, mostra o jogo aberto ("jogando X"), o contador de menções, volta sozinho quando o servidor cai e **se atualiza sozinho**. Os amigos instalam pela página **https://dusky.veneno.space/baixar** (com o guia de dependências de cada distro Linux). Quem tem o app antigo (Electron) migra sozinho pelo atualizador. Detalhes em [`tauri/README.md`](tauri/README.md).
+**App desktop — dusky Mist 1.0.x** (Rust/Tauri, Linux e Windows): abre direto no site, faz a call pelo Rust no Linux (o WebKitGTK não tem WebRTC), compartilha a tela pela placa de vídeo, mostra o jogo aberto ("jogando X"), o contador de menções, volta sozinho quando o servidor cai e **se atualiza sozinho**. Os amigos instalam pela página **https://dusky.veneno.space/baixar** (com o guia de dependências de cada distro Linux). Detalhes em [`tauri/README.md`](tauri/README.md).
 
 ## Como rodar
 
@@ -153,7 +158,11 @@ Todas são opcionais: sem uma delas, a função correspondente cai num modo mais
 | Variável | Pra quê | Sem ela |
 |---|---|---|
 | `PORT` | porta do servidor | `3000` |
-| `SESSION_SECRET` | assina o cookie de login | usa uma chave padrão que está no código |
+| `SESSION_SECRET` | assina o cookie de login — **obrigatória na internet** (`openssl rand -hex 32`) | usa uma chave padrão que está no código (inseguro) |
+| `RESEND_API_KEY`, `MAIL_FROM` | envio de e-mail pelo [Resend](https://resend.com) (códigos, avisos de segurança, denúncias). Com ela, **todo mundo precisa confirmar um e-mail** | códigos só aparecem no log (`[mail]`) e o e-mail não é cobrado |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | anti-robô no cadastro ([Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)) | cadastro sem a verificação |
+| `CONTACT_EMAIL` | e-mail de contato nas páginas de termos e privacidade | "fale com o admin dentro do dusky" |
+| `UPLOAD_MAX_MB`, `UPLOAD_QUOTA_MB` | tamanho máximo de um anexo e espaço total por conta | 100 MB e 5 GB |
 | `SITE_ADMINS` | conta(s) marcada(s) como admin do site no primeiro boot (separadas por vírgula) | `veneno` |
 | `METERED_DOMAIN`, `METERED_SECRET_KEY` | servidor TURN do [Metered](https://www.metered.ca/), pra calls entre redes difíceis (4G, NAT) | STUN do Google + TURN público |
 | `GIPHY_API_KEY` | busca de GIFs e stickers | busca de GIF desligada |
@@ -167,7 +176,7 @@ Todas são opcionais: sem uma delas, a função correspondente cai num modo mais
 
 Em **configurações → notificações → com o site fechado**, clique em **ativar neste aparelho** e autorize no navegador. O nível abaixo (menções/DMs, todas, nenhuma) também controla o push; “nenhuma” pausa os avisos. Desativar remove a inscrição deste navegador. Sair da conta também cancela essa inscrição.
 
-Requer HTTPS (localhost serve para desenvolvimento), navegador com Web Push e execução em segundo plano permitida pelo sistema. Fechar a aba funciona; encerrar totalmente o navegador ou bloquear sua execução em segundo plano pode impedir entrega. O Electron continua com as notificações da janela; o botão de Web Push é para navegadores compatíveis. Provedores aceitos: Google/Chromium, Mozilla e Apple.
+Requer HTTPS (localhost serve para desenvolvimento), navegador com Web Push e execução em segundo plano permitida pelo sistema. Fechar a aba funciona; encerrar totalmente o navegador ou bloquear sua execução em segundo plano pode impedir entrega. O app desktop usa as notificações da janela; o botão de Web Push é para navegadores compatíveis. Provedores aceitos: Google/Chromium, Mozilla e Apple.
 
 As chaves VAPID são geradas uma vez e persistidas em `app_secrets` no SQLite, fora do Git. Inclua o banco nos backups para preservar inscrições. `WEB_PUSH_SUBJECT` opcional muda o endereço público de contato VAPID (padrão: `https://dusky.veneno.space`). O worker (`public/sw.js`) não faz cache de páginas privadas. O push leva apenas IDs; a leitura do conteúdo exige a sessão e as permissões atuais. Inscrições expiradas (404/410) são removidas. Senha redefinida, suspensão ou perda de acesso impedem novos avisos daquele conteúdo.
 
@@ -177,7 +186,7 @@ Referências de implementação: [Web Push](https://github.com/web-push-libs/web
 
 ## Verificação
 
-`npm test` executa os testes (`tests/*.test.js`) com SQLite em memória: permissões, isolamento entre servidores, categorias e a ordem da lateral (`channel-layout`), configurações do servidor, push, decorações e efeito no nome, e as regras do mundinho e de cada jogo (Duno, 21, xadrez com perft e sinuca, com física e faltas). Nenhum teste usa o banco real. `DUSKY_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/dusky.db`; o nome antigo `DIDISCORD_DB_PATH` também vale, e um `didiscord.db` antigo é renomeado sozinho pra `dusky.db` na primeira vez). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
+`npm test` executa os testes (`tests/*.test.js`) com SQLite em memória: permissões, isolamento entre servidores, categorias e a ordem da lateral (`channel-layout`), configurações do servidor, push, decorações e efeito no nome, contas (e-mail, 2 etapas, esqueci a senha, exportar e excluir conta), denúncias, a página de admin, e as regras do mundinho e de cada jogo (Duno, 21, xadrez com perft e sinuca, com física e faltas). Nenhum teste usa o banco real. `DUSKY_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/dusky.db`; o nome antigo `DIDISCORD_DB_PATH` também vale, e um `didiscord.db` antigo é renomeado sozinho pra `dusky.db` na primeira vez). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
 
 ## Estrutura do projeto
 
@@ -199,11 +208,19 @@ dusky/
 │   ├── sfu/livekit.js      # servidor de mídia opcional (LiveKit)
 │   ├── upload.js           # multer: avatar, banner, ícone, anexos
 │   ├── wsTickets.js        # ticket de uso único pra autenticar o WebSocket
+│   ├── mail.js, authCodes.js, totp.js  # e-mail (Resend), códigos de 6 dígitos e app autenticador (2 etapas)
+│   ├── turnstile.js        # anti-robô do cadastro (Cloudflare Turnstile)
+│   ├── accountDeletion.js  # excluir conta (LGPD): apaga os dados pessoais e anonimiza
+│   ├── reports.js          # denúncias: motivos e prova guardada (server/reports-evidence/, fora do git)
+│   ├── userPrivate.js      # campos que nunca saem pra outras pessoas (e-mail, segredos das 2 etapas…)
+│   ├── logBuffer.js, adminLog.js  # últimas linhas de log e registro de ações do admin (página /admin)
 │   ├── middleware/auth.js  # requireAuth: exige login (e derruba conta suspensa / sessão antiga)
 │   ├── db/                 # schema.sql, migrações (index.js), consultas de mensagem
 │   ├── bots/musicBot/      # bot de música: comandos, fila, yt-dlp → ffmpeg → mp3, Spotify
 │   └── routes/
-│       ├── auth.js         # cadastro, login, logout, /me
+│       ├── auth.js         # cadastro, login (nick ou e-mail), 2 etapas no login, confirmar/trocar e-mail, esqueci a senha, /me
+│       ├── account.js      # 2 etapas (ligar/desligar, códigos de recuperação), baixar meus dados, excluir conta
+│       ├── reports.js      # denunciar mensagem ou pessoa
 │       ├── servers.js      # servidores, canais (criar, ordem da lateral), configurações, membros, banimentos, convites, cargos, auditoria, moderação de voz
 │       ├── soundboard.js   # sons do soundboard (lista de todos os servidores + enviar/editar/apagar)
 │       ├── channels.js     # editar/apagar canal, quem está em qual call
@@ -217,7 +234,7 @@ dusky/
 │       ├── invites.js      # prévia e aceite de convite
 │       ├── users.js        # perfil de outra pessoa, contatos
 │       ├── profile.js      # editar o próprio perfil, senha, avatar, banner, tema (e imagem de fundo dele)
-│       ├── admin.js        # painel de admin do site
+│       ├── admin.js        # página /admin: números, sistema, ao vivo, contas, servidores, denúncias, logs, registro
 │       ├── musicbot.js     # stream de áudio e estado do bot
 │       ├── rtc.js          # servidores STUN/TURN pro WebRTC
 │       ├── giphy.js        # proxy do GIPHY (a chave nunca vai pro navegador)
@@ -225,11 +242,12 @@ dusky/
 │       ├── bots.js         # lista de bots (estática)
 │       └── server.js, members.js  # restos do modelo antigo de um servidor só (não estão ligados)
 ├── public/
-│   ├── login.html, app.html
+│   ├── login.html, app.html, admin.html  # entrar/criar conta, o app, a página de admin (js/admin.js)
+│   ├── termos.html, privacidade.html     # termos de uso e política de privacidade
 │   ├── css/                # theme.css (variáveis e componentes base), um arquivo por área,
 │   │                       #   design.css (o visual atual, por cima de tudo) e media.css (imagens/vídeos)
 │   ├── js/themes.js        # motor de temas: aplica as variáveis, temas prontos, editor da aba "temas"
-│   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 29
+│   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 32
 │   │                       #   arquivos por assunto, carregados em ordem — o mapa está em js/app/README.md
 │   ├── js/decor-catalog.js, js/decor-picker.js  # decorações do Discord (tocar efeitos/placas, galeria)
 │   ├── decor/              # catálogo das decorações (catalog.json/.js); as mídias em decor/media/ ficam fora do git
@@ -243,7 +261,7 @@ dusky/
 │   ├── vendor/             # DeepFilterNet3 e RNNoise (supressão de ruído, em WebAssembly) e Three.js
 │   └── uploads/            # arquivos enviados pelo pessoal (fora do git)
 ├── tauri/                  # app desktop dusky Mist (Rust/Tauri) — ver tauri/README.md
-├── electron/               # app desktop ANTIGO (Electron) + auxiliares nativos (native/) usados pelos dois
+├── native/                 # auxiliares nativos do app desktop: screencast (Go) e audiocap (C++, Windows)
 ├── docs/                   # MUNDINHO.md (plano e status do 3D e dos jogos), decor-catalog.md
 ├── tests/                  # npm test (SQLite em memória)
 ├── scripts/start.js        # npm start: servidor + túnel
@@ -253,7 +271,7 @@ dusky/
 
 ## Modelo de dados
 
-- **`users`**: contas. Perfil, `theme_json` (o tema e os "meus temas" da pessoa), `name_style` (efeito no nome), `nameplate`/`avatar_deco`/`profile_fx` (decorações), `is_site_admin`, suspensão (`banned_at`) e `session_version` (sobe quando a senha é redefinida, pra derrubar sessões antigas).
+- **`users`**: contas. E-mail (`email`, `email_pending`), 2 etapas (`totp_*`, `twofa_email`, `recovery_codes`), `terms_accepted_at`, `deleted_at` (conta excluída). Perfil, `theme_json` (o tema e os "meus temas" da pessoa), `name_style` (efeito no nome), `nameplate`/`avatar_deco`/`profile_fx` (decorações), `is_site_admin`, suspensão (`banned_at`) e `session_version` (sobe quando a senha é redefinida, pra derrubar sessões antigas).
 - **`servers`**, **`server_members`**, **`invites`**: servidores, quem está em cada um, e convites (usos, validade).
 - **`channels`**: canais de texto/voz de um servidor, com `category_id` e `position` (a ordem da lateral) e `world_scene` (preenchido = mundinho 3D). `server_id` nulo = DM, com os 2 participantes em **`dm_members`**.
 - **`channel_categories`**: categorias de cada servidor (nome e posição).
@@ -265,6 +283,9 @@ dusky/
 - **`messages_fts`**: índice de busca (FTS5), mantido em dia por gatilhos.
 - **`voice_state`**: quem está em qual call (sobrevive a um reinício; enquanto o servidor está de pé, quem manda é a memória do `realtime.js`).
 - **`push_subscriptions`**, **`app_secrets`**: inscrições de Web Push e as chaves VAPID.
+- **`auth_codes`**: códigos de 6 dígitos mandados por e-mail (guardados só como hash, valem 15 min).
+- **`reports`**: denúncias, com uma cópia da mensagem/perfil denunciado (`snapshot_json`) e o arquivo da prova (`evidence_file`).
+- **`site_admin_log`**: o que o admin do site fez (página /admin → registro).
 - **`server_settings`**: resto do modelo antigo de um servidor só (migrado pra `servers` automaticamente).
 - Os jogos do mundinho (partidas, fichas do 21) ficam só em memória no servidor: reiniciar zera.
 
@@ -296,7 +317,7 @@ Como funciona:
 - O IP público é descoberto sozinho a cada início. Quem está na mesma rede do servidor (ou no próprio PC) conecta pelo IP interno.
 - Quem está na call, mudo/surdo, "falando", mover e desconectar continuam pelo WebSocket do site, iguais nos dois modos. Em `public/js/app/21-call-sfu.js`, o código cuida de publicar e receber as faixas; o resto do código de call é compartilhado.
 - **Todo mundo numa call precisa estar no mesmo modo.** Quem entrou enquanto o LiveKit estava fora (em malha) não ouve quem entrou depois que ele voltou: é só sair e entrar de novo.
-- A tela **pela placa de vídeo** (app desktop 0.5.2 ou mais novo) também passa pelo servidor: o auxiliar entra na sala como um participante à parte (`tela-<id da conta>`) e publica o vídeo já codificado, então sai uma cópia só do PC de quem compartilha (`electron/native/screencast/sfu.go`). Com um app mais antigo, ou se o servidor de mídia não responder, o auxiliar volta a mandar direto pra cada pessoa. O som da tela sempre vai pelo site.
+- A tela **pela placa de vídeo** (app desktop 0.5.2 ou mais novo) também passa pelo servidor: o auxiliar entra na sala como um participante à parte (`tela-<id da conta>`) e publica o vídeo já codificado, então sai uma cópia só do PC de quem compartilha (`native/screencast/sfu.go`). Com um app mais antigo, ou se o servidor de mídia não responder, o auxiliar volta a mandar direto pra cada pessoa. O som da tela sempre vai pelo site.
 
 | Variável | Pra quê | Sem ela |
 |---|---|---|
@@ -308,38 +329,11 @@ Como funciona:
 
 ## App desktop
 
-**O app oficial agora é o dusky Mist (pasta `tauri/`)** — como rodar, publicar versão (`npm run release`), atualização automática, migração do Electron e aceleração de hardware estão em [`tauri/README.md`](tauri/README.md).
-
-O texto abaixo é do app **antigo** (Electron). Ele não recebe mais versões próprias: o `npm run release` do `tauri/` aponta os `latest*.yml` pro app novo, e cada Electron instalado se atualiza pra ele. A pasta continua no repositório porque os auxiliares nativos (`electron/native/`: `dusky-screencast`, `dusky-audiocap.exe`) são usados pelos dois.
-
-### App antigo (Electron)
-
-O app **não roda o servidor**: é uma janela do Chromium que abre o site.
-
-```bash
-cd electron
-npm install
-npm start          # abre em https://dusky.veneno.space
-npm run dev        # abre em http://localhost:3000 (servidor local)
-npm run build      # gera AppImage + .deb (Linux) e instalador .exe (Windows) em electron/dist/
-npm run release    # gera tudo E publica em downloads/ (página /baixar + atualização automática)
-```
-
-### Versão nova pros amigos (Electron — não use mais; ver tauri/README.md)
-
-1. Sobe o `version` em `electron/package.json` (ex: `0.5.0` → `0.5.1`).
-2. `cd electron && npm run release`. Ele gera os instaladores e copia pra pasta `downloads/` do servidor (fora do git), guardando só a versão nova e a anterior.
-3. Pronto: a página `/baixar` já mostra a nova, e quem está com o app aberto recebe em até 3 horas (ou na hora, em **Ajuda → Procurar atualizações**). O app baixa em segundo plano e pergunta se quer reiniciar.
-
-A atualização funciona no instalador do Windows e no AppImage. No `.deb` também, mas pede a senha de administrador. Quem ainda tem a versão 0.4.0 ou anterior precisa instalar a 0.5.0 uma vez pela página: as antigas não sabiam se atualizar.
-
-- **Endereço**: já abre em `https://dusky.veneno.space`. Dá pra trocar pela tela de "conectando…" ou pelo menu **Servidor** (aparece apertando Alt). `DUSKY_URL` força um endereço.
-- **Segurança da janela**: só navega pro servidor escolhido; links de fora abrem no navegador do sistema. Mic, câmera e tela são liberados sem perguntar, só pra esse endereço.
-- **Seletor de tela**: no X11/Windows é um seletor próprio com miniaturas (`electron/picker/`). No Wayland quem mostra é o próprio sistema (o seletor do Hyprland, GNOME ou KDE).
+O app pro computador é o dusky Mist (pasta `tauri/`) — como rodar, publicar versão (`npm run release`), atualização automática e aceleração de hardware estão em [`tauri/README.md`](tauri/README.md). O app antigo (Electron) foi aposentado.
 
 ### "Jogando X" (rich presence)
 
-O app descobre qual jogo está aberto no computador (`electron/presence.js`, a cada ~15 s) e avisa o site, que mostra "jogando X" na lista de membros e no cartão de perfil de quem divide servidor ou DM com a pessoa. No navegador não tem detecção.
+O app descobre qual jogo está aberto no computador (`tauri/src-tauri/src/presence.rs`, a cada ~15 s) e avisa o site, que mostra "jogando X" na lista de membros e no cartão de perfil de quem divide servidor ou DM com a pessoa. No navegador não tem detecção.
 
 - Reconhece sozinho os jogos da Steam (pelo caminho `steamapps/common/...`, com o nome vindo do appmanifest) e uma lista pequena de jogos conhecidos de fora dela. Os outros a pessoa cadastra em **configurações → app → atividade → adicionar jogo**, escolhendo o programa aberto e o nome.
 - Dá pra desligar no mesmo lugar ("mostrar o que estou jogando"). Desligado, o app nem lê os programas abertos.
@@ -348,7 +342,7 @@ O app descobre qual jogo está aberto no computador (`electron/presence.js`, a c
 
 ### Compartilhamento de tela pela placa de vídeo
 
-Pelo navegador, a tela é codificada no processador uma vez **por pessoa assistindo**: em 1080p60 isso era ~1 núcleo por pessoa, derrubando o fps dos jogos. No app desktop, a tela é codificada **uma vez só, na placa de vídeo**, e o auxiliar `electron/native/screencast` (em Go, com a biblioteca WebRTC Pion) manda o mesmo vídeo pra cada um.
+Pelo navegador, a tela é codificada no processador uma vez **por pessoa assistindo**: em 1080p60 isso era ~1 núcleo por pessoa, derrubando o fps dos jogos. No app desktop, a tela é codificada **uma vez só, na placa de vídeo**, e o auxiliar `native/screencast` (em Go, com a biblioteca WebRTC Pion) manda o mesmo vídeo pra cada um.
 
 | Sistema | Captura e codificação |
 |---|---|
@@ -364,26 +358,26 @@ Se a conexão da tela com alguém cair, ela é refeita sozinha, com credencial T
 
 ### Som da tela
 
-O Electron não sabe capturar o som de um app só, então cada sistema tem um captador próprio, que manda o áudio cru pro site:
+O WebView não sabe capturar o som de um app só, então cada sistema tem um captador próprio, que manda o áudio cru pro site:
 
-- **Linux** (`electron/audio/linux.js`): um `pw-record` desligado de tudo, e o app liga nele (com `pw-link`) só as saídas de som certas.
+- **Linux** (`tauri/src-tauri/src/audio/linux.rs`): um `pw-record` desligado de tudo, e o app liga nele (com `pw-link`) só as saídas de som certas.
   - Compartilhando uma janela: só o som do processo daquela janela.
   - Compartilhando a tela inteira: todo o som do PC, menos o do próprio dusky (senão quem assiste ouviria a própria voz de volta).
   - No Wayland o sistema não diz de qual app é a janela escolhida, então o som é escolhido antes, num seletor do dusky (tudo, um app específico, ou nada).
-- **Windows** (`electron/native/audiocap.cpp`): WASAPI Process Loopback, com a mesma regra (incluir só o app da janela, ou excluir o dusky).
+- **Windows** (`native/audiocap.cpp`): WASAPI Process Loopback, com a mesma regra (incluir só o app da janela, ou excluir o dusky).
 
 ### Recompilar os auxiliares
 
-Os executáveis prontos ficam em `electron/native/bin/` (dentro do git, porque sem eles não dá pra gerar o app).
+Os executáveis prontos ficam em `native/bin/` (dentro do git, porque sem eles não dá pra gerar o app).
 
 ```bash
 # compartilhamento de tela (Go 1.26+; usa a biblioteca do LiveKit pra mandar a tela pelo servidor de mídia)
-cd electron/native/screencast
+cd native/screencast
 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/dusky-screencast .
 GOOS=windows CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../bin/dusky-screencast.exe .
 
 # som da tela no Windows (precisa do zig)
-electron/native/build-cross.sh
+native/build-cross.sh
 ```
 
 ## Coisas a saber antes de mexer
@@ -399,6 +393,24 @@ electron/native/build-cross.sh
 ## Próximos passos
 
 Pra depois:
+- **Assinar o instalador do Windows** (tirar o aviso de app desconhecido) — de graça pela SignPath Foundation, que atende projetos open source.
 - **Compartilhar janela no Wayland** às vezes cai depois de alguns segundos (erro do GStreamer com janela de tamanho "quebrado", ex.: 1900×1006); a tela inteira funciona.
 - **Processos do WebKit que ficam rodando** depois de fechar o app desktop no Linux (ocupam RAM até reiniciar).
 - Mundinho: efeito na branca da sinuca, som das tacadas, mais jogos (truco, poker, damas), personagens com animação de verdade, mais cenas. Lista completa em [`docs/MUNDINHO.md`](docs/MUNDINHO.md).
+
+## Licença
+
+O dusky é software livre: [GNU Affero General Public License 3.0 ou posterior](LICENSE) (AGPL-3.0-or-later). Dá pra usar, estudar, mudar e redistribuir; quem rodar uma versão modificada como serviço pra outras pessoas precisa oferecer o código dessa versão pra elas (o site já tem o link "código-fonte" no rodapé).
+
+Partes de terceiros incluídas, cada uma com a sua licença:
+
+| o quê | onde | licença |
+|---|---|---|
+| LiveKit (cliente web) | `public/vendor/livekit/` | Apache-2.0 |
+| DeepFilterNet3 | `public/vendor/deepfilternet3/` | MIT / Apache-2.0 |
+| RNNoise (web-noise-suppressor) | `public/vendor/web-noise-suppressor/` | MIT / BSD |
+| Three.js | `public/vendor/three/` | MIT |
+| emojibase (dados de emoji) | `public/vendor/emoji/` | MIT |
+| bibliotecas do servidor (npm) | `package.json` | MIT, exceto web-push (MPL-2.0) |
+| FFmpeg (só no instalador do Windows) | baixado por `tauri/scripts/fetch-ffmpeg.js` | GPL-3.0 — build "essentials" do gyan.dev; o código-fonte do FFmpeg está em https://ffmpeg.org/download.html |
+| LiveKit server, yt-dlp, ffmpeg do bot | baixados na primeira vez, fora do git | Apache-2.0, Unlicense, LGPL/GPL |

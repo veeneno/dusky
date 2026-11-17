@@ -20,9 +20,6 @@ downloads/
 tunnel-url.txt
 server/bots/musicBot/bin/
 
-# app desktop (Electron)
-electron/node_modules/
-electron/dist/
 
 # testes e rascunhos locais
 _teste_nvenc.h264
@@ -48,3 +45,6 @@ public/decor/media/
 public/uploads/decor/*
 !public/uploads/decor/.gitkeep
 server/.diag-on
+
+# provas guardadas das denúncias (anexos de mensagens denunciadas)
+server/reports-evidence/

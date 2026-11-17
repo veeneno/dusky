@@ -10,6 +10,7 @@ let server, base;
 
 before(async () => {
   db.prepare("INSERT INTO users (id, username, password_hash) VALUES (1, 'dono', 'x'), (2, 'membro', 'x')").run();
+  db.prepare("UPDATE users SET email = username || '@teste.local' WHERE email IS NULL").run(); // conta sem e-mail confirmado fica presa na tela de confirmar
   db.prepare("INSERT INTO servers (id, name, owner_id) VALUES (1, 'srv', 1)").run();
   db.prepare('INSERT INTO server_members (server_id, user_id) VALUES (1, 1), (1, 2)').run();
   const app = express(); app.use(express.json());

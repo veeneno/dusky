@@ -527,6 +527,7 @@ function showProfilePopout(user, mutuals, anchorEl) {
     if (s && canModerateMember(user.id, 'ban_members') && members.some((m) => m.id === user.id)) {
       actions.push({ label: `banir de ${s.name}`, kind: 'danger', onClick: () => { closeViewProfile(); banMember(user); } });
     }
+    actions.push({ label: 'denunciar', kind: 'ghost', onClick: () => { closeViewProfile(); openReportDialog({ userId: user.id, name: user.username }); } });
   }
   // cargos (só quando estou olhando um servidor e a pessoa é membro dele)
   const member = currentServer() ? members.find((m) => m.id === user.id) : null;
@@ -1005,6 +1006,7 @@ function switchProfileTab(tabName) {
   profileSectionTitle.textContent = (label || target).textContent;
   // senha e sessão não mexem no perfil: sem prévia e sem "salvar alterações"
   const isAccount = profileActiveTab === 'conta';
+  if (isAccount && typeof loadAccountSecurity === 'function') loadAccountSecurity(); // 31-account-security.js
   profilePreviewCol.hidden = isAccount;
   profileEditFooter.hidden = isAccount;
   profileMainScroll.scrollTop = 0;

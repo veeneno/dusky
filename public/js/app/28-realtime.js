@@ -399,6 +399,16 @@ function wireRealtime() {
     alert(reason ? `sua conta foi suspensa: ${reason}` : 'sua conta foi suspensa');
     window.location.replace('/login.html');
   });
+  Realtime.on('account_deleted', () => {
+    if (voiceChannel) leaveVoiceCall({ silent: true });
+    window.location.replace('/login.html?conta=excluida');
+  });
+  Realtime.on('report_new', ({ reason }) => {
+    if (!currentUser || !currentUser.is_site_admin) return;
+    toast(`nova denúncia: ${reason}`);
+    if (!adminBackdrop.hidden && adminTab === 'reports') showAdminTab('reports');
+    else refreshAdminReportsBadge();
+  });
   Realtime.on('session_revoked', () => {
     if (voiceChannel) leaveVoiceCall({ silent: true });
     alert('sua senha foi redefinida — entre de novo com a senha nova');

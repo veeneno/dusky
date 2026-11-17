@@ -6,6 +6,9 @@ try {
   process.loadEnvFile(path.join(__dirname, '..', '.env'));
 } catch (_) { /* sem .env — segue sem essas chaves, as rotas caem pro modo sem elas */ }
 
+// cópia das últimas linhas de log pra página /admin (server/logBuffer.js)
+require('./logBuffer').install();
+
 const http = require('http');
 const express = require('express');
 const cookieSession = require('cookie-session');
@@ -72,6 +75,21 @@ app.use(cookieSession({
   httpOnly: true,
   sameSite: 'lax',
 }));
+// pelo endereço https (túnel do Cloudflare) o cookie só viaja criptografado. Acesso direto por
+// http (rede de casa, testes) continua funcionando: aí não dá pra marcar `secure`.
+app.use((req, res, next) => {
+  if (req.secure && req.sessionOptions) req.sessionOptions.secure = true;
+  next();
+});
+
+// cabeçalhos de segurança em tudo. As páginas (.html) ganham ainda a política de conteúdo (CSP)
+// lá no express.static. Outro site não pode embutir o dusky num iframe (clickjacking).
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=15552000');
+  next();
+});
 
 // Endereço antigo (didiscord.veneno.space): o mesmo túnel atende os dois endereços, então tudo
 // continua funcionando nele — o app Electron já instalado só aceita navegar no endereço que tem
@@ -87,6 +105,20 @@ app.use((req, res, next) => {
   if (/^\/(downloads|api|ws|livekit|uploads|vendor)(\/|$)/.test(req.path)) return next(); // atualizador, API, mídia
   res.redirect(301, `https://${NEW_HOST(req.hostname)}${req.originalUrl}`);
 });
+
+// página do admin do site: só abre pra quem é admin (as rotas /api/admin já conferem de novo)
+app.get(['/admin', '/admin.html'], (req, res, next) => {
+  const uid = req.session && req.session.userId;
+  const row = uid ? require('./db').prepare('SELECT is_site_admin, banned_at, session_version FROM users WHERE id = ?').get(uid) : null;
+  const ok = row && row.is_site_admin && !row.banned_at && (req.session.sv || 0) === (row.session_version || 0);
+  if (!ok) return res.redirect(uid ? '/app.html' : '/login.html');
+  if (req.path === '/admin') return res.redirect('/admin.html');
+  next();
+});
+
+// termos de uso e política de privacidade (páginas estáticas em public/)
+app.get('/termos', (req, res) => res.redirect('/termos.html'));
+app.get('/privacidade', (req, res) => res.redirect('/privacidade.html'));
 
 // raiz redireciona pra login ou pro app, dependendo da sessão
 app.get('/', (req, res) => {
@@ -109,11 +141,47 @@ app.get('/invite/:code', (req, res) => {
 // EXCEÇÃO: public/vendor/ (bibliotecas de terceiros — motor/modelo de supressão de ruído, ~24 MB).
 // Esses arquivos nunca mudam no mesmo endereço (versão nova = pasta nova), então ficam no cache
 // do navegador — sem isso, a pessoa baixaria 24 MB de novo toda vez que entrasse numa call.
+// Política de conteúdo das páginas. A parte que já vale (CSP_ENFORCED) não quebra nada: proíbe
+// embutir o site, plugins e formulários pra fora. A completa (só scripts do próprio site etc.) roda
+// primeiro em modo "só relatar": o navegador avisa em /api/csp-report o que ela bloquearia, sem
+// bloquear — depois de uns dias sem avisos estranhos no log, ela passa pra CSP_ENFORCED.
+const CSP_ENFORCED = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'";
+const CSP_REPORT_ONLY = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' data: blob: https:",
+  "connect-src 'self' wss: ipc: http://ipc.localhost https://cloudflareinsights.com",
+  "frame-src https://www.youtube-nocookie.com https://challenges.cloudflare.com",
+  "worker-src 'self' blob:",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  'report-uri /api/csp-report',
+].join('; ');
+app.post('/api/csp-report', express.json({ type: ['application/csp-report', 'application/json', 'application/reports+json'], limit: '16kb' }), (req, res) => {
+  const { hit } = require('./limits');
+  if (!hit('csp-report', req.ip, 30, 60 * 1000)) {
+    const r = (req.body && req.body['csp-report']) || req.body || {};
+    const clip = (v) => String(v || '').slice(0, 200);
+    console.warn(`[csp] ${clip(r['violated-directive'] || r.effectiveDirective)} bloquearia ${clip(r['blocked-uri'] || r.blockedURL)} em ${clip(r['document-uri'] || r.documentURL)}`);
+  }
+  res.sendStatus(204);
+});
+
 const DECOR_MEDIA_DIR = path.join(__dirname, '..', 'public', 'decor', 'media') + path.sep;
 const VENDOR_DIR = path.join(__dirname, '..', 'public', 'vendor') + path.sep;
 app.use(require('./routes/uploads'));
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Content-Security-Policy', CSP_ENFORCED);
+      res.setHeader('Content-Security-Policy-Report-Only', CSP_REPORT_ONLY);
+    }
     if (filePath.startsWith(DECOR_MEDIA_DIR)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     else if (filePath.startsWith(VENDOR_DIR)) res.setHeader('Cache-Control', 'public, max-age=2592000');
     else res.setHeader('Cache-Control', 'no-store');
@@ -141,9 +209,12 @@ app.use('/api/soundboard', perUser('soundboard', 60, 10 * 60 * 1000));
 app.use('/api/servers/:serverId/soundboard', perUser('soundboard', 60, 10 * 60 * 1000));
 app.use('/api/profile', (req, res, next) => (req.method === 'GET' ? next() : perUser('profile', 60, 10 * 60 * 1000)(req, res, next)));
 app.get('/api/rtc/sfu', perUser('rtc-sfu', 60, 60 * 1000));
+app.use('/api/auth/email', perUser('auth-email', 30, 10 * 60 * 1000, 'muitos pedidos — espera uns minutos'));
 
 // rotas de autenticação (registro, login, logout, /me)
 app.use('/api/auth', authRoutes);
+app.use('/api/account', require('./routes/account')); // e-mail, 2 etapas, exportar e excluir conta
+app.use('/api/reports', require('./routes/reports'));
 app.use('/api/channels', channelRoutes);
 app.use('/api/channels/:channelId/messages', messageRoutes);
 app.use('/api/ws', wsRoutes);

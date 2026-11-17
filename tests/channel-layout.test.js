@@ -9,6 +9,7 @@ const access = require('../server/access');
 let server, base;
 before(async () => {
   for (let i = 1; i <= 4; i++) db.prepare('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)').run(i, 'user' + i, 'test');
+  db.prepare("UPDATE users SET email = username || '@teste.local' WHERE email IS NULL").run(); // conta sem e-mail confirmado fica presa na tela de confirmar
   db.prepare("INSERT INTO servers (id, name, owner_id) VALUES (1, 'one', 1), (2, 'two', 4)").run();
   for (let i = 1; i <= 3; i++) db.prepare('INSERT INTO server_members (server_id, user_id) VALUES (1, ?)').run(i);
   db.prepare('INSERT INTO server_members (server_id, user_id) VALUES (2, 4)').run();

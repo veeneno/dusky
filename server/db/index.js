@@ -101,6 +101,67 @@ ensureColumn('users', 'nameplate', 'TEXT');
 ensureColumn('users', 'avatar_deco', 'TEXT');
 ensureColumn('users', 'profile_fx', 'TEXT');
 
+// conta: e-mail (obrigatório e confirmado) e verificação em 2 etapas — ver routes/auth.js e
+// routes/account.js. Nada disso sai pra outras pessoas (userPrivate.js).
+ensureColumn('users', 'email', 'TEXT');                 // confirmado (login por e-mail, esqueci a senha)
+ensureColumn('users', 'email_pending', 'TEXT');         // esperando o código
+ensureColumn('users', 'email_verified_at', 'TEXT');
+ensureColumn('users', 'totp_secret', 'TEXT');           // app autenticador (base32)
+ensureColumn('users', 'totp_pending_secret', 'TEXT');   // escaneado, falta confirmar com um código
+ensureColumn('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('users', 'totp_last_step', 'INTEGER');     // o mesmo código não vale duas vezes
+ensureColumn('users', 'twofa_email', 'INTEGER NOT NULL DEFAULT 0'); // código por e-mail ao entrar
+ensureColumn('users', 'recovery_codes', 'TEXT');        // JSON com o sha256 dos códigos de recuperação
+ensureColumn('users', 'deleted_at', 'TEXT');           // conta excluída pela própria pessoa (accountDeletion.js)
+ensureColumn('users', 'terms_accepted_at', 'TEXT');    // aceitou termos/privacidade e disse ter 13+ no cadastro
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email COLLATE NOCASE) WHERE email IS NOT NULL`);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS auth_codes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    purpose    TEXT NOT NULL,
+    target     TEXT,
+    code_hash  TEXT NOT NULL,
+    attempts   INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS auth_codes_user ON auth_codes(user_id, purpose);
+`);
+// denúncias (server/reports.js, routes/reports.js; o admin do site vê em routes/admin.js)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS reports (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    reporter_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    target_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    message_id     INTEGER,
+    channel_id     INTEGER,
+    server_id      INTEGER,
+    reason         TEXT NOT NULL,
+    details        TEXT,
+    snapshot_json  TEXT,
+    evidence_file  TEXT,
+    status         TEXT NOT NULL DEFAULT 'open',
+    resolved_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    resolved_at    TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS reports_status ON reports(status, id);
+`);
+// o que o admin do site fez (server/adminLog.js, página /admin → registro)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS site_admin_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action      TEXT NOT NULL,
+    target_type TEXT,
+    target_id   INTEGER,
+    target_name TEXT,
+    details     TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
 // admin do site: marcado UMA vez, pra conta com o nome em SITE_ADMINS (.env, padrão "veneno"). Fica
 // gravado no banco — trocar de nick não tira o admin, e criar outra conta com o mesmo nome depois
 // não dá admin pra ninguém (só marca enquanto não existir nenhum admin).

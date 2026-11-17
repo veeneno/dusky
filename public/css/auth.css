@@ -137,3 +137,34 @@
 @media (max-width: 760px) {
   input, select, textarea { font-size: 16px; }
 }
+
+/* ---------- etapas da conta: 2 etapas, esqueci a senha, confirmar e-mail (auth.js) ---------- */
+.auth-pane[hidden] { display: none; }
+.auth-banner.ok {
+  background: rgba(87, 242, 135, 0.10);
+  color: #57f287;
+  border: 1px solid rgba(87, 242, 135, 0.28);
+}
+.auth-note { font-size: 13.5px; line-height: 1.5; color: var(--text-lo); margin: 0 0 16px; }
+.auth-note strong { color: var(--text-hi); }
+.auth-link {
+  display: block; margin: 4px auto 0; padding: 4px 2px; background: none; border: none;
+  color: var(--amethyst-hi); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.auth-link:hover { text-decoration: underline; }
+#forgotLink { margin: -6px 0 10px auto; font-weight: 500; }
+.auth-alts { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; margin-top: 12px; }
+.auth-alts .auth-link { margin: 0; }
+.auth-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 22px !important; letter-spacing: 6px; text-align: center; }
+.auth-form .field-help { display: block; margin-top: 6px; font-size: 12px; color: var(--text-lo); line-height: 1.4; }
+.auth-form code { font-size: 12px; }
+
+/* cadastro: idade/termos, anti-robô e links legais */
+.auth-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--text-lo); margin: 2px 0 14px; cursor: pointer; }
+.auth-check input { margin-top: 2px; accent-color: var(--accent); flex: none; }
+.auth-check a { color: var(--amethyst-hi); }
+.auth-check strong { color: var(--text-hi); }
+.auth-turnstile { display: flex; justify-content: center; margin: 0 0 14px; min-height: 65px; }
+.auth-legal { text-align: center; font-size: 12px; margin: 10px 0 0; color: var(--text-lo); }
+.auth-legal a { color: var(--text-lo); }
+.auth-legal a:hover { color: var(--text-hi); }

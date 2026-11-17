@@ -1,4 +1,5 @@
 const db = require('../db');
+const mail = require('../mail');
 
 /**
  * Middleware que exige login. Se autenticado, popula req.user
@@ -11,7 +12,7 @@ function requireAuth(req, res, next) {
   }
 
   const row = db.prepare(
-    'SELECT id, username, avatar_url, banner_url, accent_color, accent_color_2, name_style, nameplate, avatar_deco, profile_fx, bio, status_text, presence_status, created_at, is_site_admin, banned_at, ban_reason, session_version FROM users WHERE id = ?'
+    'SELECT id, username, avatar_url, banner_url, accent_color, accent_color_2, name_style, nameplate, avatar_deco, profile_fx, bio, status_text, presence_status, created_at, is_site_admin, banned_at, ban_reason, session_version, email FROM users WHERE id = ?'
   ).get(userId);
 
   if (!row) {
@@ -31,7 +32,16 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'sua sessão expirou — entre de novo' });
   }
 
-  const { banned_at, ban_reason, session_version, is_site_admin, ...user } = row;
+  // toda conta precisa de um e-mail confirmado: sem ele, só as rotas de conta (/api/auth/*:
+  // confirmar e-mail, sair, /me) funcionam — o site leva pra tela de confirmar (login.html).
+  // Só vale com o envio de e-mail configurado (RESEND_API_KEY): sem ele o código nunca chegaria
+  // e todo mundo ficaria trancado do lado de fora.
+  if (!row.email && mail.configured() && !String(req.originalUrl || '').startsWith('/api/auth/')) {
+    return res.status(403).json({ error: 'confirme seu e-mail pra continuar', needsEmail: true });
+  }
+
+  // o e-mail fica FORA do req.user: muita rota repassa o req.user pra outras pessoas
+  const { banned_at, ban_reason, session_version, is_site_admin, email, ...user } = row;
   req.user = { ...user, is_site_admin: !!is_site_admin };
   next();
 }

@@ -1,0 +1,47 @@
+/* denúncias: janela de denunciar e a aba do painel de admin (js/app/32-reports.js) */
+.report-modal { max-width: 460px; }
+.report-reasons { display: grid; gap: 4px; margin: 4px 0 14px; }
+.report-reason {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-solid-app); cursor: pointer; font-size: 14px; color: var(--text-normal);
+}
+.report-reason:hover { background: var(--elevated, rgba(255,255,255,.06)); }
+.report-reason input { accent-color: var(--danger); margin: 0; }
+.report-urgent {
+  font-size: 13px; line-height: 1.5; color: var(--text-normal); margin: 0 0 14px;
+  padding: 10px 12px; border-radius: var(--radius-sm); border-left: 3px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.report-modal textarea { width: 100%; }
+
+.admin-tab-badge {
+  display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px;
+  background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+.admin-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--radius-sm); background: var(--bg-solid-app); }
+.admin-seg button { appearance: none; border: 0; background: none; cursor: pointer; font: inherit; padding: 6px 12px; border-radius: 6px; color: var(--text-muted); font-size: 13px; }
+.admin-seg button.active { background: var(--elevated, rgba(255,255,255,.08)); color: var(--text-hi, #fff); }
+.admin-reports { display: grid; gap: 10px; }
+.admin-empty { color: var(--text-muted); padding: 24px 0; text-align: center; }
+.admin-report {
+  padding: 14px 16px; border-radius: var(--radius-md, 10px); background: var(--bg-solid-app);
+  border: 1px solid var(--line); display: grid; gap: 8px;
+}
+.admin-report.is-urgent { border-color: var(--danger); }
+.admin-report header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.admin-report-reason { font-size: 14px; }
+.admin-report-meta { color: var(--text-muted); font-size: 12px; }
+.admin-report-target { margin: 0; font-size: 13.5px; color: var(--text-normal); }
+.admin-report-content {
+  margin: 0; padding: 8px 12px; border-left: 3px solid var(--line); white-space: pre-wrap; word-break: break-word;
+  font-size: 14px; color: var(--text-normal); max-height: 220px; overflow: auto;
+}
+.admin-report-file { font-size: 13px; color: var(--accent); }
+.admin-report-gone { color: var(--text-muted); }
+.admin-report-details { margin: 0; font-size: 13px; color: var(--text-muted); font-style: italic; }
+.admin-report .admin-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* configurações → conta e segurança → seus dados / excluir conta */
+.sec-danger-zone { border-color: color-mix(in srgb, var(--danger) 45%, transparent) !important; }
+.sec-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.45; color: var(--text-normal); margin: 4px 0 10px; cursor: pointer; }
+.sec-check input { margin-top: 3px; accent-color: var(--danger); }

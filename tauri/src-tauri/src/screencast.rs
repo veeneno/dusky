@@ -1,6 +1,6 @@
 //! Compartilhamento de tela "nativo": captura + codificação UMA vez, de preferência na placa de vídeo,
 //! entregue pra cada pessoa da call (ou pro servidor de mídia) pelo auxiliar dusky-screencast
-//! (electron/native/screencast, em Go). Porte direto do electron/screencast.js.
+//! (native/screencast, em Go). Porte direto do electron/screencast.js.
 //!
 //! Por que: pelo navegador a tela é codificada no processador, uma vez POR PESSOA assistindo, e o
 //! Chromium não usa NVENC no Linux. Aqui o ffmpeg captura e codifica uma vez (NVENC → VAAPI/QSV/AMF →
@@ -143,7 +143,7 @@ pub fn child_command(bin: impl AsRef<std::ffi::OsStr>) -> Command {
 }
 
 /// arquivo que vem junto com o app (pasta native/ dos recursos) — ou, rodando do código-fonte, o
-/// de electron/native/bin
+/// de native/bin
 pub fn native_bin(app: &AppHandle, name: &str) -> Option<PathBuf> {
     let found = find_native_bin(app, name)?;
     ensure_executable(&found);
@@ -176,7 +176,7 @@ fn find_native_bin(app: &AppHandle, name: &str) -> Option<PathBuf> {
     }
     // rodando do código-fonte: helpers do Electron e o ffmpeg baixado pro instalador (vendor/)
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    [src.join("../../electron/native/bin").join(&exe), src.join("vendor").join(name).join(&exe)]
+    [src.join("../../native/bin").join(&exe), src.join("vendor").join(name).join(&exe)]
         .into_iter()
         .find(|p| p.exists())
 }

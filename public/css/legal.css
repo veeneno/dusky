@@ -1,0 +1,14 @@
+/* páginas de termos de uso e política de privacidade */
+body.legal { margin: 0; min-height: 100vh; background: var(--bg-solid-app, #16141f); color: var(--text-normal, #dbdee1); font-family: Inter, system-ui, sans-serif; }
+.legal-wrap { max-width: 760px; margin: 0 auto; padding: 48px 22px 80px; line-height: 1.65; font-size: 15.5px; }
+.legal-wrap h1 { font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: 34px; margin: 0 0 6px; color: var(--text-hi, #fff); }
+.legal-wrap h2 { font-size: 18px; margin: 34px 0 8px; color: var(--text-hi, #fff); }
+.legal-wrap .legal-updated { color: var(--text-muted, #949ba4); margin: 0 0 26px; font-size: 14px; }
+.legal-wrap ul { padding-left: 22px; }
+.legal-wrap li { margin: 4px 0; }
+.legal-wrap a { color: var(--accent, #b28cff); }
+.legal-wrap strong { color: var(--text-hi, #fff); }
+.legal-box { padding: 14px 16px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+.legal-nav { display: flex; gap: 16px; font-size: 14px; margin-bottom: 30px; }
+.legal-nav a { color: var(--text-muted, #949ba4); text-decoration: none; }
+.legal-nav a:hover, .legal-nav a.active { color: var(--text-hi, #fff); }

@@ -1,6 +1,7 @@
 [package]
 name = "dusky"
 version = "1.0.7"
+license = "AGPL-3.0-or-later"
 description = "App desktop do dusky (Tauri / Rust) — versão 1.0, codinome Mist"
 authors = ["veneno"]
 edition = "2021"

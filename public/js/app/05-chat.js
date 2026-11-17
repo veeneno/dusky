@@ -439,6 +439,16 @@ function buildMessageEl(m, continued) {
     actions.appendChild(replyBtn);
   }
 
+  if (!isBot && m.user_id && currentUser && m.user_id !== currentUser.id) {
+    const reportBtn = document.createElement('button');
+    reportBtn.type = 'button';
+    reportBtn.className = 'msg-action-btn';
+    reportBtn.title = 'denunciar';
+    reportBtn.innerHTML = FLAG_ICON;
+    reportBtn.addEventListener('click', () => openReportDialog({ messageId: m.id, name: m.username }));
+    actions.appendChild(reportBtn);
+  }
+
   if (canEditMessage(m)) {
     const editBtn = document.createElement('button');
     editBtn.className = 'msg-edit-btn';

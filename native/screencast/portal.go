@@ -9,7 +9,7 @@ package main
 //	-> OpenPipeWireRemote (devolve um fd do PipeWire)
 //
 // Com o fd e o número do node, o GStreamer (pipewiresrc) lê os quadros e codifica na placa de vídeo
-// (ver electron/screencast.js). A sessão precisa ficar aberta enquanto durar o compartilhamento:
+// (ver tauri/src-tauri/src/screencast.rs). A sessão precisa ficar aberta enquanto durar o compartilhamento:
 // fechar a conexão D-Bus encerra a captura.
 
 import (

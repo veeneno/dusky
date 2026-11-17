@@ -1,5 +1,5 @@
 //! Áudio do compartilhamento de tela no Windows, via dusky-audiocap.exe (WASAPI Process Loopback,
-//! electron/native/audiocap.cpp). O helper escreve PCM cru no stdout (float32 intercalado, 48 kHz,
+//! native/audiocap.cpp). O helper escreve PCM cru no stdout (float32 intercalado, 48 kHz,
 //! estéreo) e para sozinho quando o stdin fecha.
 //!
 //!   janela escolhida -> --capture include <pid da janela>   (só aquele app e os filhos)

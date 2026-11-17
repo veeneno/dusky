@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <script src="/js/compat.js?v=1"></script>
   <script src="/js/themes.js?v=22"></script>
-  <script>DuskyTheme.boot();</script>
+  <script src="/js/theme-boot.js"></script>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/theme.css?v=20">
-  <link rel="stylesheet" href="/css/auth.css?v=21">
+  <link rel="stylesheet" href="/css/auth.css?v=23">
 </head>
 <body>
   <div class="auth-screen">
@@ -36,28 +36,110 @@
       </div>
 
       <div class="auth-banner error" id="authBanner"></div>
+      <div class="auth-banner ok" id="authNotice"></div>
 
-      <form class="auth-form" id="authForm" autocomplete="off">
+      <!-- entrar / criar conta -->
+      <form class="auth-form auth-pane" id="authForm" autocomplete="off">
         <div class="field">
-          <label for="username">usuário</label>
-          <input type="text" id="username" name="username" placeholder="seu nome de usuário" required minlength="2" maxlength="32" autocomplete="username">
+          <label for="username" id="loginLabel">nick ou e-mail</label>
+          <input type="text" id="username" name="username" placeholder="seu nick ou e-mail" required maxlength="254" autocomplete="username">
+        </div>
+        <div class="field" id="emailField" hidden>
+          <label for="regEmail">e-mail</label>
+          <input type="email" id="regEmail" name="email" placeholder="voce@exemplo.com" maxlength="254" autocomplete="email">
+          <span class="field-help">a gente manda um código pra confirmar. Serve pra entrar e pra recuperar a senha.</span>
         </div>
         <div class="field">
           <label for="password">senha</label>
-          <input type="password" id="password" name="password" placeholder="••••••••" required minlength="6" autocomplete="current-password">
+          <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
         </div>
+        <label class="auth-check" id="termsField" hidden>
+          <input type="checkbox" id="acceptTerms">
+          <span>tenho <strong>13 anos ou mais</strong> e aceito os <a href="/termos" target="_blank" rel="noopener">termos de uso</a> e a <a href="/privacidade" target="_blank" rel="noopener">política de privacidade</a></span>
+        </label>
+        <div class="auth-turnstile" id="turnstileBox" hidden></div>
+        <button type="button" class="auth-link" id="forgotLink">esqueci minha senha</button>
 
         <button type="submit" class="btn btn-primary auth-submit" id="submitBtn">entrar</button>
       </form>
 
-      <p class="auth-switch">
+      <!-- 2 etapas -->
+      <form class="auth-form auth-pane" id="twofaForm" autocomplete="off" hidden>
+        <p class="auth-note" id="twofaNote"></p>
+        <div class="field">
+          <label for="twofaCode" id="twofaLabel">código</label>
+          <input type="text" id="twofaCode" class="auth-code" inputmode="numeric" maxlength="11" autocomplete="one-time-code" placeholder="000000" required>
+        </div>
+        <button type="submit" class="btn btn-primary auth-submit">confirmar</button>
+        <div class="auth-alts" id="twofaAlts"></div>
+        <button type="button" class="auth-link" data-back>voltar</button>
+      </form>
+
+      <!-- esqueci minha senha -->
+      <form class="auth-form auth-pane" id="forgotForm" autocomplete="off" hidden>
+        <p class="auth-note">Diga seu nick ou e-mail. Se a conta tiver um e-mail confirmado, mandamos um código pra ele.</p>
+        <div class="field">
+          <label for="forgotLogin">nick ou e-mail</label>
+          <input type="text" id="forgotLogin" maxlength="254" autocomplete="username" required>
+        </div>
+        <button type="submit" class="btn btn-primary auth-submit">mandar código</button>
+        <button type="button" class="auth-link" data-back>voltar pro login</button>
+      </form>
+
+      <form class="auth-form auth-pane" id="resetForm" autocomplete="off" hidden>
+        <p class="auth-note">Olhe seu e-mail (e o spam) e coloque o código aqui com a senha nova.</p>
+        <div class="field">
+          <label for="resetCode">código do e-mail</label>
+          <input type="text" id="resetCode" class="auth-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" required>
+        </div>
+        <div class="field">
+          <label for="resetPassword">senha nova</label>
+          <input type="password" id="resetPassword" minlength="8" maxlength="200" autocomplete="new-password" required>
+        </div>
+        <div class="field" id="resetTotpField" hidden>
+          <label for="resetTotp">código do app autenticador</label>
+          <input type="text" id="resetTotp" class="auth-code" inputmode="numeric" maxlength="11" autocomplete="one-time-code" placeholder="000000">
+          <span class="field-help">sua conta tem verificação em 2 etapas. Sem o celular? Use um código de recuperação (tipo <code>ab12c-3de45</code>).</span>
+        </div>
+        <button type="submit" class="btn btn-primary auth-submit">trocar a senha e entrar</button>
+        <button type="button" class="auth-link" data-back>voltar pro login</button>
+      </form>
+
+      <!-- confirmar e-mail (conta nova, ou conta antiga sem e-mail) -->
+      <form class="auth-form auth-pane" id="emailForm" autocomplete="off" hidden>
+        <p class="auth-note" id="emailNote">Agora toda conta do dusky precisa de um e-mail confirmado. Ele serve pra entrar e pra recuperar a senha — ninguém mais vê.</p>
+        <div class="field">
+          <label for="emailInput">seu e-mail</label>
+          <input type="email" id="emailInput" maxlength="254" autocomplete="email" placeholder="voce@exemplo.com" required>
+        </div>
+        <button type="submit" class="btn btn-primary auth-submit">mandar código</button>
+        <button type="button" class="auth-link" data-logout>sair dessa conta</button>
+      </form>
+
+      <form class="auth-form auth-pane" id="emailCodeForm" autocomplete="off" hidden>
+        <p class="auth-note" id="emailCodeNote"></p>
+        <div class="field">
+          <label for="emailCode">código</label>
+          <input type="text" id="emailCode" class="auth-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" required>
+        </div>
+        <button type="submit" class="btn btn-primary auth-submit">confirmar e-mail</button>
+        <div class="auth-alts">
+          <button type="button" class="auth-link" id="emailResend">mandar de novo</button>
+          <button type="button" class="auth-link" id="emailChange">usar outro e-mail</button>
+        </div>
+        <button type="button" class="auth-link" data-logout>sair dessa conta</button>
+      </form>
+
+      <p class="auth-switch" id="authSwitch">
         <span id="switchText">ainda não tem conta?</span>
         <button type="button" id="switchBtn">criar conta</button>
       </p>
+
       <p class="auth-switch"><a href="/baixar" style="color: var(--amethyst-hi)">baixar o app pro computador</a></p>
+      <p class="auth-legal"><a href="/termos">termos de uso</a> · <a href="/privacidade">privacidade</a> · <a href="https://github.com/veeneno/dusky" target="_blank" rel="noopener">código-fonte</a></p>
     </div>
   </div>
 
-  <script src="/js/auth.js?v=20"></script>
+  <script src="/js/auth.js?v=22"></script>
 </body>
 </html>

@@ -120,7 +120,7 @@ async function startScreenShare(opts = {}) {
   let audioTrack = localScreenStream.getAudioTracks()[0] || null;
 
   // no app desktop (Electron), o main.js decide como o áudio é resolvido (ver
-  // setDisplayMediaRequestHandler em electron/main.js) e devolve o plano via IPC. Quando o plano
+  // setDisplayMediaRequestHandler em tauri/src-tauri/src) e devolve o plano via IPC. Quando o plano
   // é 'app' (compartilhando uma JANELA específica, com o áudio isolado só daquele app via
   // PipeWire), o localScreenStream nunca vem com faixa de áudio — o Electron não aceita apontar
   // getDisplayMedia pra um device/monitor arbitrário, só 'loopback' (sistema inteiro) ou nada.
@@ -132,7 +132,7 @@ async function startScreenShare(opts = {}) {
         audioTrack = await captureIsolatedAppAudioTrack(plan.deviceLabelHint);
       } else if (plan && plan.mode === 'pcm') {
         // Windows: sem stream nenhum pra puxar (nem embutido, nem via getUserMedia) — o áudio
-        // chega em pedaços crus de PCM pelo IPC (ver electron/main.js, startWindowsPcmCapture)
+        // chega em pedaços crus de PCM pelo IPC (ver tauri/src-tauri/src, startWindowsPcmCapture)
         // e precisa ser montado numa track de verdade aqui.
         audioTrack = await capturePcmAudioTrack(plan);
       }
@@ -148,7 +148,7 @@ async function startScreenShare(opts = {}) {
 }
 
 // busca, entre os dispositivos de entrada de áudio, o monitor PipeWire isolado que o main.js
-// (electron/main.js, startAppAudioCapture) preparou pro app escolhido no seletor de janela —
+// (tauri/src-tauri/src, startAppAudioCapture) preparou pro app escolhido no seletor de janela —
 // identificado pela descrição do sink (device.description=dusky-app-share, ver main.js), que
 // aparece como parte do label do dispositivo depois que alguma permissão de mic já foi concedida
 // (é o caso aqui, já que a call já pediu getUserMedia de áudio antes). Devolve null se não achar
@@ -197,9 +197,9 @@ async function captureIsolatedAppAudioTrack(labelHint) {
 }
 
 // monta a MediaStreamTrack de áudio da tela a partir do PCM cru que o helper nativo Windows
-// (dusky-audio-helper.exe, via WASAPI Process Loopback — ver electron/main.js e
-// electron/native/audio-helper/AudioHelper.cpp) despeja pro processo principal e repassa aqui
-// por IPC (window.duskyDesktop.onPcmChunk, ver electron/preload.js). Usa
+// (dusky-audio-helper.exe, via WASAPI Process Loopback — ver tauri/src-tauri/src e
+// native/audiocap.cpp) despeja pro processo principal e repassa aqui
+// por IPC (window.duskyDesktop.onPcmChunk, ver tauri/src-tauri/src/bridge.js). Usa
 // MediaStreamTrackGenerator (WebCodecs Insertable Streams) pra transformar cada pedaço de PCM
 // num AudioData de verdade, que vira uma MediaStreamTrack normal — o resto do pipeline
 // (screenAudioTransceiver, RTCPeerConnection) não sabe nem precisa saber que essa track não veio
@@ -352,7 +352,7 @@ function stopScreenShare() {
   stopPcmAudioCapture();
   // sempre avisa o processo principal que o compartilhamento acabou, independente do modo —
   // no modo 'system' (tela inteira) isso encerra o recheck periódico que mantém o próprio
-  // dusky fora do sink padrão (ver startSelfAwayWatch em electron/main.js); nos outros
+  // dusky fora do sink padrão (ver startSelfAwayWatch em tauri/src-tauri/src); nos outros
   // modos é um no-op inofensivo.
   if (window.duskyDesktop) {
     window.duskyDesktop.notifyScreenShareStopped().catch((err) => console.warn('[call] falha ao avisar o fim do compartilhamento pro processo principal:', err));

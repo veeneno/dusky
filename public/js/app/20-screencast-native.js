@@ -13,7 +13,7 @@
 // Pelo navegador, a tela é codificada no processador UMA VEZ POR PESSOA assistindo (a call é em
 // malha) — ~1 núcleo por pessoa em 1080p60, o que derrubava o fps dos jogos. No app desktop, o
 // ffmpeg captura e codifica uma vez só (NVENC/AMF/QSV/VA-API) e o auxiliar dusky-screencast
-// manda o mesmo vídeo pra cada um, numa conexão própria por pessoa (ver electron/screencast.js).
+// manda o mesmo vídeo pra cada um, numa conexão própria por pessoa (ver tauri/src-tauri/src/screencast.rs).
 //
 // Sinalização (pelo mesmo rtc_signal das calls):
 //   quem compartilha → quem assiste:  sc-offer, sc-cand-s

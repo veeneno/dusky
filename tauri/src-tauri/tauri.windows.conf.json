@@ -4,8 +4,8 @@
       "nsis"
     ],
     "resources": {
-      "../../electron/native/bin/dusky-screencast.exe": "native/dusky-screencast.exe",
-      "../../electron/native/bin/dusky-audiocap.exe": "native/dusky-audiocap.exe",
+      "../../native/bin/dusky-screencast.exe": "native/dusky-screencast.exe",
+      "../../native/bin/dusky-audiocap.exe": "native/dusky-audiocap.exe",
       "vendor/ffmpeg/ffmpeg.exe": "native/ffmpeg.exe",
       "vendor/ffmpeg/LICENSE.txt": "native/ffmpeg-LICENSE.txt"
     },

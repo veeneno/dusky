@@ -5,7 +5,7 @@
       "appimage"
     ],
     "resources": {
-      "../../electron/native/bin/dusky-screencast": "native/dusky-screencast"
+      "../../native/bin/dusky-screencast": "native/dusky-screencast"
     },
     "linux": {
       "deb": {

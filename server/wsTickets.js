@@ -6,9 +6,11 @@ const crypto = require('crypto');
 const tickets = new Map();
 const TTL_MS = 30 * 1000;
 
-function issue(userId) {
+// sv = versão da sessão (users.session_version) de quem pediu: trocar a senha derruba só os
+// WebSockets das sessões antigas (realtime.dropOtherSessions)
+function issue(userId, sv = 0) {
   const ticket = crypto.randomBytes(24).toString('hex');
-  tickets.set(ticket, { userId, expires: Date.now() + TTL_MS });
+  tickets.set(ticket, { userId, sv, expires: Date.now() + TTL_MS });
   return ticket;
 }
 

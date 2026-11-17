@@ -1,5 +1,6 @@
 {
   "name": "dusky",
+  "license": "AGPL-3.0-or-later",
   "version": "1.0.0",
   "codename": "Mist",
   "description": "dusky — Discord privado pra você e seus amigos",
@@ -18,6 +19,7 @@
     "cookie-session": "^2.1.0",
     "express": "^4.21.0",
     "multer": "^2.0.0",
+    "qrcode": "^1.5.4",
     "web-push": "^4.0.0",
     "ws": "^8.18.0"
   },

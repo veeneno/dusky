@@ -303,7 +303,7 @@ tauri/
     capabilities/       quem pode chamar o quê (o site ganha a dele em tempo de execução)
 ```
 
-Os binários `dusky-screencast` e `dusky-audiocap.exe` vêm de `../electron/native/bin` e
+Os binários `dusky-screencast` e `dusky-audiocap.exe` vêm de `../native/bin` e
 vão junto no instalador (ver `tauri.linux.conf.json` / `tauri.windows.conf.json`).
 
 No Windows o **ffmpeg vai dentro do instalador** (+~27 MB comprimido): o `npm run dev`/`build`

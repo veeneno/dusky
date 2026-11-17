@@ -19,6 +19,13 @@ async function loadUser() {
     return null;
   }
   const { user } = await res.json();
+  // toda conta precisa de um e-mail confirmado: sem ele, a tela de entrar pede (e o servidor
+  // recusa o resto). Leva o convite junto.
+  if (user && user.needs_email) {
+    const invite = new URLSearchParams(window.location.search).get('invite');
+    window.location.replace(`/login.html?etapa=email${invite ? `&invite=${encodeURIComponent(invite)}` : ''}`);
+    return null;
+  }
   currentUser = user;
   applyUserToProfileBar(user);
   return user;

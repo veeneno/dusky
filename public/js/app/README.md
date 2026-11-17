@@ -1,6 +1,6 @@
 # public/js/app/ — o código do site
 
-Aqui mora tudo que roda na página principal (`app.html`): chat, servidores, perfil, calls, compartilhamento de tela e configurações. Era um arquivo só (`public/js/app.js`, com mais de 10 mil linhas); agora são 29 arquivos, um por assunto.
+Aqui mora tudo que roda na página principal (`app.html`): chat, servidores, perfil, calls, compartilhamento de tela e configurações. Era um arquivo só (`public/js/app.js`, com mais de 10 mil linhas); agora são 32 arquivos, um por assunto.
 
 ## Como os arquivos se enxergam
 
@@ -50,6 +50,9 @@ Por que não módulos (`import`/`export`)? O estado do app (`currentChannel`, `p
 | `27-world.js` | **Mundinho 3D (cola).** posições dos bonecos da call-mundo, envio da minha posição, áudio espacial (PannerNode), mostrar o mundo no lugar da grade e carregar `public/world/` sob demanda — ver `docs/MUNDINHO.md` | `isWorldChannel()`, `syncWorldView()`, `worldOnRemoteState()`, `createWorldPanner()` |
 | `28-realtime.js` | **Eventos em tempo real e partida do app.** eventos em tempo real | `wireRealtime()` (todos os `Realtime.on(...)`) e, no fim, o bloco `init` que dá a partida no app |
 | `29-mobile.js` | **Celular: gavetas de canais e de membros.** no celular (tela estreita, ver `css/mobile.css`) o chat ocupa a tela e servidores/canais e membros viram gavetas; tocar numa mensagem mostra as ações | `openMobileDrawer()`, `closeMobileDrawers()`, gesto de arrastar, bolinha de não lido no ☰ |
+| `30-shortcuts.js` | **Teclas de atalho.** atalhos dentro do app e globais (app desktop), incluindo apertar pra falar | registro e configuração dos atalhos |
+| `31-account-security.js` | **Conta e segurança.** perfil → "conta e segurança": e-mail, 2 etapas, códigos de recuperação, baixar meus dados e excluir conta | `loadAccountSecurity()`, `renderAccountSecurity()` |
+| `32-reports.js` | **Denúncias.** janela de denunciar (mensagem ou pessoa) e a aba "denúncias" do painel rápido de admin | `openReportDialog()`, `renderAdminReports()` |
 
 ## Onde procurar
 
