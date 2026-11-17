@@ -79,6 +79,36 @@
     border-radius: 4px; padding: 6px 8px; font: inherit;
   }
   .apps select:disabled { opacity: .5; }
+
+  /* "não levar o som de" — tela inteira (embaixo das miniaturas) e "som do computador todo" (Wayland) */
+  .exclude { display: flex; flex-direction: column; gap: 8px; }
+  .exclude[hidden] { display: none; }
+  .exclude-bar {
+    padding: 12px 20px; background: var(--bg); border-top: 1px solid var(--line);
+    max-height: 170px; overflow-y: auto;
+  }
+  .exclude-head { display: flex; align-items: center; gap: 10px; }
+  .exclude-head strong { flex: 1; font-size: 13px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; max-width: 260px;
+    background: var(--card); color: var(--muted); border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 11px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip::before {
+    content: ''; width: 12px; height: 12px; flex: none; border-radius: 3px; border: 1.5px solid var(--muted);
+  }
+  .chip:hover { color: var(--text); }
+  .chip.on { color: var(--text); border-color: var(--accent); background: var(--panel); }
+  .chip.on::before {
+    border-color: var(--accent); background: var(--accent)
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.2 2.2 4.8-5' fill='none' stroke='white' stroke-width='1.8'/%3E%3C/svg%3E") center/10px no-repeat;
+  }
+  .chip.idle span { font-style: italic; }
+  .exclude small { color: var(--muted); }
+  .exclude small.warn { color: #f0b232; }
+  .option .exclude { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -99,7 +129,7 @@
       </div>
       <label class="option selected" data-mode="system">
         <input type="radio" name="audio" value="system" checked>
-        <span class="txt"><strong>Som do computador todo</strong><small>tudo que estiver tocando, menos o dusky (pra ninguém ouvir eco)</small></span>
+        <span class="txt"><strong>Som do computador todo</strong><small>tudo que estiver tocando, menos o que você marcar abaixo</small></span>
       </label>
       <label class="option" data-mode="app">
         <input type="radio" name="audio" value="app">
@@ -118,6 +148,15 @@
       </label>
     </div>
   </main>
+  <div class="exclude-bar" id="excludeBar" hidden></div>
+  <div class="exclude" id="exclude" hidden>
+    <div class="exclude-head">
+      <strong>Não levar o som de:</strong>
+      <button type="button" class="refresh" id="excludeRefresh" title="Atualizar a lista de apps">Atualizar</button>
+    </div>
+    <div class="chips" id="excludeChips"></div>
+    <small id="excludeHint"></small>
+  </div>
   <footer>
     <button class="btn" id="cancel">Cancelar</button>
     <button class="btn primary" id="share" disabled>Compartilhar</button>
@@ -132,6 +171,7 @@
   const shareBtn = document.getElementById('share');
 
   function render() {
+    syncExcludeBar();
     grid.textContent = '';
     const list = sources.filter((s) => s.type === activeType);
     if (!list.length) {
@@ -166,7 +206,7 @@
       card.appendChild(label);
 
       card.addEventListener('click', () => { selectedId = s.id; shareBtn.disabled = false; render(); });
-      card.addEventListener('dblclick', () => window.pickerApi.choose(s.id));
+      card.addEventListener('dblclick', () => chooseSource(s.id));
       grid.appendChild(card);
     }
   }
@@ -196,12 +236,12 @@
   document.getElementById('cancel').addEventListener('click', () => window.pickerApi.cancel());
   shareBtn.addEventListener('click', () => {
     if (window.pickerApi.mode === 'audio') submitAudio();
-    else if (selectedId) window.pickerApi.choose(selectedId);
+    else if (selectedId) chooseSource(selectedId);
   });
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') window.pickerApi.cancel();
     if (e.key === 'Enter' && window.pickerApi.mode === 'audio' && !shareBtn.disabled) submitAudio();
-    else if (e.key === 'Enter' && selectedId) window.pickerApi.choose(selectedId);
+    else if (e.key === 'Enter' && selectedId) chooseSource(selectedId);
   });
 
   // ---------- modo Wayland: só a escolha do som ----------
@@ -228,6 +268,7 @@
       appSelect.appendChild(opt);
     }
     if (keep && apps.some((a) => a.key === keep)) appSelect.value = keep;
+    renderExclude(available, apps);
     if (!available) {
       appsHint.textContent = 'precisa do PipeWire (pacote pipewire-bin) pra pegar o som — vai sem som';
       document.querySelector('.option[data-mode="system"]').style.display = 'none';
@@ -249,16 +290,129 @@
     document.querySelectorAll('.option').forEach((o) => o.addEventListener('click', () => selectAudioMode(o.dataset.mode)));
     appSelect.addEventListener('change', () => selectAudioMode('app'));
     document.getElementById('appsRefresh').addEventListener('click', (e) => { e.preventDefault(); loadApps(); });
+    // a lista "não levar o som de" fica dentro do "Som do computador todo"
+    document.querySelector('.option[data-mode="system"] .txt').appendChild(excludeEl);
+    excludeRefresh.addEventListener('click', (e) => { e.preventDefault(); loadApps(); });
     loadApps();
   }
 
   function submitAudio() {
-    window.pickerApi.chooseAudio({ mode: audioMode, appKey: audioMode === 'app' ? appSelect.value : null });
+    const choice = { mode: audioMode, appKey: audioMode === 'app' ? appSelect.value : null };
+    if (audioMode === 'system') choice.exclude = collectExclude();
+    window.pickerApi.chooseAudio(choice);
+  }
+
+  // ---------- "não levar o som de" ----------
+  // O dusky vem sempre marcado (sem ele, quem está na call se ouve de volta). Os outros apps
+  // marcados ficam lembrados pra próxima vez — e continuam valendo mesmo sem estar tocando agora.
+  const STORE_KEY = 'dusky:picker:excludeApps';
+  const OWN_KEY = '__dusky__';
+  const excludeEl = document.getElementById('exclude');
+  const excludeBar = document.getElementById('excludeBar');
+  const excludeChips = document.getElementById('excludeChips');
+  const excludeHint = document.getElementById('excludeHint');
+  const excludeRefresh = document.getElementById('excludeRefresh');
+  const wantsScreenAudio = new URLSearchParams(location.search).get('audio') === '1';
+  let excludeAvailable = false;
+  let excludeOwn = true;
+  let remembered = loadRemembered(); // [{ key, name }] marcados
+
+  function loadRemembered() {
+    try {
+      const list = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+      return Array.isArray(list) ? list.filter((a) => a && typeof a.key === 'string' && a.key).slice(0, 32) : [];
+    } catch (_) { return []; }
+  }
+  function saveRemembered() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(remembered)); } catch (_) { /* segue sem lembrar */ }
+  }
+
+  function chip(key, name, on, idle) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (on ? ' on' : '') + (idle ? ' idle' : '');
+    b.title = idle ? `${name} — não está tocando agora, mas fica de fora se tocar` : name;
+    const span = document.createElement('span');
+    span.textContent = name;
+    b.appendChild(span);
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (key === OWN_KEY) excludeOwn = !excludeOwn;
+      else if (remembered.some((a) => a.key === key)) remembered = remembered.filter((a) => a.key !== key);
+      else remembered.push({ key, name });
+      saveRemembered();
+      b.classList.toggle('on');
+      updateExcludeHint();
+      if (window.pickerApi.mode === 'audio') selectAudioMode('system'); // a lista é do "computador todo"
+    });
+    return b;
+  }
+
+  let lastApps = [];
+  function renderExclude(available, apps) {
+    excludeAvailable = !!available;
+    lastApps = apps || [];
+    excludeChips.textContent = '';
+    excludeChips.appendChild(chip(OWN_KEY, 'dusky (a call)', excludeOwn, false));
+    for (const a of lastApps) {
+      excludeChips.appendChild(chip(a.key, a.name, remembered.some((r) => r.key === a.key), false));
+    }
+    // marcados antes que não estão tocando agora: aparecem também (e continuam de fora)
+    for (const r of remembered) {
+      if (!lastApps.some((a) => a.key === r.key)) excludeChips.appendChild(chip(r.key, r.name || r.key, true, true));
+    }
+    updateExcludeHint();
+    syncExcludeBar();
+  }
+
+  function updateExcludeHint() {
+    if (!excludeOwn) {
+      excludeHint.className = 'warn';
+      excludeHint.textContent = 'sem o dusky marcado, quem está na call vai ouvir a própria voz de volta (eco)';
+      return;
+    }
+    excludeHint.className = '';
+    excludeHint.textContent = lastApps.length
+      ? 'apps com som agora. O que não estiver marcado vai junto — inclusive o que começar a tocar depois.'
+      : 'nenhum outro app tocando agora — dê play no que quer tirar e clique em Atualizar';
+  }
+
+  function collectExclude() {
+    return { own: excludeOwn, apps: remembered.map((a) => a.key) };
+  }
+
+  // telas: a barra aparece só na aba "Telas inteiras" (janela = só o som daquele app)
+  function syncExcludeBar() {
+    if (window.pickerApi.mode === 'audio') return;
+    excludeBar.hidden = !(wantsScreenAudio && excludeAvailable && activeType === 'screen');
+  }
+
+  async function loadExcludeApps() {
+    try {
+      const { available, apps } = await window.pickerApi.getAudioApps();
+      renderExclude(available, apps);
+    } catch (_) {
+      renderExclude(false, []);
+    }
+  }
+
+  function chooseSource(id) {
+    const s = sources.find((x) => x.id === id);
+    const isScreen = s ? s.type === 'screen' : activeType === 'screen';
+    window.pickerApi.choose(id, isScreen && wantsScreenAudio ? collectExclude() : null);
   }
 
   if (window.pickerApi.mode === 'audio') {
+    excludeEl.hidden = false;
     setupAudioMode();
   } else {
+    if (wantsScreenAudio) {
+      excludeBar.appendChild(excludeEl);
+      excludeEl.hidden = false;
+      excludeRefresh.addEventListener('click', loadExcludeApps);
+      loadExcludeApps();
+    }
     load();
   }
 </script>

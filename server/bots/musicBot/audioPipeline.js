@@ -14,6 +14,12 @@ const { spawn } = require('child_process');
 const BITRATE_KBPS = 128; // tem que bater com o '-b:a' passado pro ffmpeg logo abaixo
 const BYTES_PER_SEC = (BITRATE_KBPS * 1000) / 8;
 const DRAIN_INTERVAL_MS = 100; // granularidade do metrônomo
+// volume-alvo da música (LUFS — quanto mais negativo, mais baixo). -20 fica perto de uma voz numa
+// call. Dá pra ajustar com MUSIC_LUFS no .env (ex: -16 mais alto, -24 mais baixo).
+const MUSIC_LUFS = (() => {
+  const v = Number(process.env.MUSIC_LUFS);
+  return Number.isFinite(v) && v <= -5 && v >= -40 ? v : -20;
+})();
 
 function killQuiet(child, signal) {
   if (!child) return;
@@ -47,6 +53,10 @@ function startTrack(youtubeUrl, { onData, onEnd, onError, initialLeadSec = 0, yt
     '-loglevel', 'error',
     '-i', 'pipe:0',
     '-vn',
+    // volume igual pra toda música: as do YouTube vêm masterizadas MUITO mais altas que voz (e
+    // diferentes entre si), então o bot "entrava gritando" por cima da call. O loudnorm deixa tudo
+    // em MUSIC_LUFS (perto do nível de uma voz numa call), sem estourar (TP = pico máximo).
+    '-af', `loudnorm=I=${MUSIC_LUFS}:TP=-2:LRA=11`,
     '-ac', '2',
     '-ar', '44100',
     '-f', 'mp3',

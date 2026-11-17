@@ -1,6 +1,6 @@
 [package]
 name = "dusky"
-version = "1.0.5"
+version = "1.0.7"
 description = "App desktop do dusky (Tauri / Rust) — versão 1.0, codinome Mist"
 authors = ["veneno"]
 edition = "2021"
@@ -17,6 +17,8 @@ tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
+# atalhos globais no Windows e no Linux X11 (shortcuts.rs; no Wayland vai pelo portal)
+tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros", "rt-multi-thread"] }
@@ -30,11 +32,15 @@ reqwest = { version = "0.13", default-features = false, features = ["native-tls"
 # Linux: configurar o WebKitGTK (mic/câmera/autoplay) e listar telas/janelas do X11
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "2.0"
+# o sinal drag-data-received do WebView (arrastar arquivo no Wayland, ver drops.rs)
+gtk = "0.18"
 x11rb = { version = "0.13", features = ["randr"] }
 # call pelo servidor de mídia feita no Rust (o WebKitGTK não tem WebRTC). Precisa de clang++ 21+
 # pra compilar (o libwebrtc vem pronto, mas com a libc++ do Chromium) — ver README.
 livekit = { version = "0.10", default-features = false, features = ["native", "native-tls"] }
 futures-util = "0.3"
+# atalhos globais no Wayland: portal org.freedesktop.portal.GlobalShortcuts (shortcuts.rs)
+ashpd = { version = "0.14", default-features = false, features = ["tokio", "global_shortcuts"] }
 jpeg-encoder = { version = "0.7", features = ["simd"] }
 
 # Windows: listar telas/janelas (com miniatura)
@@ -42,6 +48,8 @@ jpeg-encoder = { version = "0.7", features = ["simd"] }
 xcap = "0.9"
 # "jogando X": lista os programas abertos (com o caminho completo) sem abrir PowerShell
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
+# "Salvar como" dos downloads (downloads.rs) — o mesmo rfd que o tauri-plugin-dialog já usa
+rfd = { version = "0.17", default-features = false, features = ["common-controls-v6"] }
 
 [profile.release]
 codegen-units = 1

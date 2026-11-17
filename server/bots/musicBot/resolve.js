@@ -11,7 +11,24 @@ const { execFile } = require('child_process');
 const config = require('../../config');
 const binaries = require('./binaries');
 
-async function runYtDlp(args, { timeoutMs = 30000 } = {}) {
+// quantos yt-dlp (processo Python pesado) rodam ao mesmo tempo no site inteiro, em duas filas:
+//   - "play": /play, busca e preparo da próxima faixa — o que faz a música tocar. Cabe folgado o
+//     bot tocando em 10+ servidores ao mesmo tempo (YTDLP_CONCURRENCY no .env, padrão 12).
+//   - "suggest": o autocompletar do /play enquanto a pessoa digita. Fila própria e pequena, pra
+//     quem está digitando nunca atrasar a música de ninguém.
+// O áudio em si (audioPipeline.js) não passa por aqui: cada servidor tocando tem o seu processo.
+// Com a fila cheia, o pedido é recusado na hora em vez de esperar pra sempre.
+const { semaphore } = require('../../limits');
+const ytdlpSlots = {
+  play: semaphore(config.ytdlpConcurrency || 12, 200),
+  suggest: semaphore(3, 15),
+};
+
+function runYtDlp(args, opts = {}) {
+  return (ytdlpSlots[opts.pool] || ytdlpSlots.play)(() => runYtDlpNow(args, opts));
+}
+
+async function runYtDlpNow(args, { timeoutMs = 30000 } = {}) {
   const bin = await binaries.ensureYtDlp();
   return new Promise((resolve, reject) => {
     execFile(bin, args, { timeout: timeoutMs, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
@@ -60,7 +77,7 @@ function trackFromYtInfo(info, requestedBy) {
 
 async function searchYoutube(query, requestedBy) {
   const stdout = await runYtDlp(
-    ['--dump-json', '--no-warnings', '--skip-download', '--default-search', 'ytsearch1', query],
+    ['--dump-json', '--no-warnings', '--skip-download', `ytsearch1:${query}`],
     { timeoutMs: 20000 }
   );
   const [info] = parseJsonLines(stdout);
@@ -73,7 +90,7 @@ async function searchYoutube(query, requestedBy) {
 // pessoa escolher qual tocar com /play <número>, em vez de confiar cegamente no resultado 1
 async function searchYoutubeMulti(query, limit, requestedBy) {
   const stdout = await runYtDlp(
-    ['--dump-json', '--no-warnings', '--skip-download', '--default-search', `ytsearch${limit}`, query],
+    ['--dump-json', '--no-warnings', '--skip-download', `ytsearch${limit}:${query}`],
     { timeoutMs: 30000 }
   );
   const infos = parseJsonLines(stdout);
@@ -98,7 +115,7 @@ async function suggestYoutube(query, limit = 5) {
   const job = (async () => {
     const stdout = await runYtDlp(
       ['--flat-playlist', '--dump-single-json', '--no-warnings', `ytsearch${limit}:${query}`],
-      { timeoutMs: 20000 }
+      { timeoutMs: 20000, pool: 'suggest' }
     );
     let data = null;
     try { data = JSON.parse(stdout); } catch (_) { /* resposta inesperada */ }
@@ -244,9 +261,23 @@ async function ensurePlayable(track) {
 
 async function resolveInput(input, requestedBy) {
   const trimmed = input.trim();
-  if (SPOTIFY_RE.test(trimmed)) return resolveSpotifyUrl(trimmed, requestedBy);
-  if (YT_VIDEO_RE.test(trimmed) || YT_PLAYLIST_RE.test(trimmed)) return resolveYoutubeUrl(trimmed, requestedBy);
-  if (/^https?:\/\//i.test(trimmed)) throw new Error('só entendo links do youtube ou do spotify por enquanto');
+  if (/^https?:\/\//i.test(trimmed)) {
+    const u = new URL(trimmed);
+    if (u.username || u.password || (u.port && u.port !== '443')) throw new Error('link não permitido');
+    const host = u.hostname.toLowerCase();
+    if (host === 'open.spotify.com') {
+      const match = /^\/(track|playlist|album)\/([a-zA-Z0-9]+)\/?$/.exec(u.pathname);
+      if (match) return resolveSpotifyUrl(`https://open.spotify.com/${match[1]}/${match[2]}`, requestedBy);
+    }
+    if (['youtube.com','www.youtube.com','m.youtube.com','music.youtube.com','youtu.be','www.youtu.be'].includes(host)) {
+      const list = u.searchParams.get('list');
+      if (list && /^[a-zA-Z0-9_-]+$/.test(list)) return resolveYoutubeUrl(`https://www.youtube.com/playlist?list=${list}`, requestedBy);
+      const id = host.endsWith('youtu.be') ? u.pathname.slice(1)
+        : u.pathname === '/watch' ? u.searchParams.get('v') : (u.pathname.match(/^\/(?:shorts|live|embed)\/([a-zA-Z0-9_-]+)\/?$/) || [])[1];
+      if (id && /^[a-zA-Z0-9_-]{6,20}$/.test(id)) return resolveYoutubeUrl(`https://www.youtube.com/watch?v=${id}`, requestedBy);
+    }
+    throw new Error('só entendo links do youtube ou do spotify por enquanto');
+  }
   return [await searchYoutube(trimmed, requestedBy)];
 }
 

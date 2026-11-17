@@ -244,3 +244,6 @@ async function refreshIceServers() {
     // sem internet ou o Metered caiu — segue com o que já tinha (STUN puro, na pior das hipóteses)
   }
 }
+
+// Token efêmero da call: só esta página pode retomar após queda do WebSocket.
+let voiceResumeToken = null;

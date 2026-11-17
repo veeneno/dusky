@@ -3,6 +3,9 @@
 //! mode "sources" (X11/Windows): telas e janelas com miniatura -> devolve a fonte escolhida.
 //! mode "audio"   (Wayland): só o SOM — a tela/janela vem depois, pelo seletor do sistema, que não
 //!                diz de qual app é a janela escolhida.
+//!
+//! Com som pedido, a tela inteira (e o "som do computador todo" do Wayland) vem com a lista de apps
+//! que NÃO entram no som (AudioExclude) — o dusky já vem marcado.
 
 use crate::app::{self, AppState};
 use crate::audio;
@@ -20,10 +23,58 @@ pub const LABEL: &str = "picker";
 pub struct AudioChoice {
     pub mode: String, // system | app | none
     pub app_key: Option<String>,
+    /// mode "system": o que fica de fora (null/ausente = só o dusky)
+    #[serde(default, deserialize_with = "null_is_default")]
+    pub exclude: AudioExclude,
+}
+
+/// apps que NÃO entram no som da tela inteira, escolhidos no seletor
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioExclude {
+    /// o próprio dusky (a voz da call — sem isso, quem está na call se ouve de volta)
+    #[serde(default = "yes")]
+    pub own: bool,
+    /// chaves do AudioApp (Linux: o executável no PipeWire; Windows: o nome do .exe)
+    #[serde(default)]
+    pub apps: Vec<String>,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// `null` vindo da página vale o padrão (antes quebrava o "só o som de um app" e o "sem som")
+fn null_is_default<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
+}
+
+impl Default for AudioExclude {
+    fn default() -> Self {
+        Self { own: true, apps: Vec::new() }
+    }
+}
+
+impl AudioExclude {
+    /// vem da página: limita tamanho e quantidade, tira vazios e repetidos
+    pub fn sanitized(self) -> Self {
+        let mut apps: Vec<String> = Vec::new();
+        for a in self.apps {
+            let a: String = a.trim().chars().take(200).collect();
+            if !a.is_empty() && !apps.contains(&a) && apps.len() < 32 {
+                apps.push(a);
+            }
+        }
+        Self { own: self.own, apps }
+    }
 }
 
 pub enum Picked {
-    Source(Source),
+    Source(Source, AudioExclude),
     Audio(AudioChoice),
 }
 
@@ -65,10 +116,12 @@ pub async fn pick(app: &AppHandle, mode: &str) -> Option<Picked> {
 
     let url = app::local_webview_url(&format!("picker.html?mode={mode}"));
     let audio_mode = mode == "audio";
+    // telas com som: tem a lista "não levar o som de" embaixo das miniaturas
+    let tall = !audio_mode && mode.contains("audio=1");
     let make = || {
         WebviewWindowBuilder::new(app, LABEL, url.clone())
             .title("Compartilhar tela")
-            .inner_size(if audio_mode { 560.0 } else { 860.0 }, if audio_mode { 520.0 } else { 620.0 })
+            .inner_size(if audio_mode { 560.0 } else { 860.0 }, if audio_mode { 600.0 } else if tall { 720.0 } else { 620.0 })
             .min_inner_size(if audio_mode { 460.0 } else { 560.0 }, 420.0)
             .background_color(tauri::window::Color(30, 31, 34, 255))
             .initialization_script(app::bridge_script())
@@ -112,12 +165,13 @@ pub async fn picker_get_sources(app: AppHandle, webview: Webview) -> Result<Vec<
 }
 
 #[tauri::command]
-pub fn picker_choose(app: AppHandle, webview: Webview, id: String) {
+pub fn picker_choose(app: AppHandle, webview: Webview, id: String, exclude: Option<AudioExclude>) {
     if app::require_local(&webview, LABEL).is_err() {
         return;
     }
     let source = app.state::<AppState>().picker.0.lock().unwrap().as_ref().and_then(|a| a.sources.get(&id).cloned());
-    resolve(&app, source.map(Picked::Source));
+    let exclude = exclude.unwrap_or_default().sanitized();
+    resolve(&app, source.map(|s| Picked::Source(s, exclude)));
 }
 
 #[tauri::command]
@@ -125,7 +179,7 @@ pub async fn picker_get_audio_apps(webview: Webview) -> audio::AudioApps {
     if app::require_local(&webview, LABEL).is_err() {
         return audio::AudioApps { available: false, apps: Vec::new() };
     }
-    audio::list_audio_apps().await
+    audio::list_audio_apps(webview.app_handle()).await
 }
 
 #[tauri::command]
@@ -133,10 +187,15 @@ pub fn picker_choose_audio(app: AppHandle, webview: Webview, choice: AudioChoice
     if app::require_local(&webview, LABEL).is_err() {
         return;
     }
+    let exclude = choice.exclude.sanitized();
     let mode = if matches!(choice.mode.as_str(), "system" | "app" | "none") { choice.mode } else { "system".into() };
     let app_key = if mode == "app" { choice.app_key.map(|k| k.chars().take(200).collect::<String>()).filter(|k| !k.is_empty()) } else { None };
     // "só um app" sem app escolhido = som do sistema todo
-    let choice = if mode == "app" && app_key.is_none() { AudioChoice { mode: "system".into(), app_key: None } } else { AudioChoice { mode, app_key } };
+    let choice = if mode == "app" && app_key.is_none() {
+        AudioChoice { mode: "system".into(), app_key: None, exclude }
+    } else {
+        AudioChoice { mode, app_key, exclude }
+    };
     resolve(&app, Some(Picked::Audio(choice)));
 }
 

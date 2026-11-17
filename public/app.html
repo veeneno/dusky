@@ -8,29 +8,29 @@
   <meta name="theme-color" content="#16141f">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e1f22">
-  <script src="/js/compat.js?v=1"></script>
-  <script src="/js/themes.js?v=22"></script>
+  <script src="/js/compat.js?v=57"></script>
+  <script src="/js/themes.js?v=57"></script>
   <script>DuskyTheme.boot();</script>
   <title>concord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/theme.css?v=20">
-  <link rel="stylesheet" href="/css/app.css?v=20">
-  <link rel="stylesheet" href="/css/chat.css?v=20">
-  <link rel="stylesheet" href="/css/members.css?v=20">
-  <link rel="stylesheet" href="/css/profile.css?v=26">
-  <link rel="stylesheet" href="/css/voice.css?v=21">
-  <link rel="stylesheet" href="/css/settings.css?v=20">
-  <link rel="stylesheet" href="/css/servers.css?v=20">
-  <link rel="stylesheet" href="/css/call-roles.css?v=20">
-  <link rel="stylesheet" href="/css/chat-extras.css?v=20">
-  <link rel="stylesheet" href="/css/design.css?v=23">
-  <link rel="stylesheet" href="/css/media.css?v=20">
-  <link rel="stylesheet" href="/css/server-options.css?v=31">
-  <link rel="stylesheet" href="/css/server-settings.css?v=1">
-  <link rel="stylesheet" href="/css/world.css?v=12">
-  <link rel="stylesheet" href="/css/mobile.css?v=1">
-  <link rel="stylesheet" href="/css/sidebar-dc.css?v=1">
+  <link rel="stylesheet" href="/css/theme.css?v=57">
+  <link rel="stylesheet" href="/css/app.css?v=57">
+  <link rel="stylesheet" href="/css/chat.css?v=57">
+  <link rel="stylesheet" href="/css/members.css?v=57">
+  <link rel="stylesheet" href="/css/profile.css?v=57">
+  <link rel="stylesheet" href="/css/voice.css?v=57">
+  <link rel="stylesheet" href="/css/settings.css?v=57">
+  <link rel="stylesheet" href="/css/servers.css?v=57">
+  <link rel="stylesheet" href="/css/call-roles.css?v=57">
+  <link rel="stylesheet" href="/css/chat-extras.css?v=57">
+  <link rel="stylesheet" href="/css/design.css?v=57">
+  <link rel="stylesheet" href="/css/media.css?v=57">
+  <link rel="stylesheet" href="/css/server-options.css?v=57">
+  <link rel="stylesheet" href="/css/server-settings.css?v=57">
+  <link rel="stylesheet" href="/css/world.css?v=57">
+  <link rel="stylesheet" href="/css/mobile.css?v=57">
+  <link rel="stylesheet" href="/css/sidebar-dc.css?v=57">
 </head>
 <body>
   <div class="app-shell">
@@ -1012,6 +1012,7 @@
           <button type="button" class="settings-tab" data-settings-tab="audio">som</button>
           <button type="button" class="settings-tab" data-settings-tab="video">câmera</button>
           <button type="button" class="settings-tab" data-settings-tab="tela">compartilhar tela</button>
+          <button type="button" class="settings-tab" data-settings-tab="atalhos">teclas de atalho</button>
           <div class="settings-nav-sep"></div>
           <div class="settings-nav-group">avisos</div>
           <button type="button" class="settings-tab" data-settings-tab="notificacoes">notificações</button>
@@ -1265,6 +1266,54 @@
 
         </section>
 
+        <section class="settings-tab-panel" data-settings-panel="atalhos" hidden>
+          <h2 class="settings-title">teclas de atalho</h2>
+          <p class="settings-lead">Clique numa tecla pra trocar e aperte a combinação nova. <kbd>Esc</kbd> cancela, <kbd>Backspace</kbd> tira a tecla.</p>
+
+          <div class="settings-card shortcut-card">
+            <h3>modo de voz</h3>
+            <label class="settings-toggle">
+              <span class="settings-toggle-text"><strong>apertar para falar</strong><small>o microfone só abre enquanto você segura a tecla de falar. Desligado, ele abre sozinho quando você fala.</small></span>
+              <input type="checkbox" id="pttModeToggle">
+            </label>
+            <div class="shortcut-row">
+              <span class="shortcut-row-name">tecla de falar</span>
+              <button type="button" class="shortcut-key" data-shortcut="falar"></button>
+            </div>
+          </div>
+
+          <div class="settings-card shortcut-card">
+            <h3>na call</h3>
+            <div class="shortcut-row">
+              <span class="shortcut-row-name">mutar / desmutar</span>
+              <button type="button" class="shortcut-key" data-shortcut="mutar"></button>
+              <button type="button" class="btn btn-ghost btn-sm" data-shortcut-reset="mutar">padrão</button>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-row-name">ensurdecer / desensurdecer</span>
+              <button type="button" class="shortcut-key" data-shortcut="ensurdecer"></button>
+              <button type="button" class="btn btn-ghost btn-sm" data-shortcut-reset="ensurdecer">padrão</button>
+            </div>
+            <label class="settings-toggle" id="globalShortcutsRow" hidden>
+              <span class="settings-toggle-text"><strong>funcionar com o dusky em segundo plano</strong><small>mutar e ensurdecer pelo teclado mesmo dentro do jogo ou com a janela escondida. A tecla de falar sempre funciona em segundo plano no app.</small></span>
+              <input type="checkbox" id="globalShortcutsToggle">
+            </label>
+            <p class="field-help shortcut-status" id="shortcutStatus" hidden></p>
+          </div>
+
+          <div class="settings-card shortcut-card">
+            <h3>outros atalhos</h3>
+            <dl class="shortcut-list">
+              <dt><kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd></dt><dd>canal anterior / próximo</dd>
+              <dt><kbd>Ctrl</kbd> + <kbd>F</kbd></dt><dd>buscar na conversa</dd>
+              <dt><kbd>Ctrl</kbd> + <kbd>V</kbd></dt><dd>colar imagem ou arquivo na mensagem</dd>
+              <dt><kbd>Enter</kbd> / <kbd>Shift</kbd> + <kbd>Enter</kbd></dt><dd>enviar / pular linha</dd>
+              <dt><kbd>Esc</kbd></dt><dd>fechar janela, menu ou busca</dd>
+              <dt><kbd>Ctrl</kbd> + <kbd>/</kbd></dt><dd>abrir esta lista</dd>
+            </dl>
+          </div>
+        </section>
+
         <section class="settings-tab-panel" data-settings-panel="notificacoes" hidden>
           <h2 class="settings-title">notificações</h2>
           <div class="settings-card"><h3>com o site fechado</h3><p class="field-help">Ative neste navegador para receber avisos mesmo sem a aba aberta. Requer HTTPS e suporte a Web Push. O navegador e o sistema precisam permitir execução em segundo plano.</p><button type="button" class="btn btn-primary" id="pushEnableBtn">ativar neste aparelho</button><button type="button" class="btn btn-ghost" id="pushDisableBtn" hidden>desativar neste aparelho</button><p class="field-help" id="pushStatus" role="status"></p></div>
@@ -1293,6 +1342,7 @@
           <div class="settings-row">
             <a class="btn btn-primary" href="/baixar" target="_blank" rel="noopener" id="settingsDownloadBtn">página de download</a>
             <button type="button" class="btn btn-ghost" id="settingsCheckUpdatesBtn" hidden>procurar atualização</button>
+            <button type="button" class="btn btn-ghost" id="settingsOpenLogsBtn" hidden title="abre a pasta com o dusky.log — mande esse arquivo quando algo der errado">abrir pasta do log</button>
           </div>
           <label class="settings-toggle" id="settingsHwAccelRow" hidden>
             <span class="settings-toggle-text"><strong>aceleração de hardware</strong><small>desenha o site, as telas e o mundinho na placa de vídeo. Desligue só se a janela ficar preta ou travando. Mudar reinicia o app.</small></span>
@@ -1314,41 +1364,42 @@
     </div>
   </div>
 
-  <script src="/js/realtime.js?v=21"></script>
-  <script src="/js/markdown.js?v=21"></script>
-  <script src="/js/emoji.js?v=21"></script>
+  <script src="/js/realtime.js?v=57"></script>
+  <script src="/js/markdown.js?v=57"></script>
+  <script src="/js/emoji.js?v=57"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=50"></script>
-  <script src="/js/app/02-preferences.js?v=50"></script>
-  <script src="/js/app/03-context-menus.js?v=50"></script>
-  <script src="/js/app/04-sidebar.js?v=51"></script>
-  <script src="/js/app/05-chat.js?v=50"></script>
-  <script src="/js/app/06-message-content.js?v=50"></script>
-  <script src="/js/app/07-composer.js?v=50"></script>
-  <script src="/js/app/08-notifications.js?v=50"></script>
-  <script src="/js/app/09-panels-attachments.js?v=50"></script>
-  <script src="/js/app/10-video-player.js?v=50"></script>
-  <script src="/js/app/11-slash-commands.js?v=50"></script>
-  <script src="/decor/catalog.js?v=1"></script>
-  <script src="/js/decor-catalog.js?v=2"></script>
-  <script src="/js/decor-picker.js?v=1"></script>
-  <script src="/js/app/12-members-profile.js?v=53"></script>
-  <script src="/js/app/13-servers.js?v=51"></script>
-  <script src="/js/app/14-roles.js?v=51"></script>
-  <script src="/js/app/15-media-viewer.js?v=50"></script>
-  <script src="/js/app/16-site-admin.js?v=50"></script>
-  <script src="/js/app/17-settings.js?v=50"></script>
-  <script src="/js/app/18-call-audio.js?v=50"></script>
-  <script src="/js/app/19-call-ui.js?v=50"></script>
-  <script src="/js/app/20-screencast-native.js?v=50"></script>
-  <script src="/js/app/21-call-sfu.js?v=50"></script>
-  <script src="/js/app/22-call-mesh.js?v=50"></script>
-  <script src="/js/app/23-call-media.js?v=50"></script>
-  <script src="/js/app/24-presence.js?v=50"></script>
-  <script src="/js/app/25-server-settings.js?v=50"></script>
-  <script src="/js/app/26-soundboard.js?v=50"></script>
-  <script src="/js/app/27-world.js?v=55"></script>
-  <script src="/js/app/28-realtime.js?v=50"></script>
-  <script src="/js/app/29-mobile.js?v=50"></script>
+  <script src="/js/app/01-state.js?v=57"></script>
+  <script src="/js/app/02-preferences.js?v=57"></script>
+  <script src="/js/app/03-context-menus.js?v=57"></script>
+  <script src="/js/app/04-sidebar.js?v=57"></script>
+  <script src="/js/app/05-chat.js?v=57"></script>
+  <script src="/js/app/06-message-content.js?v=57"></script>
+  <script src="/js/app/07-composer.js?v=57"></script>
+  <script src="/js/app/08-notifications.js?v=57"></script>
+  <script src="/js/app/09-panels-attachments.js?v=57"></script>
+  <script src="/js/app/10-video-player.js?v=57"></script>
+  <script src="/js/app/11-slash-commands.js?v=57"></script>
+  <script src="/decor/catalog.js?v=57"></script>
+  <script src="/js/decor-catalog.js?v=57"></script>
+  <script src="/js/decor-picker.js?v=57"></script>
+  <script src="/js/app/12-members-profile.js?v=57"></script>
+  <script src="/js/app/13-servers.js?v=57"></script>
+  <script src="/js/app/14-roles.js?v=57"></script>
+  <script src="/js/app/15-media-viewer.js?v=57"></script>
+  <script src="/js/app/16-site-admin.js?v=57"></script>
+  <script src="/js/app/17-settings.js?v=57"></script>
+  <script src="/js/app/18-call-audio.js?v=57"></script>
+  <script src="/js/app/19-call-ui.js?v=57"></script>
+  <script src="/js/app/20-screencast-native.js?v=57"></script>
+  <script src="/js/app/21-call-sfu.js?v=57"></script>
+  <script src="/js/app/22-call-mesh.js?v=57"></script>
+  <script src="/js/app/23-call-media.js?v=57"></script>
+  <script src="/js/app/24-presence.js?v=57"></script>
+  <script src="/js/app/25-server-settings.js?v=57"></script>
+  <script src="/js/app/26-soundboard.js?v=57"></script>
+  <script src="/js/app/27-world.js?v=57"></script>
+  <script src="/js/app/28-realtime.js?v=57"></script>
+  <script src="/js/app/29-mobile.js?v=57"></script>
+  <script src="/js/app/30-shortcuts.js?v=1"></script>
 </body>
 </html>

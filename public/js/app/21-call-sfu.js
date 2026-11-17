@@ -66,7 +66,9 @@ function sfuMarkPeers(connected) {
 
 function sfuTrackSubscribed(track, publication, participant) {
   const userId = sfuUserId(participant);
-  if (userId == null || (currentUser && userId === currentUser.id)) return;
+  if (userId == null) return;
+  // minha própria conta: só a minha tela vinda do auxiliar, pra prévia (19-call-ui.js)
+  if (currentUser && userId === currentUser.id) { ownSfuTrackSubscribed(track, publication, participant); return; }
   const peer = sfuEnsurePeer(userId);
   const mst = track.mediaStreamTrack;
   const source = publication.source;
@@ -107,6 +109,7 @@ function sfuTrackSubscribed(track, publication, participant) {
 }
 
 function sfuTrackUnsubscribed(track, publication, participant) {
+  if (currentUser && sfuUserId(participant) === currentUser.id) { ownSfuTrackUnsubscribed(track); return; }
   const peer = peers.get(sfuUserId(participant));
   if (!peer) return;
   const mst = track.mediaStreamTrack;
@@ -195,6 +198,13 @@ function sfuPublishAll() {
 // conecta na sala do canal. Devolve false se o servidor não usa SFU (aí a call vai em malha)
 async function sfuConnect(ch) {
   const res = await fetch(`/api/rtc/sfu?channelId=${ch.id}`);
+  // recusa temporária (429: pedidos demais ou ingresso recusado até entrar na call): o servidor de
+  // mídia ESTÁ ligado — não pode cair pra malha, senão fica cada um num sistema e ninguém se ouve.
+  // Lança o erro pra quem chamou agendar uma nova tentativa (depois do voice_join ela passa).
+  if (res.status === 429) {
+    sfuRequired = true;
+    throw new Error((await res.json().catch(() => ({}))).error || 'servidor de mídia recusou por enquanto');
+  }
   const info = res.ok ? await res.json() : null;
   if (!info || !info.enabled) return false;
   sfuRequired = true;
@@ -387,7 +397,7 @@ async function sfuNativeAddAudio(ctx, ev) {
   entry.node = node;
   entry.dest = dest;
   entry.track = dest.stream.getAudioTracks()[0];
-  for (const chunk of entry.pending.splice(0)) node.port.postMessage(chunk, [chunk.buffer]);
+  for (const chunk of entry.pending.splice(0)) node.port.postMessage(chunk); // cópia, não transferência (ver acima)
   sfuTrackSubscribed({ mediaStreamTrack: entry.track, kind: 'audio', receiver: sfuNativeStatsReceiver(ctx, ev.sid) }, { source: ev.source }, { identity: ev.identity });
 }
 
@@ -881,7 +891,7 @@ async function sfuNativePullLoop(ctx) {
       off += count * 4;
       const entry = ctx.players.get(sid);
       if (!entry) continue;
-      if (entry.node) entry.node.port.postMessage(samples, [samples.buffer]);
+      if (entry.node) entry.node.port.postMessage(samples); // sem transferir o buffer: o WebKitGTK para o worklet depois da 1ª transferência (ver pcm-bridge.js)
       else if (entry.pending.length < 50) entry.pending.push(samples); // tocador ainda carregando
     }
   }

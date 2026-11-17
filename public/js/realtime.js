@@ -3,6 +3,7 @@ const Realtime = (function () {
   let socket = null;
   let connecting = false; // evita abrir 2 sockets em paralelo se connect() for chamado de novo no meio de uma tentativa
   let reconnectTimer = null;
+  let lastMessageAt = 0;
   const listeners = new Map(); // event type -> Set(callback)
   let reconnectDelay = 1000;
   const MAX_RECONNECT_DELAY_MS = 15000;
@@ -15,7 +16,10 @@ const Realtime = (function () {
 
   function emit(type, payload) {
     const set = listeners.get(type);
-    if (set) for (const cb of set) cb(payload);
+    if (set) for (const cb of set) {
+      try { Promise.resolve(cb(payload)).catch((err) => console.error('[ws] listener', type, err)); }
+      catch (err) { console.error('[ws] listener', type, err); }
+    }
   }
 
   // manda uma mensagem pro servidor (usado pela sinalização WebRTC e pelo estado de voz)
@@ -42,19 +46,30 @@ const Realtime = (function () {
     if (connecting || (socket && socket.readyState === WebSocket.OPEN)) return;
     connecting = true;
     try {
-      const res = await fetch('/api/ws/ticket');
+      const res = await fetch('/api/ws/ticket', { signal: AbortSignal.timeout(15000) });
       if (!res.ok) {
         // sem sessão válida ainda (ex: carregando a página de login) — não é erro de rede,
         // então não fica tentando de novo sozinho; quem faz login de novo chama connect() de novo.
         connecting = false;
+        if (res.status !== 401 && res.status !== 403) scheduleReconnect();
         return;
       }
       const { ticket } = await res.json();
 
       const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
       const nextSocket = new WebSocket(`${proto}://${window.location.host}/ws?ticket=${ticket}`);
+      socket = nextSocket;
+      const handshakeTimer = setTimeout(() => {
+        if (socket !== nextSocket || nextSocket.readyState === WebSocket.OPEN) return;
+        socket = null;
+        connecting = false;
+        nextSocket.close();
+        scheduleReconnect();
+      }, 15000);
 
       nextSocket.addEventListener('message', (ev) => {
+        if (socket !== nextSocket) return;
+        lastMessageAt = Date.now();
         let data;
         try {
           data = JSON.parse(ev.data);
@@ -63,22 +78,27 @@ const Realtime = (function () {
         }
         // heartbeat do servidor: responde na hora, não expõe pros listeners da aplicação
         if (data.type === 'ping') {
-          send('pong');
+          nextSocket.send(JSON.stringify({ type: 'pong' }));
           return;
         }
-        emit(data.type, data);
+        if (data.type !== 'pong') emit(data.type, data);
       });
 
       nextSocket.addEventListener('open', () => {
-        socket = nextSocket;
+        if (socket !== nextSocket) return;
+        clearTimeout(handshakeTimer);
+        lastMessageAt = Date.now();
         connecting = false;
         reconnectDelay = 1000;
         emit('connection_status', { status: 'open' });
       });
 
-      nextSocket.addEventListener('close', () => {
+      nextSocket.addEventListener('close', (ev) => {
+        clearTimeout(handshakeTimer);
+        if (socket !== nextSocket) return;
+        console.warn('[ws] conexão fechada', { code: ev.code, wasClean: ev.wasClean });
         connecting = false;
-        if (socket === nextSocket) socket = null;
+        socket = null;
         scheduleReconnect();
       });
 
@@ -91,6 +111,17 @@ const Realtime = (function () {
       scheduleReconnect();
     }
   }
+
+  // Se a rede sumir sem gerar close, não fica preso para sempre em OPEN.
+  setInterval(() => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (Date.now() - lastMessageAt <= 75000) return;
+    const stale = socket;
+    socket = null;
+    connecting = false;
+    stale.close();
+    scheduleReconnect();
+  }, 15000);
 
   return { connect, on, send };
 })();

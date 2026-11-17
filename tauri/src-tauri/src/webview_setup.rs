@@ -118,6 +118,15 @@ pub fn configure(app: &AppHandle, win: &WebviewWindow) {
         use tauri::Manager;
         use webkit2gtk::{SettingsExt, WebViewExt};
         let wv = pw.inner();
+        // arrastar arquivo: no Wayland o WebKit não entrega o arquivo pra página — guarda os
+        // caminhos que o GTK recebeu pra página pedir na hora do soltar (drops.rs)
+        {
+            use gtk::prelude::WidgetExt;
+            wv.connect_drag_data_received(|_wv, _ctx, _x, _y, data, _info, _time| {
+                let uris: Vec<String> = data.uris().iter().map(|u| u.to_string()).collect();
+                crate::drops::remember_uris(&uris);
+            });
+        }
         // navegação pro site falhou (servidor desligado, sem internet): volta pra tela de
         // "conectando…" na hora, em vez de deixar a página de erro do WebKit. Navegação cancelada
         // (trocou de página no meio) ou virou download não conta.
@@ -161,3 +170,25 @@ pub fn configure(app: &AppHandle, win: &WebviewWindow) {
 
 #[cfg(not(target_os = "linux"))]
 pub fn configure(_app: &AppHandle, _win: &WebviewWindow) {}
+
+/// Windows: pid do processo principal do WebView2 da janela do dusky (é ele e os filhos dele que
+/// tocam o som da call). Perguntado direto pro WebView2 — não dá pra contar que ele seja filho do
+/// dusky.exe na árvore de processos (o "tirar o dusky do som da tela" dependia disso).
+#[cfg(windows)]
+pub async fn browser_pid(app: &AppHandle) -> Option<u32> {
+    use tauri::Manager;
+    let win = app.get_webview_window(crate::app::MAIN)?;
+    let (tx, rx) = tokio::sync::oneshot::channel::<Option<u32>>();
+    win.with_webview(move |pw| {
+        // SAFETY: chamadas COM do WebView2, na thread da janela (with_webview roda lá)
+        let pid = unsafe {
+            pw.controller().CoreWebView2().ok().and_then(|core| {
+                let mut pid = 0u32;
+                core.BrowserProcessId(&mut pid).ok().map(|_| pid)
+            })
+        };
+        let _ = tx.send(pid);
+    })
+    .ok()?;
+    tokio::time::timeout(std::time::Duration::from_secs(3), rx).await.ok()?.ok()?.filter(|p| *p != 0)
+}

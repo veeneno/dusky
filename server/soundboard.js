@@ -13,6 +13,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
+const ffmpegSlot = require('./limits').semaphore(2, 20);
 const db = require('./db');
 const access = require('./access');
 const { UPLOADS_ROOT } = require('./upload');
@@ -132,12 +133,13 @@ async function processUpload(inputPath, startRaw, endRaw) {
       '-ac', '2', '-ar', '48000', '-c:a', 'libmp3lame', '-b:a', '160k',
       outPath,
     ];
-    const stderr = await new Promise((resolve, reject) => {
+    // no máximo 2 conversões ao mesmo tempo no site inteiro (ver server/limits.js)
+    const stderr = await ffmpegSlot(() => new Promise((resolve, reject) => {
       execFile(ffmpeg, args, { timeout: 30000, maxBuffer: 4 * 1024 * 1024 }, (err, _out, errOut) => {
         if (err) return reject(new Error('não deu pra ler esse arquivo de áudio'));
         resolve(String(errOut || ''));
       });
-    });
+    }));
     // duração real = último "time=" do progresso do ffmpeg
     const times = [...stderr.matchAll(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g)];
     const last = times[times.length - 1];

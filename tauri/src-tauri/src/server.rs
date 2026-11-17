@@ -306,12 +306,88 @@ pub fn save_prefs(dir: &Path, prefs: &Prefs) {
     let _ = std::fs::write(dir.join("prefs.json"), serde_json::to_string(prefs).unwrap());
 }
 
+/// Log do app: vai pro terminal E pra um arquivo (<pasta de dados>/logs/dusky.log). No Windows a
+/// versão final nem tem terminal — sem o arquivo não existia log nenhum pra mandar quando algo dá
+/// errado. Configurações → app e versão → "abrir pasta do log". Passou de 2 MB: o atual vira
+/// dusky.old.log e começa outro.
 pub mod log {
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+
+    const MAX_BYTES: u64 = 2 * 1024 * 1024;
+    static FILE: Mutex<Option<(PathBuf, std::fs::File, u64)>> = Mutex::new(None);
+
+    pub fn dir(data_dir: &Path) -> PathBuf {
+        data_dir.join("logs")
+    }
+
+    /// chamado uma vez, no começo (app.rs, setup)
+    pub fn init(data_dir: &Path) {
+        let dir = dir(data_dir);
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let path = dir.join("dusky.log");
+        rotate_if_big(&path);
+        if let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+            *FILE.lock().unwrap() = Some((path, f, len));
+        }
+        info(&format!(
+            "---- dusky {} ({} {}) iniciando ----",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        ));
+    }
+
+    fn rotate_if_big(path: &Path) {
+        if std::fs::metadata(path).map(|m| m.len() > MAX_BYTES).unwrap_or(false) {
+            let _ = std::fs::rename(path, path.with_file_name("dusky.old.log"));
+        }
+    }
+
+    /// "2026-11-17 06:50:01Z" sem depender de crate de data (UTC)
+    fn now_utc() -> String {
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) as i64;
+        let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+        // dias desde 1970 -> data civil (algoritmo de Howard Hinnant)
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+        format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+    }
+
+    fn write(line: &str) {
+        eprintln!("{line}");
+        let mut guard = FILE.lock().unwrap();
+        let Some((path, file, len)) = guard.as_mut() else { return };
+        let text = format!("{} {line}\n", now_utc());
+        if file.write_all(text.as_bytes()).is_ok() {
+            *len += text.len() as u64;
+        }
+        if *len > MAX_BYTES {
+            let path = path.clone();
+            *guard = None;
+            rotate_if_big(&path);
+            if let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                *guard = Some((path, f, 0));
+            }
+        }
+    }
+
     pub fn info(msg: &str) {
-        eprintln!("[dusky] {msg}");
+        write(&format!("[dusky] {msg}"));
     }
     pub fn warn(msg: &str) {
-        eprintln!("[dusky] aviso: {msg}");
+        write(&format!("[dusky] aviso: {msg}"));
     }
 }
 

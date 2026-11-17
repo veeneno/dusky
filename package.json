@@ -21,6 +21,9 @@
     "web-push": "^4.0.0",
     "ws": "^8.18.0"
   },
+  "overrides": {
+    "qs": "^6.16.2"
+  },
   "allowScripts": {
     "bcrypt": true,
     "better-sqlite3": true

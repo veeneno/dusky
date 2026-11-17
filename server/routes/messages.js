@@ -10,6 +10,27 @@ const { MESSAGE_COLUMNS, MESSAGE_SELECT_BY_ID } = require('../db/messageQueries'
 const musicBot = require('../bots/musicBot');
 const extras = require('../chatExtras');
 const audit = require('../audit');
+const uploadLimits = require('../uploadLimits');
+const limits = require('../limits');
+
+// envio de anexo: some se ficar UPLOAD_IDLE_MS sem chegar nenhum byte (conexão pendurada) e, pra
+// quem tem limite, se o envio inteiro passar de UPLOAD_MAX_DURATION_MS (100 MB a ~0,5 Mbps cabe)
+const UPLOAD_IDLE_MS = 60 * 1000;
+const UPLOAD_MAX_DURATION_MS = 30 * 60 * 1000;
+function uploadDeadline(req, maxMs) {
+  const socket = req.socket;
+  socket.setTimeout(UPLOAD_IDLE_MS, () => socket.destroy());
+  const total = maxMs ? setTimeout(() => socket.destroy(), maxMs) : null;
+  return () => {
+    if (total) clearTimeout(total);
+    socket.setTimeout(0); // a conexão pode ser reaproveitada (keep-alive) por outros pedidos
+  };
+}
+
+// frequência por conta (o admin do site não passa por isso — ver server/limits.js)
+const sendLimit = limits.perUser('msg', 30, 15 * 1000, 'você está mandando mensagens rápido demais — espera uns segundos');
+const attachLimit = limits.perUser('attach', 30, 10 * 60 * 1000, 'muitos anexos seguidos — espera uns minutos');
+const editLimit = limits.perUser('edit', 60, 60 * 1000);
 
 // mergeParams pra ter acesso a :channelId, já que é montado como sub-rota
 const router = express.Router({ mergeParams: true });
@@ -92,7 +113,7 @@ function publishNewMessage(channelId, messageId, author) {
 }
 
 // POST /api/channels/:channelId/messages — envia mensagem (texto e/ou anexo)
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, sendLimit, (req, res) => {
   const channelId = Number(req.params.channelId);
   const channel = getChannel(channelId, req.user.id);
   if (!channel) return res.status(404).json({ error: 'canal não encontrado' });
@@ -132,7 +153,7 @@ function resolveReplyToId(channelId, rawId) {
 }
 
 // POST /api/channels/:channelId/messages/attachment — envia imagem/vídeo/arquivo (com legenda opcional)
-router.post('/attachment', requireAuth, (req, res) => {
+router.post('/attachment', requireAuth, attachLimit, (req, res) => {
   const channelId = Number(req.params.channelId);
   const channel = getChannel(channelId, req.user.id);
   if (!channel) return res.status(404).json({ error: 'canal não encontrado' });
@@ -140,16 +161,38 @@ router.post('/attachment', requireAuth, (req, res) => {
   if (channel.type !== 'text') return res.status(400).json({ error: 'esse canal não é de texto' });
 
   if (!access.canChannelAction(channel, req.user.id, 'attach')) return res.status(403).json({ error: 'você não pode enviar anexos neste canal' });
-  attachmentUpload.single('file')(req, res, (err) => {
+
+  // limite por conta (padrão 100 MB por arquivo e 5 GB no total; o admin do site não tem limite)
+  const lim = uploadLimits.limitsFor(req.user.id);
+  const tooBig = `arquivo muito grande (seu limite é ${uploadLimits.formatMB(lim.maxMB)} por arquivo)`;
+  const overQuota = `você chegou no limite de espaço dos seus anexos (${uploadLimits.formatMB(lim.quotaMB)}) — apague anexos antigos ou fale com o admin`;
+  // o tamanho declarado do pedido já diz se não cabe: recusa antes de receber um byte do arquivo
+  const declared = Number(req.headers['content-length']) || 0;
+  if (!lim.unlimited) {
+    if (declared > lim.maxBytes + 64 * 1024) return res.status(413).json({ error: tooBig });
+    if (lim.usedBytes >= lim.quotaBytes || lim.usedBytes + declared - 64 * 1024 > lim.quotaBytes) {
+      return res.status(413).json({ error: overQuota });
+    }
+  }
+  // prazo do envio: some se ficar 60 s sem chegar nada, ou se passar do teto total (o admin
+  // só tem o prazo de inatividade). Ver também server.requestTimeout no index.js.
+  const cleanupTimers = uploadDeadline(req, lim.unlimited ? 0 : UPLOAD_MAX_DURATION_MS);
+
+  attachmentUpload(lim.maxBytes).single('file')(req, res, (err) => {
+    cleanupTimers();
     if (err) {
+      if (req.file) fs.unlink(req.file.path, () => {});
       // multer sinaliza limite de tamanho estourado com esse code específico — mensagem
       // separada disso pra pessoa saber exatamente por que falhou, em vez de um erro genérico
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'arquivo muito grande (máximo 2GB)' });
-      }
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: tooBig });
       return res.status(400).json({ error: 'não deu pra enviar esse arquivo' });
     }
     if (!req.file) return res.status(400).json({ error: 'arquivo inválido' });
+    // o Content-Length pode mentir: confere a cota de novo com o tamanho real gravado
+    if (!lim.unlimited && uploadLimits.usedBytes(req.user.id) + req.file.size > lim.quotaBytes) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(413).json({ error: overQuota });
+    }
     // Um upload pode levar minutos: revogação durante o envio também deve valer.
     if (!access.canChannelAction(access.getChannel(channelId), req.user.id, 'attach')) {
       fs.unlink(req.file.path, () => {});
@@ -176,7 +219,7 @@ router.post('/attachment', requireAuth, (req, res) => {
 
 // POST /api/channels/:channelId/messages/gif — envia um gif escolhido no seletor do GIPHY
 // (não é upload — só guarda a URL direto do CDN do GIPHY, então precisa validar o host)
-router.post('/gif', requireAuth, (req, res) => {
+router.post('/gif', requireAuth, sendLimit, (req, res) => {
   const channelId = Number(req.params.channelId);
   const channel = getChannel(channelId, req.user.id);
   if (!channel) return res.status(404).json({ error: 'canal não encontrado' });
@@ -213,7 +256,7 @@ router.post('/gif', requireAuth, (req, res) => {
 // PATCH /api/channels/:channelId/messages/:messageId — edita o texto de uma mensagem. Só o autor
 // (mensagem de bot e gif não têm o que editar). Em mensagem com anexo, edita a legenda e ela pode
 // ficar vazia; em mensagem só de texto, não pode ficar vazia. Não reexecuta comando de bot.
-router.patch('/:messageId', requireAuth, (req, res) => {
+router.patch('/:messageId', requireAuth, editLimit, (req, res) => {
   if (!access.canChannelAction(getChannel(Number(req.params.channelId), req.user.id), req.user.id, 'send')) return res.status(403).json({ error: 'você não pode editar neste canal' });
   const channelId = Number(req.params.channelId);
   const messageId = Number(req.params.messageId);
@@ -309,7 +352,7 @@ function broadcastReactions(channelId, messageId) {
 }
 
 // PUT /api/channels/:channelId/messages/:messageId/reactions/:emoji — reage
-router.put('/:messageId/reactions/:emoji', requireAuth, (req, res) => {
+router.put('/:messageId/reactions/:emoji', requireAuth, editLimit, (req, res) => {
   if (!access.canChannelAction(getChannel(Number(req.params.channelId), req.user.id), req.user.id, 'react')) return res.status(403).json({ error: 'você não pode reagir neste canal' });
   const ctx = loadChannelMessage(req, res);
   if (!ctx) return;
@@ -322,7 +365,7 @@ router.put('/:messageId/reactions/:emoji', requireAuth, (req, res) => {
 });
 
 // DELETE /api/channels/:channelId/messages/:messageId/reactions/:emoji — tira a minha reação
-router.delete('/:messageId/reactions/:emoji', requireAuth, (req, res) => {
+router.delete('/:messageId/reactions/:emoji', requireAuth, editLimit, (req, res) => {
   const ctx = loadChannelMessage(req, res);
   if (!ctx) return;
   db.prepare('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?').run(ctx.messageId, req.user.id, String(req.params.emoji || ''));

@@ -45,7 +45,8 @@
     window.pickerApi = {
       mode: new URLSearchParams(location.search).get('mode') || 'sources',
       getSources: () => invoke('picker_get_sources'),
-      choose: (id) => { fire('picker_choose', { id: String(id) }); },
+      // exclude: { own, apps } — "não levar o som de" da tela inteira (null = só o dusky)
+      choose: (id, exclude) => { fire('picker_choose', { id: String(id), exclude: exclude || null }); },
       getAudioApps: () => invoke('picker_get_audio_apps'),
       chooseAudio: (choice) => { fire('picker_choose_audio', { choice: choice || {} }); },
       cancel: () => { fire('picker_cancel'); },
@@ -96,6 +97,21 @@
     // aceleração de hardware (reinicia o app). appInfo.gpu.hardwareAcceleration diz como está
     setHardwareAcceleration: (on) => { fire('app_set_hardware_acceleration', { on: !!on }); },
     checkForUpdates: () => invoke('update_check').catch((err) => console.warn('[dusky] atualização', err)),
+    // abre a pasta com o dusky.log (pra mandar quando algo der errado)
+    openLogs: () => { fire('app_open_logs'); },
+    // arrastar arquivo no Linux (src/drops.rs): os arquivos que a pessoa acabou de soltar, como File.
+    // [] = nada (ou não é o caso). Grande demais: vem { tooBig: [nomes] } junto.
+    droppedFiles: async () => {
+      const list = await invoke('drop_files').catch(() => []);
+      const files = [];
+      const tooBig = [];
+      for (const f of list || []) {
+        if (f.too_big) { tooBig.push(f.name); continue; }
+        const buf = await invoke('drop_read', { id: f.id }).catch(() => null);
+        if (buf && buf.byteLength === f.size) files.push(new File([buf], f.name, { type: f.type }));
+      }
+      return { files, tooBig };
+    },
 
     status: {
       report: (status) => { fire('status_report', { status: String(status || '') }); },
@@ -122,6 +138,13 @@
     },
     stopAppAudioCapture: () => invoke('screen_audio_stop'),
     notifyScreenShareStopped: () => invoke('screen_audio_stop'),
+
+    // atalhos globais (src/shortcuts.rs): [{ id, accel: "Ctrl+Shift+KeyM", description }] ->
+    // { backend: hotkey|portal|none, active, errors, bound, hint }. onShortcut: { id, down }
+    shortcuts: {
+      configure: (list) => invoke('shortcuts_configure', { list: Array.isArray(list) ? list : [] }),
+      onShortcut: (cb) => on('shortcut', cb),
+    },
 
     screencast: {
       available: () => invoke('screencast_available'),

@@ -302,11 +302,13 @@ function getLocalOverride(userId) {
   if (o) return o;
   let mutedLocal = false;
   let hideVideo = false;
+  let soundboardMuted = false;
   try {
     mutedLocal = localStorage.getItem(`dusky:localMute:${userId}`) === '1';
     hideVideo = localStorage.getItem(`dusky:hideVideo:${userId}`) === '1';
+    soundboardMuted = localStorage.getItem(`dusky:soundboardMute:${userId}`) === '1';
   } catch (_) { /* segue com os padrões (false, false) */ }
-  o = { mutedLocal, hideVideo };
+  o = { mutedLocal, hideVideo, soundboardMuted };
   localVoiceOverrides.set(userId, o);
   return o;
 }
@@ -315,6 +317,7 @@ function saveLocalOverride(userId, o) {
   try {
     localStorage.setItem(`dusky:localMute:${userId}`, o.mutedLocal ? '1' : '0');
     localStorage.setItem(`dusky:hideVideo:${userId}`, o.hideVideo ? '1' : '0');
+    localStorage.setItem(`dusky:soundboardMute:${userId}`, o.soundboardMuted ? '1' : '0');
   } catch (_) { /* segue sem persistir */ }
 }
 

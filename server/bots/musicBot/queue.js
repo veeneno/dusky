@@ -18,7 +18,13 @@ const access = require('../../access');
 const PAGE_SIZE = 10;
 const SEARCH_TTL_MS = 3 * 60 * 1000; // resultado de /search vale por 3 min
 const ALONE_GRACE_MS = 20 * 1000;    // call vazia: espera isso antes de parar (alguém pode só ter caído)
-const INITIAL_LEAD_SEC = 2.5;        // folga mandada de uma vez quando o stream começa do zero
+// fila acabou: o bot fica na call esse tempo esperando outro /play antes de sair. Sem isso ele saía
+// na hora, e um /play logo depois fazia ele entrar de novo (o áudio de todo mundo reconectava)
+const IDLE_LEAVE_MS = 60 * 1000;
+// folga mandada de uma vez quando a música começa depois de um silêncio. Pequena de propósito: os
+// ouvintes já estão tocando ao vivo (o stream manda silêncio quando não tem música, ver stream.js),
+// então uma folga grande só deixaria todo mundo atrasado em relação a quem entrar depois
+const INITIAL_LEAD_SEC = 0.5;
 
 const sessions = new Map(); // serverId -> sessão
 
@@ -35,6 +41,7 @@ function newSession(serverId) {
     pipeline: null,       // controle { pause, resume, stop } da faixa atual
     pendingSearch: null,  // { channelId, results, expiresAt } do último /search
     aloneTimer: null,
+    idleTimer: null,      // fila acabou: sai da call quando disparar (ver IDLE_LEAVE_MS)
     playToken: 0,         // invalida respostas atrasadas de faixas que já foram puladas
   };
 }
@@ -82,6 +89,8 @@ function resetSession(s) {
   s.paused = false;
   clearTimeout(s.aloneTimer);
   s.aloneTimer = null;
+  clearTimeout(s.idleTimer);
+  s.idleTimer = null;
   stream.reset(s.serverId);
   leaveVoice(s);
 }
@@ -94,8 +103,16 @@ async function enqueue(channelId, tracks, requestedByUser, voiceChannelId) {
   if (!s) return;
   s.tracks.push(...tracks);
   postBotMessage(channelId, '', embeds.addedEmbed(tracks, requestedByUser.username));
+  // estava esperando na call depois da fila acabar: continua nela, sem sair e entrar de novo
+  clearTimeout(s.idleTimer);
+  s.idleTimer = null;
   joinVoice(s, voiceChannelId);
-  if (!s.playing) await playNext(s);
+  if (!s.playing) {
+    // nada tocando: a próxima a tocar é a PRIMEIRA que acabou de entrar. Sem isso, depois da fila
+    // acabar (currentIndex fica além do fim) o playNext pulava a música nova e "não tocava nada"
+    s.currentIndex = s.tracks.length - tracks.length - 1;
+    await playNext(s);
+  }
 }
 
 // avança pra próxima faixa e começa o áudio dela. Usado no fluxo normal (faixa acabou) e por
@@ -112,8 +129,15 @@ async function playNext(s) {
     s.playing = false;
     s.currentIndex = s.tracks.length;
     stream.reset(s.serverId);
-    leaveVoice(s);
-    if (hadSomething && channelId) postBotMessage(channelId, '', embeds.simpleEmbed('⏹️ fila acabou', 'parando por aqui.'));
+    // não sai na hora: fica na call esperando IDLE_LEAVE_MS (o stream manda silêncio enquanto isso)
+    clearTimeout(s.idleTimer);
+    s.idleTimer = setTimeout(() => {
+      s.idleTimer = null;
+      if (s.playing || s.voiceChannelId == null) return; // alguém pôs música (ou já saiu por outro motivo)
+      leaveVoice(s);
+    }, IDLE_LEAVE_MS);
+    s.idleTimer.unref();
+    if (hadSomething && channelId) postBotMessage(channelId, '', embeds.simpleEmbed('⏹️ fila acabou', 'fico na call mais 1 minuto — manda um /play se quiser mais.'));
     return;
   }
 

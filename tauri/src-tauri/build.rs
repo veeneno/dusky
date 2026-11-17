@@ -7,6 +7,9 @@ const COMMANDS: &[&str] = &[
     "status_report",
     "update_check",
     "app_set_hardware_acceleration",
+    "app_open_logs",
+    "drop_files",
+    "drop_read",
     "presence_configure",
     "presence_candidates",
     "presence_current",
@@ -28,6 +31,7 @@ const COMMANDS: &[&str] = &[
     "call_keyframe",
     "call_log",
     "call_screen_fallback",
+    "shortcuts_configure",
     // tela de "conectando…"
     "shell_get_status",
     "shell_set_server",

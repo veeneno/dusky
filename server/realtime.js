@@ -1,4 +1,5 @@
 const { WebSocketServer } = require('ws');
+const { randomBytes } = require('crypto');
 const wsTickets = require('./wsTickets');
 const db = require('./db');
 const access = require('./access');
@@ -20,12 +21,9 @@ const onlineCounts = new Map(); // userId -> quantidade de conexões abertas (v�
 // com ele (ver tratamento especial de BOT_USER_ID em public/js/app/).
 const BOT_USER_ID = -1;
 
-// heartbeat em nível de aplicação (mensagens JSON, não frame de controle WS cru): manda
-// tráfego de verdade periodicamente, o que (a) evita que proxies/NAT/Cloudflare derrubem a
-// conexão por "ociosidade" achando que morreu, e (b) detecta conexões zumbis (aquelas que o
-// SO ainda acha que estão abertas mas não respondem mais) bem mais rápido do que esperar o
-// TCP falhar sozinho — sem isso, o estado de chamada de voz podia ficar "preso" por minutos
-// depois de alguém perder conexão de verdade.
+// O pong nativo é respondido pela pilha WebSocket, sem depender do JavaScript da
+// janela (que pode ficar suspenso em segundo plano no WebView2). O ping JSON
+// continua disponível para clientes antigos e para o watchdog do cliente.
 const HEARTBEAT_INTERVAL_MS = 20 * 1000; // intervalo entre pings — bem abaixo de timeouts
                                           // típicos de proxy ocioso (30-60s)
 const HEARTBEAT_TIMEOUT_MS = 45 * 1000;  // sem pong há mais que isso = considera morta
@@ -34,6 +32,29 @@ const HEARTBEAT_TIMEOUT_MS = 45 * 1000;  // sem pong há mais que isso = conside
 // `ws` guarda qual conexão específica "é dona" desse estado, pra lidar direito com múltiplas abas.
 // `serverId` é o servidor do canal de voz — eventos de voz só vão pros membros desse servidor.
 const voiceStates = new Map();
+const VOICE_RECONNECT_GRACE_MS = 120 * 1000;
+
+// limites por conexão: tamanho de uma mensagem e quantas por segundo. O balde enche WS_RATE_PER_SEC
+// por segundo até WS_RATE_BURST (andar no mundinho, piano e "falando" mandam várias por segundo,
+// e isso fica bem abaixo). O que passar é descartado; quem insiste muito é desconectado.
+const WS_MAX_PAYLOAD = 256 * 1024;
+const WS_RATE_PER_SEC = 40;
+const WS_RATE_BURST = 200;
+const WS_DROP_KICK = 1000; // descartadas em 1 min = derruba a conexão
+function wsAllowMessage(ws) {
+  const r = ws.rate;
+  const now = Date.now();
+  r.tokens = Math.min(WS_RATE_BURST, r.tokens + ((now - r.at) / 1000) * WS_RATE_PER_SEC);
+  r.at = now;
+  if (r.tokens >= 1) { r.tokens -= 1; return true; }
+  if (now - r.droppedSince > 60 * 1000) { r.dropped = 0; r.droppedSince = now; }
+  if (++r.dropped === 1) console.log(`[ws] userId=${ws.userId} passou do limite de mensagens — descartando o excesso`);
+  if (r.dropped >= WS_DROP_KICK) {
+    console.log(`[ws] userId=${ws.userId} insistiu demais acima do limite — desconectando`);
+    ws.close(1008, 'mensagens demais');
+  }
+  return false;
+}
 
 function init(server) {
   // noServer: quem decide pra onde vai cada upgrade é o listener abaixo. Com `server` + `path`, o ws
@@ -41,6 +62,9 @@ function init(server) {
   // server/sfu/livekit.js) divide o mesmo servidor HTTP.
   const wss = new WebSocketServer({
     noServer: true,
+    // a maior mensagem legítima é uma oferta WebRTC (SDP, alguns KB). O padrão do ws é 100 MB — uma
+    // conta conseguia mandar mensagens enormes só pra gastar memória/CPU do servidor
+    maxPayload: WS_MAX_PAYLOAD,
     verifyClient: (info, cb) => {
       const url = new URL(info.req.url, 'http://localhost');
       const ticket = url.searchParams.get('ticket');
@@ -70,7 +94,10 @@ function init(server) {
       sendToUsers(access.relatedUserIds(ws.userId), { type: 'presence_online', userId: ws.userId, status: presenceStatusOf(ws.userId) });
     }
 
+    ws.on('pong', () => { ws.lastPongAt = Date.now(); });
+    ws.rate = { tokens: WS_RATE_BURST, at: Date.now(), dropped: 0, droppedSince: Date.now() };
     ws.on('message', (raw) => {
+      if (!wsAllowMessage(ws)) return;
       let msg;
       try {
         msg = JSON.parse(raw);
@@ -80,12 +107,17 @@ function init(server) {
       handleClientMessage(ws, msg);
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code) => {
       clients.delete(ws);
-      console.log(`[ws] conexão fechada — userId=${ws.userId} (restam: ${clients.size})`);
+      console.log(`[ws] conexão fechada — userId=${ws.userId} (restam: ${clients.size}, code=${code}, sem pong há ${Date.now() - ws.lastPongAt}ms)`);
 
-      // se essa conexão era a "dona" da presença em chamada de voz do usuário, sai da call
-      leaveVoiceIfOwner(ws);
+      // Uma queda curta de sinalização não deve encerrar áudio/jogos que seguem vivos.
+      // O timer só remove se a conexão antiga ainda for dona da call.
+      const state = voiceStates.get(ws.userId);
+      if (state && state.ws === ws) {
+        state.reconnectTimer = setTimeout(() => leaveVoiceIfOwner(ws), VOICE_RECONNECT_GRACE_MS);
+        state.reconnectTimer.unref();
+      }
       // idem pro "jogando X": era o app dessa conexão que estava detectando o jogo
       clearActivityIfOwner(ws);
 
@@ -105,9 +137,10 @@ function init(server) {
     for (const ws of clients) {
       if (now - ws.lastPongAt > HEARTBEAT_TIMEOUT_MS) {
         console.log(`[ws] userId=${ws.userId} sem pong há mais de ${HEARTBEAT_TIMEOUT_MS}ms — encerrando conexão zumbi`);
-        ws.terminate(); // fecha à força (não espera handshake de close), dispara 'close' -> limpa estado de voz
+        ws.terminate(); // fecha à força (não espera handshake de close), dispara 'close' -> inicia o prazo de retomada
         continue;
       }
+      if (ws.readyState === ws.OPEN) ws.ping();
       send(ws, { type: 'ping' });
     }
   }, HEARTBEAT_INTERVAL_MS);
@@ -127,6 +160,8 @@ function handleClientMessage(ws, msg) {
   if (!msg || typeof msg.type !== 'string') return;
 
   switch (msg.type) {
+    case 'voice_resume':
+      return handleVoiceResume(ws, msg);
     case 'pong':
       ws.lastPongAt = Date.now();
       return;
@@ -181,25 +216,46 @@ function handleVoiceJoin(ws, msg) {
   if (prev) removeVoiceState(ws.userId, prev, ws);
 
   // lastActiveAt: última vez que a pessoa falou (ou entrou) — o canal AFK usa (ver checkAfk)
-  const state = { channelId, serverId, muted: false, deafened: false, cameraOn: false, screenOn: false, ws, lastActiveAt: Date.now() };
+  const state = { channelId, serverId, muted: false, deafened: false, cameraOn: false, screenOn: false, ws, lastActiveAt: Date.now(), resumeToken: randomBytes(24).toString('hex') };
   // canal-mundo (docs/MUNDINHO.md): a pessoa nasce no ponto de entrada da cena
   if (ch.world_scene) { state.scene = ch.world_scene; state.world = world.spawn(ch.world_scene); }
   voiceStates.set(ws.userId, state);
   persistVoiceState(ws.userId, state);
 
-  // manda pro recém-chegado a lista de quem já está na sala — é ele quem inicia a oferta WebRTC
-  const participants = [...voiceStates.entries()]
-    .filter(([userId, s]) => userId !== ws.userId && s.channelId === channelId)
-    .map(([userId, s]) => ({ userId, muted: s.muted, deafened: s.deafened, cameraOn: s.cameraOn, screenOn: s.screenOn, world: s.world || null }));
-  const bot = botStates.get(serverId);
-  if (bot && bot.channelId === channelId) {
-    participants.push({ userId: BOT_USER_ID, muted: bot.muted, deafened: bot.deafened, cameraOn: false, screenOn: false });
-  }
-
-  send(ws, { type: 'voice_channel_state', channelId, participants, self: state.world ? { world: state.world, scene: world.getScene(state.scene).id, tv: tvStates.get(channelId) || world.TV_OFF, games: gamesSnapshot(channelId, state.scene, ws.userId), now: Date.now() } : null });
+  sendVoiceSnapshot(ws, state);
 
   // avisa quem enxerga esse canal que alguém novo entrou (pra call e pra pré-visualização na sidebar)
   broadcastToChannel(channelId, { type: 'voice_user_joined', channelId, userId: ws.userId, muted: false, deafened: false, cameraOn: false, screenOn: false, world: state.world || null }, ws);
+}
+
+function sendVoiceSnapshot(ws, state) {
+  // manda pro recém-chegado a lista de quem já está na sala — é ele quem inicia a oferta WebRTC
+  const participants = [...voiceStates.entries()]
+    .filter(([userId, s]) => userId !== ws.userId && s.channelId === state.channelId)
+    .map(([userId, s]) => ({ userId, muted: s.muted, deafened: s.deafened, cameraOn: s.cameraOn, screenOn: s.screenOn, world: s.world || null }));
+  const bot = botStates.get(state.serverId);
+  if (bot && bot.channelId === state.channelId) {
+    participants.push({ userId: BOT_USER_ID, muted: bot.muted, deafened: bot.deafened, cameraOn: false, screenOn: false });
+  }
+
+  send(ws, { type: 'voice_channel_state', channelId: state.channelId, resumeToken: state.resumeToken, participants, self: state.world ? { world: state.world, scene: world.getScene(state.scene).id, tv: tvStates.get(state.channelId) || world.TV_OFF, games: gamesSnapshot(state.channelId, state.scene, ws.userId), now: Date.now() } : null });
+}
+
+function handleVoiceResume(ws, msg) {
+  const state = voiceStates.get(ws.userId);
+  const channelId = Number(msg.channelId);
+  // Só a mesma sessão pode retomar; expulsão, troca de aparelho/canal e expiração
+  // removem/trocam o token. Permissões são conferidas de novo na retomada.
+  if (!state || state.channelId !== channelId || !msg.resumeToken
+      || msg.resumeToken !== state.resumeToken || !access.canConnectChannel(channelId, ws.userId)) {
+    send(ws, { type: 'voice_resume_denied', channelId });
+    return;
+  }
+  clearTimeout(state.reconnectTimer);
+  state.reconnectTimer = null;
+  state.ws = ws;
+  console.log(`[voice] userId=${ws.userId} retomou canal ${channelId}`);
+  sendVoiceSnapshot(ws, state);
 }
 
 function handleVoiceLeave(ws) {
@@ -385,6 +441,7 @@ const voiceLeaveListeners = [];
 function onVoiceLeave(fn) { voiceLeaveListeners.push(fn); }
 
 function removeVoiceState(userId, state, except) {
+  clearTimeout(state.reconnectTimer);
   voiceStates.delete(userId);
   // mundinho: quem estava na TV saiu → TV desliga; call vazia → esquece a TV
   const tv = tvStates.get(state.channelId);
@@ -430,6 +487,7 @@ function disconnectUser(userId, by) {
 function moveUser(userId, channel, by, reason) {
   const state = voiceStates.get(userId);
   if (!state || !state.ws || state.channelId === channel.id) return false;
+  state.resumeToken = randomBytes(24).toString('hex');
   send(state.ws, {
     type: 'voice_move',
     channel: { id: channel.id, name: channel.name, type: channel.type, server_id: channel.server_id },

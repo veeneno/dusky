@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const limits = require('../limits');
 
 const router = express.Router();
 const SALT_ROUNDS = 12;
@@ -39,7 +40,7 @@ function publicUser(row) {
 const USERNAME_RE = /^[\p{L}0-9 _-]+$/u;
 
 // POST /api/auth/register
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   if (rateLimited('register', req)) {
     return res.status(429).json({ error: 'muitas contas criadas daqui — tenta de novo daqui a pouco' });
   }
@@ -60,6 +61,9 @@ router.post('/register', (req, res) => {
   if (password.length < 6) {
     return res.status(400).json({ error: 'senha precisa ter pelo menos 6 caracteres' });
   }
+  if (password.length > 200) {
+    return res.status(400).json({ error: 'senha comprida demais (máximo 200 caracteres)' });
+  }
 
   // sem limite de contas: qualquer um pode se cadastrar. O que controla quem vê o quê agora são
   // os servidores — uma conta nova não enxerga nada até entrar num servidor por convite.
@@ -68,11 +72,19 @@ router.post('/register', (req, res) => {
     return res.status(409).json({ error: 'esse usuário já existe' });
   }
 
-  const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
+  // assíncrono: o cálculo (proposital, ~250 ms) roda fora da thread principal e não trava o site
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-  const result = db.prepare(
-    'INSERT INTO users (username, password_hash) VALUES (?, ?)'
-  ).run(cleanUsername, passwordHash);
+  // enquanto o hash era calculado, outro pedido pode ter criado o mesmo nome: confere de novo
+  if (db.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE').get(cleanUsername)) {
+    return res.status(409).json({ error: 'esse usuário já existe' });
+  }
+  let result;
+  try {
+    result = db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(cleanUsername, passwordHash);
+  } catch (_) {
+    return res.status(409).json({ error: 'esse usuário já existe' });
+  }
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
 
@@ -82,7 +94,7 @@ router.post('/register', (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   if (rateLimited('login', req)) {
     return res.status(429).json({ error: 'muitas tentativas — espera uns minutos e tenta de novo' });
   }
@@ -92,10 +104,18 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'usuário e senha são obrigatórios' });
   }
 
+  // além do limite por IP: limite por CONTA, pra quem tenta a senha de alguém a partir de vários IPs
+  if (limits.hit('login-user', username.trim().toLowerCase(), 30, RATE_WINDOW_MS)) {
+    return res.status(429).json({ error: 'muitas tentativas nessa conta — espera uns minutos e tenta de novo' });
+  }
+  if (password.length > 200 || username.length > 64) {
+    return res.status(401).json({ error: 'usuário ou senha incorretos' });
+  }
+
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim());
 
   // mensagem genérica de propósito, não dá pra saber se o usuário existe ou não
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: 'usuário ou senha incorretos' });
   }
 

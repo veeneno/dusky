@@ -3,6 +3,7 @@ const { requireAuth } = require('../middleware/auth');
 const config = require('../config');
 const access = require('../access');
 const sfu = require('../sfu/livekit');
+const realtime = require('../realtime');
 
 const router = express.Router();
 
@@ -92,21 +93,35 @@ router.get('/sfu', requireAuth, (req, res) => {
   const ch = channelId ? access.canConnectChannel(channelId, req.user.id) : null;
   if (!ch) return res.status(403).json({ error: 'você não pode entrar nessa call' });
   const room = sfu.roomForChannel(ch.id);
+  // o ingresso só vale pra quem está (ou está entrando agora) NESTA call — ver "quem pode estar na
+  // mídia" em sfu/livekit.js. O app conecta na mídia um instante antes de mandar o voice_join,
+  // então quem ainda não está na call ganha uma janela curta pra entrar; se não entrar, sai da sala.
+  const inThisCall = realtime.voiceChannelOf(req.user.id) === ch.id;
+  const needEntry = () => {
+    if (inThisCall) return true;
+    if (sfu.openEntryWindow(req.user.id, ch.id)) return true;
+    res.status(429).json({ error: 'entre na call antes de conectar no servidor de mídia' });
+    return false;
+  };
   // viewer=1: o app do Linux assiste as telas por um participante oculto à parte (o Pion entrega o
   // vídeo sem decodificar e a página decodifica no fps original — ver tauri/ e native/screencast/watch.go)
   if (req.query.viewer === '1') {
+    if (!needEntry()) return;
     return res.json({
       enabled: true, viewer: true, path: sfu.PREFIX,
       token: sfu.createToken({ room, identity: `ver-${req.user.id}`, name: `${req.user.username} (assistindo)`, watchOnly: true }),
     });
   }
-  res.json({
-    enabled: true,
-    path: sfu.PREFIX,
-    token: req.query.screen === '1'
-      ? sfu.createToken({ room, identity: `tela-${req.user.id}`, name: `${req.user.username} (tela)`, publishOnly: true })
-      : sfu.createToken({ room, identity: req.user.id, name: req.user.username }),
-  });
+  // screen=1: o auxiliar de tela só faz sentido com a pessoa já na call
+  if (req.query.screen === '1') {
+    if (!inThisCall) return res.status(403).json({ error: 'entre na call antes de compartilhar a tela' });
+    return res.json({
+      enabled: true, path: sfu.PREFIX,
+      token: sfu.createToken({ room, identity: `tela-${req.user.id}`, name: `${req.user.username} (tela)`, publishOnly: true }),
+    });
+  }
+  if (!needEntry()) return;
+  res.json({ enabled: true, path: sfu.PREFIX, token: sfu.createToken({ room, identity: req.user.id, name: req.user.username }) });
 });
 
 module.exports = router;

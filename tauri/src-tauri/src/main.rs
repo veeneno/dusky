@@ -9,10 +9,13 @@ mod call;
 #[path = "call_stub.rs"]
 mod call;
 mod deps;
+mod downloads;
+mod drops;
 mod picker;
 mod presence;
 mod screencast;
 mod server;
+mod shortcuts;
 mod sources;
 mod tray;
 mod updater;

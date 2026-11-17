@@ -10,6 +10,8 @@ const crypto = require('crypto');
 const config = require('../config');
 const { avatarUpload, bannerUpload, themeBackgroundUpload, decorUpload, UPLOADS_ROOT } = require('../upload');
 const decor = require('../decor'); // placa do nome, decoração do avatar, efeito do perfil
+const limits = require('../limits');
+const uploadLimits = require('../uploadLimits');
 
 const router = express.Router();
 const SALT_ROUNDS = 12;
@@ -143,8 +145,14 @@ router.patch('/', requireAuth, (req, res) => {
   res.json({ user: publicUser(user) });
 });
 
+// GET /api/profile/upload-limits — limite de anexo desta conta (o composer confere antes de enviar)
+router.get('/upload-limits', requireAuth, (req, res) => {
+  const l = uploadLimits.limitsFor(req.user.id);
+  res.json({ unlimited: l.unlimited, maxMB: l.maxMB, quotaMB: l.quotaMB, usedMB: l.usedMB });
+});
+
 // POST /api/profile/password — troca de senha
-router.post('/password', requireAuth, (req, res) => {
+router.post('/password', requireAuth, limits.perUser('password', 10, 15 * 60 * 1000, 'muitas tentativas de trocar a senha — espera uns minutos'), async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
 
   if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
@@ -155,11 +163,12 @@ router.post('/password', requireAuth, (req, res) => {
   }
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-  if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
+  // bcrypt assíncrono: o cálculo roda numa thread à parte e não trava o servidor pra todo mundo
+  if (!(await bcrypt.compare(currentPassword, user.password_hash))) {
     return res.status(401).json({ error: 'senha atual incorreta' });
   }
 
-  const newHash = bcrypt.hashSync(newPassword, SALT_ROUNDS);
+  const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, req.user.id);
   res.json({ ok: true });
 });

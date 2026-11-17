@@ -27,13 +27,13 @@ mod platform {
     pub fn start(_p: Plan, _app: tauri::AppHandle, _on_end: Box<dyn FnOnce() + Send>) -> Result<super::Running, String> {
         Err("sem captura de áudio neste sistema".into())
     }
-    pub async fn list_audio_apps() -> super::AudioApps {
+    pub async fn list_audio_apps(_app: &tauri::AppHandle) -> super::AudioApps {
         super::AudioApps { available: false, apps: Vec::new() }
     }
 }
 
 use crate::app::{self, AppState};
-use crate::picker::AudioChoice;
+use crate::picker::{AudioChoice, AudioExclude};
 use crate::sources::Source;
 use base64::Engine;
 use serde::Serialize;
@@ -44,8 +44,9 @@ use tauri::{AppHandle, Manager, Webview};
 
 /// o que vai ter áudio
 pub enum Target {
-    /// X11/Windows: a fonte escolhida no nosso seletor (janela = só aquele app; tela = tudo menos o dusky)
-    Source(Source),
+    /// X11/Windows: a fonte escolhida no nosso seletor (janela = só aquele app; tela = tudo menos o
+    /// que foi marcado em "não levar o som de" — o dusky por padrão)
+    Source(Source, AudioExclude),
     /// Wayland: o som escolhido à parte no seletor (system | app | none)
     Choice(AudioChoice),
 }
@@ -151,8 +152,9 @@ pub fn send_pcm(app: &AppHandle, bytes: &[u8]) {
     app::emit_to_main(app, "pcm", &b64);
 }
 
-pub async fn list_audio_apps() -> AudioApps {
-    platform::list_audio_apps().await
+/// apps com áudio agora (menos o próprio dusky) — pro seletor
+pub async fn list_audio_apps(app: &AppHandle) -> AudioApps {
+    platform::list_audio_apps(app).await
 }
 
 // ---------- comandos do site ----------

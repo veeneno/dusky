@@ -5,7 +5,7 @@
 //! ui/loading.html aparece enquanto o site não responde (e pra trocar o endereço do servidor).
 
 use crate::server::{self, log, Prefs};
-use crate::{audio, call, deps, picker, presence, screencast, tray, updater, webview_setup};
+use crate::{audio, call, deps, picker, presence, screencast, shortcuts, tray, updater, webview_setup};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -233,6 +233,9 @@ fn grant_site(app: &AppHandle, origin: &str) {
         "allow-status-report",
         "allow-update-check",
         "allow-app-set-hardware-acceleration",
+        "allow-app-open-logs",
+        "allow-drop-files",
+        "allow-drop-read",
         "allow-presence-configure",
         "allow-presence-candidates",
         "allow-presence-current",
@@ -254,6 +257,7 @@ fn grant_site(app: &AppHandle, origin: &str) {
         "allow-call-keyframe",
         "allow-call-log",
         "allow-call-screen-fallback",
+        "allow-shortcuts-configure",
         // window.Notification da página (o plugin de notificação troca pela notificação do sistema)
         "notification:default",
     ] {
@@ -278,6 +282,11 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .min_inner_size(940.0, 560.0)
         .background_color(tauri::window::Color(30, 31, 34, 255))
         .initialization_script(bridge_script())
+        // arrastar arquivos pra conversa: quem trata é a PÁGINA (eventos drop do HTML). Com o
+        // tratamento nativo do Tauri ligado (o padrão), a janela engole o arquivo e o site nem vê.
+        .disable_drag_drop_handler()
+        // baixar arquivo: pergunta onde salvar (downloads.rs)
+        .on_download(|webview, event| crate::downloads::on_download(webview, event))
         // a call não pode "dormir" com a janela minimizada ou escondida na bandeja
         .background_throttling(BackgroundThrottlingPolicy::Disabled)
         // navegação: só as telas locais e o domínio do dusky; o resto abre no navegador do sistema.
@@ -599,6 +608,20 @@ pub fn set_hardware_acceleration(app: &AppHandle, on: bool) {
     app.restart();
 }
 
+/// configurações → app e versão → "abrir pasta do log"
+#[tauri::command]
+fn app_open_logs(app: AppHandle, webview: Webview) {
+    if require_site(&app, &webview).is_err() {
+        return;
+    }
+    let dir = server::log::dir(&app.state::<AppState>().data_dir);
+    let _ = std::fs::create_dir_all(&dir);
+    match Url::from_directory_path(&dir) {
+        Ok(url) => open_external(&app, url.as_str()),
+        Err(_) => server::log::warn(&format!("não consegui abrir a pasta do log: {}", dir.display())),
+    }
+}
+
 /// a página pede pra mudar (configurações → app). Reinicia na hora.
 #[tauri::command]
 fn app_set_hardware_acceleration(app: AppHandle, webview: Webview, on: bool) {
@@ -624,7 +647,13 @@ pub fn run() {
         .unwrap_or(true);
     webview_setup::init_hardware_acceleration(hw);
 
-    let app = tauri::Builder::default()
+    // atalhos globais (shortcuts.rs): o plugin só fora do Wayland — lá ele precisaria do X11 (e,
+    // sem XWayland, nem iniciaria); no Wayland os atalhos vão pelo portal do sistema
+    let mut builder = tauri::Builder::default();
+    if shortcuts::use_hotkey_plugin() {
+        builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    }
+    let app = builder
         // abrir o dusky de novo (atalho, menu de apps) com ele escondido: traz a janela de volta
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .plugin(
@@ -640,6 +669,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let data_dir = app.path().app_data_dir()?;
+            server::log::init(&data_dir);
             server::migrate_from_electron(&data_dir);
             #[cfg(windows)]
             server::close_electron_app();
@@ -722,6 +752,9 @@ pub fn run() {
             desktop_focus,
             status_report,
             app_set_hardware_acceleration,
+            app_open_logs,
+            crate::drops::drop_files,
+            crate::drops::drop_read,
             updater::update_check,
             presence::presence_configure,
             presence::presence_candidates,
@@ -744,6 +777,7 @@ pub fn run() {
             call::call_keyframe,
             call::call_log,
             call::call_screen_fallback,
+            shortcuts::shortcuts_configure,
             picker::picker_get_sources,
             picker::picker_choose,
             picker::picker_get_audio_apps,

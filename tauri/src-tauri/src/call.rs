@@ -653,11 +653,15 @@ pub async fn call_join(app: AppHandle, webview: Webview, opts: JoinOpts) -> Valu
             match event {
                 RoomEvent::TrackSubscribed { track, publication, participant } => {
                     let identity = participant.identity().to_string();
-                    // a minha própria tela (o auxiliar entra como "tela-<meu id>"): não assina —
-                    // seria decodificar e converter o próprio vídeo à toa
+                    // a minha própria tela (o auxiliar entra como "tela-<meu id>"): só com a prévia
+                    // ligada na página (aí o meu id fica em jpeg_users — ver call_set_subscribed) e
+                    // só o vídeo, pelo caminho em JPEG; sem prévia seria decodificar o próprio vídeo à toa
                     if identity == format!("tela-{}", room.local_participant().identity()) {
-                        publication.set_subscribed(false);
-                        continue;
+                        let me = room.local_participant().identity().to_string();
+                        if publication.source() != TrackSource::Screenshare || !jpeg_users.lock().unwrap().contains(&me) {
+                            publication.set_subscribed(false);
+                            continue;
+                        }
                     }
                     // telas vão pelo auxiliar (comprimidas, fps original): aqui não decodifica
                     if publication.source() == TrackSource::Screenshare
@@ -962,6 +966,38 @@ pub async fn call_set_subscribed(app: AppHandle, webview: Webview, user_id: u64,
         return;
     }
     let st = app.state::<AppState>();
+    // a MINHA tela (prévia de quem está compartilhando, 19-call-ui.js): vem pelo caminho em JPEG e
+    // só o vídeo — o som da própria tela não tem por que voltar
+    if screen {
+        let guard = st.call.session.lock().unwrap();
+        if let Some(s) = guard.as_ref() {
+            let me = s.room.local_participant().identity().to_string();
+            if me == user_id.to_string() {
+                {
+                    let mut jpeg = s.jpeg_users.lock().unwrap();
+                    if on {
+                        jpeg.insert(me.clone());
+                    } else {
+                        jpeg.remove(&me);
+                    }
+                }
+                let own = format!("tela-{me}");
+                for (identity, p) in s.room.remote_participants() {
+                    if identity.to_string() != own {
+                        continue;
+                    }
+                    for (_, publication) in p.track_publications() {
+                        match publication.source() {
+                            TrackSource::Screenshare => publication.set_subscribed(on),
+                            TrackSource::ScreenshareAudio => publication.set_subscribed(false),
+                            _ => {}
+                        }
+                    }
+                }
+                return;
+            }
+        }
+    }
     // tela que já caiu pro JPEG continua vindo por aqui (senão voltava pro auxiliar, falhava de
     // novo e ficava num ciclo, com a tela sumindo)
     let jpeg = screen

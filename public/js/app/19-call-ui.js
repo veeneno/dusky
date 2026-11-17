@@ -380,14 +380,97 @@ function setWatchingScreen(userId, watching) {
   applyLocalOverrideToRemoteScreenAudio(userId);
 }
 
+// ---------- prévia da MINHA tela: mostrar/esconder (igual Discord) ----------
+// Pelo navegador a prévia é o próprio stream capturado. Pela placa de vídeo (app desktop) a tela sai
+// pelo auxiliar ("tela-<meu id>") e a prévia é essa mesma tela vinda do servidor de mídia, assinada
+// só com a prévia ligada (custa banda e decodificação) — igual à tela de qualquer outra pessoa.
+// A escolha fica guardada (vale pro próximo compartilhamento também).
+const OWN_PREVIEW_KEY = 'dusky:screenPreview';
+let ownScreenPreviewOn = (() => {
+  try { return localStorage.getItem(OWN_PREVIEW_KEY) !== '0'; } catch (_) { return true; }
+})();
+let ownNativePreviewStream = null; // a minha tela vinda do servidor de mídia (compartilhando pelo app)
+let ownPreviewSync = { ctx: null, want: null }; // o que já foi pedido pro servidor de mídia
+
+function setOwnScreenPreview(on) {
+  ownScreenPreviewOn = !!on;
+  try { localStorage.setItem(OWN_PREVIEW_KEY, on ? '1' : '0'); } catch (_) { /* vale só agora */ }
+  ownPreviewSync.want = null; // pede de novo (assinar/deixar de assinar)
+  renderScreenShareArea();
+}
+
+function ownNativePreviewWanted() {
+  return ownScreenPreviewOn && screenOn && !!nativeScreencast;
+}
+
+// assina (ou não) a minha própria tela no servidor de mídia, conforme a prévia
+function syncOwnNativePreview() {
+  const want = ownNativePreviewWanted();
+  if (!want) ownNativePreviewStream = null;
+  if (typeof sfu === 'undefined' || !sfu || !currentUser) return;
+  if (ownPreviewSync.ctx === sfu && ownPreviewSync.want === want) return;
+  ownPreviewSync = { ctx: sfu, want };
+  if (sfu.native) {
+    // app do Linux: o Rust só assina a própria tela com isso ligado (call.rs, call_set_subscribed)
+    try { sfu.api.setSubscribed(currentUser.id, true, want); } catch (_) { /* sem a prévia */ }
+    return;
+  }
+  const helper = sfu.room && sfu.room.remoteParticipants.get(`tela-${currentUser.id}`);
+  if (!helper) return; // o auxiliar ainda não entrou — o TrackSubscribed decide quando ele chegar
+  for (const pub of helper.trackPublications.values()) {
+    try { pub.setSubscribed(want && pub.kind === 'video'); } catch (_) { /* a faixa já acabou */ }
+  }
+}
+
+// 21-call-sfu.js: faixa da minha PRÓPRIA conta (só a do auxiliar de tela interessa — é a prévia)
+function ownSfuTrackSubscribed(track, publication, participant) {
+  const myScreenVideo = /^tela-/.test(String(participant && participant.identity)) && track.kind === 'video';
+  if (myScreenVideo && ownNativePreviewWanted() && track.mediaStreamTrack) {
+    ownNativePreviewStream = new MediaStream([track.mediaStreamTrack]);
+    renderScreenShareArea();
+    return;
+  }
+  // o som da minha tela, ou a prévia desligada: não precisa vir (economiza banda)
+  if (publication && typeof publication.setSubscribed === 'function') {
+    try { publication.setSubscribed(false); } catch (_) { /* ok */ }
+  }
+}
+
+function ownSfuTrackUnsubscribed(track) {
+  const mst = track && track.mediaStreamTrack;
+  if (ownNativePreviewStream && mst && ownNativePreviewStream.getTracks().includes(mst)) {
+    ownNativePreviewStream = null;
+    renderScreenShareArea();
+  }
+}
+
+function previewToggleButton(on, extraClass) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = extraClass;
+  btn.title = on ? 'esconder a prévia da sua tela (os outros continuam vendo)' : 'mostrar o que você está transmitindo';
+  btn.innerHTML = `${on ? EYE_OFF_ICON : EYE_ICON}<span>${on ? 'esconder prévia' : 'mostrar prévia'}</span>`;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOwnScreenPreview(!on);
+  });
+  return btn;
+}
+
 function renderScreenShareArea() {
   callScreenShareArea.innerHTML = '';
   const tiles = [];
+  syncOwnNativePreview();
 
   if (screenOn && localScreenStream) {
-    tiles.push({ kind: 'local', label: 'sua tela', stream: localScreenStream, userId: null });
+    tiles.push(ownScreenPreviewOn
+      ? { kind: 'local', label: 'sua tela', stream: localScreenStream, userId: null }
+      : { kind: 'local-card', label: 'sua tela', userId: null });
   } else if (screenOn && nativeScreencast) {
-    tiles.push({ kind: 'local-native', label: 'sua tela', userId: null });
+    const live = ownNativePreviewStream && ownNativePreviewStream.getVideoTracks().some((tr) => tr.readyState === 'live');
+    tiles.push(live
+      ? { kind: 'local', label: 'sua tela', stream: ownNativePreviewStream, userId: null, native: true }
+      : { kind: 'local-native', label: 'sua tela', userId: null });
   }
   for (const [userId, st] of callParticipantsState.entries()) {
     if (!currentUser || userId === currentUser.id || userId === BOT_USER_ID || !st.screenOn) continue;
@@ -409,8 +492,8 @@ function renderScreenShareArea() {
   callScreenShareArea.classList.toggle('only-stopped', tiles.length > 0 && tiles.every((t) => t.kind === 'stopped'));
 
   for (const t of tiles) {
-    if (t.kind === 'local-native') {
-      // sem prévia de propósito: mostrar a própria tela custaria processador/placa à toa
+    if (t.kind === 'local-native' || t.kind === 'local-card') {
+      // prévia desligada (ou ainda chegando): só o aviso, com o botão de mostrar/esconder
       const card = document.createElement('div');
       card.className = 'call-screenshare-tile is-native';
       card.dataset.kind = 'local';
@@ -421,11 +504,22 @@ function renderScreenShareArea() {
             <span class="native-screencast-encoder"></span>
             <span class="native-screencast-stats"></span>
           </div>`;
-      card.querySelector('.native-screencast-encoder').textContent = nativeScreencast.hardware
-        ? `codificando uma vez só, na ${nativeScreencast.encoderName} — quase não pesa no jogo`
-        : `codificando uma vez só, no ${nativeScreencast.encoderName}`;
+      const encoderEl = card.querySelector('.native-screencast-encoder');
+      if (t.kind === 'local-native') {
+        encoderEl.textContent = nativeScreencast.hardware
+          ? `codificando uma vez só, na ${nativeScreencast.encoderName} — quase não pesa no jogo`
+          : `codificando uma vez só, no ${nativeScreencast.encoderName}`;
+      }
+      const loading = ownScreenPreviewOn && t.kind === 'local-native';
+      if (loading) {
+        const note = document.createElement('span');
+        note.className = 'native-screencast-encoder';
+        note.textContent = 'carregando a prévia…';
+        card.querySelector('.native-screencast-card').appendChild(note);
+      }
+      card.querySelector('.native-screencast-card').appendChild(previewToggleButton(ownScreenPreviewOn, 'btn btn-primary btn-sm native-screencast-preview-btn'));
       callScreenShareArea.appendChild(card);
-      updateNativeScreencastBadge();
+      if (t.kind === 'local-native') updateNativeScreencastBadge();
       continue;
     }
 
@@ -459,12 +553,16 @@ function renderScreenShareArea() {
     video.autoplay = true;
     video.playsInline = true;
     // sua própria tela fica sempre muda; a dos outros toca o som da tela junto com a imagem
-    video.muted = t.kind === 'local' ? true : isDeafened;
+    // app do Linux: o <video> nunca carrega áudio nem é mutado — o som da tela vai pela Web Audio
+    // (ver webkitGtkApp em 18-call-audio.js: mutar elemento lá deixa o app inteiro mudo)
+    if (!webkitGtkApp()) video.muted = t.kind === 'local' ? true : isDeafened;
     // app do Linux: a tela já vem desenhada num canvas (21-call-sfu.js, sfuNativeAddEncodedVideo) —
     // mostra o próprio canvas, sem passar pelo <video> (menos processador e um quadro a menos de
     // atraso); o <video> fica escondido, só tocando o som da tela
-    const nativeCanvas = t.kind === 'remote' ? (t.stream.getVideoTracks()[0] || {}).duskyCanvas : null;
-    video.srcObject = nativeCanvas ? new MediaStream(t.stream.getAudioTracks()) : t.stream;
+    const nativeCanvas = (t.kind === 'remote' || t.native) ? (t.stream.getVideoTracks()[0] || {}).duskyCanvas : null;
+    video.srcObject = webkitGtkApp()
+      ? new MediaStream(nativeCanvas ? [] : t.stream.getVideoTracks())
+      : (nativeCanvas ? new MediaStream(t.stream.getAudioTracks()) : t.stream);
     if (nativeCanvas) {
       video.style.display = 'none';
       nativeCanvas.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;display:block';
@@ -496,6 +594,7 @@ function renderScreenShareArea() {
       });
       actions.appendChild(stopBtn);
     }
+    if (t.kind === 'local') actions.appendChild(previewToggleButton(true, 'call-screenshare-action-btn'));
     const fsBtn = document.createElement('button');
     fsBtn.type = 'button';
     fsBtn.className = 'call-screenshare-action-btn is-icon';

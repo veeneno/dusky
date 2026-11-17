@@ -51,6 +51,10 @@ function openParticipantContextMenu(e, userId, username) {
       </label>
       ${isBot ? '' : `
       <label class="participant-context-menu-toggle">
+        <span>silenciar soundpad só pra mim</span>
+        <input type="checkbox" data-role="mute-soundboard" ${override.soundboardMuted ? 'checked' : ''}>
+      </label>
+      <label class="participant-context-menu-toggle">
         <span>ocultar vídeo</span>
         <input type="checkbox" data-role="hide-video" ${override.hideVideo ? 'checked' : ''}>
       </label>`}
@@ -83,8 +87,16 @@ function openParticipantContextMenu(e, userId, username) {
     const o = getLocalOverride(userId);
     o.mutedLocal = ev.target.checked;
     saveLocalOverride(userId, o);
+    if (o.mutedLocal) stopParticipantSoundboard(userId);
     if (isBot) applyLocalOverridesToBotAudio();
     else applyLocalOverridesToRemoteAudio(userId);
+  });
+  const soundboardMuteInput = menu.querySelector('input[data-role="mute-soundboard"]');
+  if (soundboardMuteInput) soundboardMuteInput.addEventListener('change', (ev) => {
+    const o = getLocalOverride(userId);
+    o.soundboardMuted = ev.target.checked;
+    saveLocalOverride(userId, o);
+    if (o.soundboardMuted) stopParticipantSoundboard(userId);
   });
   const hideVideoInput = menu.querySelector('input[data-role="hide-video"]');
   if (hideVideoInput) hideVideoInput.addEventListener('change', (ev) => {

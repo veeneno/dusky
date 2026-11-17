@@ -415,6 +415,7 @@ function renderSettingsAppCard() {
   if (!siteVersionInfo) loadSiteVersion().then(() => { if (sub.isConnected) sub.textContent = line(); });
   const checkBtn = document.getElementById('settingsCheckUpdatesBtn');
   checkBtn.hidden = !(desk && typeof desk.checkForUpdates === 'function');
+  document.getElementById('settingsOpenLogsBtn').hidden = !(desk && typeof desk.openLogs === 'function');
   document.getElementById('settingsDownloadBtn').textContent = desk ? 'página de download' : 'baixar o app';
   // aceleração de hardware: só o app novo (Tauri) sabe mudar
   const hwRow = document.getElementById('settingsHwAccelRow');
@@ -435,6 +436,9 @@ document.getElementById('settingsHwAccel').addEventListener('change', (e) => {
 function inVoiceCallForSettings() {
   try { return typeof voiceChannel !== 'undefined' && !!voiceChannel; } catch (_) { return false; }
 }
+document.getElementById('settingsOpenLogsBtn').addEventListener('click', () => {
+  if (window.duskyDesktop && window.duskyDesktop.openLogs) window.duskyDesktop.openLogs();
+});
 document.getElementById('settingsCheckUpdatesBtn').addEventListener('click', () => {
   if (window.duskyDesktop && window.duskyDesktop.checkForUpdates) window.duskyDesktop.checkForUpdates();
 });

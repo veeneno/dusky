@@ -9,4 +9,6 @@ module.exports = {
   // youtube, já que a api do spotify não entrega stream de áudio pra terceiros.
   spotifyClientId: process.env.SPOTIFY_CLIENT_ID || '',
   spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || '',
+  // quantos yt-dlp do bot de música (fila de tocar) rodam ao mesmo tempo no site inteiro — ver musicBot/resolve.js
+  ytdlpConcurrency: Number(process.env.YTDLP_CONCURRENCY) || 12,
 };

@@ -583,12 +583,18 @@ fn build_ffmpeg_args(info: &ProbeInfo, src: &Source, o: &ShareOpts) -> Built {
             }
         }
     } else {
-        // Windows: tela pela Desktop Duplication (na placa), janela pelo gdigrab (título)
+        // Windows: tela pela Desktop Duplication (na placa); janela pelo Windows Graphics Capture
+        // (gfxcapture, ffmpeg 8+) pelo HWND. O gdigrab de antes dava TELA PRETA em janela desenhada
+        // pela placa (navegador, jogo, apps novos) e dependia do título não mudar.
+        let _ = &f;
         match src.kind {
             Kind::Window => (
-                vec!["-f".into(), "gdigrab".into(), "-framerate".into(), f, "-draw_mouse".into(), "1".into(), "-i".into(), format!("title={}", src.name)],
+                vec![
+                    "-f".into(), "lavfi".into(), "-i".into(),
+                    format!("gfxcapture=hwnd={}:max_framerate={fps}:capture_cursor=1", src.window_id),
+                ],
                 None,
-                false,
+                true,
             ),
             Kind::Screen => (
                 vec!["-f".into(), "lavfi".into(), "-i".into(), format!("ddagrab=output_idx={}:framerate={fps}:draw_mouse=1", src.index)],
@@ -608,6 +614,10 @@ fn build_ffmpeg_args(info: &ProbeInfo, src: &Source, o: &ShareOpts) -> Built {
     }
     if size.is_none() {
         filters.push("crop=trunc(iw/2)*2:trunc(ih/2)*2".into()); // janela: corta 1px se for ímpar
+        // Windows (gfxcapture): só manda quadro quando a janela muda — repete o último pra manter o fps
+        if !IS_LINUX {
+            filters.push(format!("fps={fps}"));
+        }
     }
     if let Some(p) = plumb_filter {
         filters.push(p);
@@ -869,7 +879,7 @@ pub async fn screencast_start(app: AppHandle, webview: Webview, opts: ShareOpts)
     if info.portal {
         // Wayland: o sistema não diz de qual app é a janela escolhida, então o som é escolhido antes,
         // no nosso seletor; a tela/janela vem depois, pelo seletor do sistema (aberto pelo auxiliar)
-        let mut choice = AudioChoice { mode: "none".into(), app_key: None };
+        let mut choice = AudioChoice { mode: "none".into(), app_key: None, exclude: Default::default() };
         if opts.audio_requested {
             match picker::pick(&app, "audio").await {
                 Some(Picked::Audio(c)) => choice = c,
@@ -926,16 +936,19 @@ pub async fn screencast_start(app: AppHandle, webview: Webview, opts: ShareOpts)
     }
 
     // X11 / Windows: o nosso seletor com miniaturas
-    let source = match picker::pick(&app, "sources").await {
-        Some(Picked::Source(s)) => s,
+    // com som: o seletor mostra também "não levar o som de" (tela inteira)
+    let mode = if opts.audio_requested { "sources&audio=1" } else { "sources" };
+    let (source, exclude) = match picker::pick(&app, mode).await {
+        Some(Picked::Source(s, ex)) => (s, ex),
         _ => return cancelled(),
     };
     if opts.audio_requested {
-        st.audio.prepare(audio::Target::Source(source.clone())).await;
+        st.audio.prepare(audio::Target::Source(source.clone(), exclude)).await;
     } else {
         st.audio.stop();
     }
     let built = build_ffmpeg_args(&info, &source, &opts);
+    log::info(&format!("ffmpeg {}", built.args.join(" ")));
     log::info(&format!(
         "compartilhamento nativo: {} · {}x{} · {} fps · {} kbps · {}",
         source.name, built.size.0, built.size.1, fps_of(&opts), built.kbps, info.encoder

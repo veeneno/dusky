@@ -400,3 +400,10 @@
 }
 .participant-context-menu-toggle:hover { background: var(--overlay); }
 .participant-context-menu-toggle input { accent-color: var(--amethyst); flex-shrink: 0; }
+
+/* apertar para falar: microfone fechado até segurar a tecla (30-shortcuts.js) */
+.is-ptt-waiting { position: relative; }
+.is-ptt-waiting::after {
+  content: ''; position: absolute; right: 3px; bottom: 3px; width: 7px; height: 7px; border-radius: 50%;
+  background: #f0b232; box-shadow: 0 0 0 2px var(--bg-panel, #232428);
+}

@@ -717,6 +717,8 @@ body.is-viewing-media { overflow: hidden; }
 }
 .admin-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--text-lo); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .admin-table tr:last-child td { border-bottom: none; }
+.admin-table td.admin-uploads span { display: block; color: var(--text-hi, inherit); }
+.admin-table td.admin-uploads small { display: block; font-size: 11px; opacity: .75; }
 .admin-table tr.is-suspended td { opacity: 0.6; }
 .admin-table tr.is-suspended td.admin-actions { opacity: 1; }
 .admin-user { display: inline-flex; align-items: center; gap: 10px; }
@@ -767,3 +769,7 @@ body.is-viewing-media { overflow: hidden; }
 }
 .role-move button:hover:not(:disabled) { background: var(--bg-active); color: var(--text-heading); }
 .role-move button:disabled { opacity: 0.3; cursor: default; }
+
+/* prévia da própria tela: mostrar/esconder (19-call-ui.js) */
+.native-screencast-preview-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
+.native-screencast-preview-btn svg { flex: none; }

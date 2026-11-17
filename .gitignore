@@ -1,5 +1,7 @@
 node_modules/
 .env
+# cópias do .env (têm os segredos)
+.env.bak*
 server/db/*.db
 server/db/*.db-shm
 server/db/*.db-wal
@@ -45,3 +47,4 @@ tauri/release-in/
 public/decor/media/
 public/uploads/decor/*
 !public/uploads/decor/.gitkeep
+server/.diag-on

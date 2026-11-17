@@ -576,6 +576,21 @@
 /* ---------- botão e seletor de gif (GIPHY) ---------- */
 .chat-view { position: relative; }
 
+/* arrastar e soltar arquivos na conversa (09-panels-attachments.js) */
+.chat-drop-overlay {
+  position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 10, 14, 0.72); pointer-events: none;
+}
+.chat-drop-overlay[hidden] { display: none; }
+.chat-drop-card {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+  padding: 28px 40px; border-radius: 14px; max-width: 80%;
+  background: var(--accent, #5865f2); color: #fff; outline: 2px dashed rgba(255, 255, 255, 0.55); outline-offset: -10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.chat-drop-card strong { font-size: 17px; overflow-wrap: anywhere; }
+.chat-drop-card span { font-size: 13px; opacity: 0.9; }
+
 .composer-gif-btn {
   flex-shrink: 0;
   width: auto;

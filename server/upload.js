@@ -36,32 +36,38 @@ function makeStorage(subdir) {
   });
 }
 
-// avatar/banner: só imagem (inclui gif), até 15MB
-// anexos de chat: qualquer tipo de arquivo, até 2GB — imagem e vídeo continuam com preview
-// inline no chat; qualquer outro tipo (pdf, zip, docx, exe, etc.) vira um chip de download
-// genérico. 2GB (não 200MB) pra dar conta de vídeos/backups/isos maiores sem precisar
-// dividir o arquivo — o multer grava direto em disco (diskStorage) conforme os bytes chegam,
-// então isso não pesa na memória do processo Node mesmo em arquivos grandes.
-const attachmentUpload = multer({
-  storage: makeStorage('attachments'),
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
-});
+// limites que valem pra todo envio: um arquivo por pedido e poucos campos de texto pequenos
+// (a legenda do anexo tem até 4000 caracteres). Sem isso, um pedido podia mandar milhares de
+// campos/partes e prender o servidor só processando o formulário.
+const FORM_LIMITS = { files: 1, fields: 10, fieldSize: 64 * 1024, parts: 12, fieldNameSize: 100 };
+
+// anexos de chat: qualquer tipo de arquivo — imagem e vídeo continuam com preview inline no chat;
+// qualquer outro tipo (pdf, zip, docx, exe, etc.) vira um chip de download genérico. O tamanho
+// máximo é POR CONTA (padrão 100 MB, o admin muda no painel; o admin do site não tem limite) — ver
+// server/uploadLimits.js. O multer grava direto em disco (diskStorage) conforme os bytes chegam,
+// então nem arquivo grande pesa na memória do processo Node.
+const attachmentStorage = makeStorage('attachments');
+function attachmentUpload(maxBytes) {
+  const limits = { ...FORM_LIMITS };
+  if (Number.isFinite(maxBytes)) limits.fileSize = maxBytes;
+  return multer({ storage: attachmentStorage, limits });
+}
 
 const avatarUpload = multer({
   storage: makeStorage('avatars'),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { ...FORM_LIMITS, fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, IMAGE_TYPES.includes(file.mimetype)),
 });
 
 const bannerUpload = multer({
   storage: makeStorage('banners'),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { ...FORM_LIMITS, fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, IMAGE_TYPES.includes(file.mimetype)),
 });
 
 const serverIconUpload = multer({
   storage: makeStorage('server'),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { ...FORM_LIMITS, fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, IMAGE_TYPES.includes(file.mimetype)),
 });
 
@@ -70,13 +76,13 @@ const serverIconUpload = multer({
 // ver server/decor.js). Imagem com fundo transparente (png/webp/gif) é o normal; até 10MB
 const decorUpload = multer({
   storage: makeStorage('decor'),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { ...FORM_LIMITS, fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, IMAGE_TYPES.includes(file.mimetype)),
 });
 
 const themeBackgroundUpload = multer({
   storage: makeStorage('themes'),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { ...FORM_LIMITS, fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, IMAGE_TYPES.includes(file.mimetype)),
 });
 
@@ -87,7 +93,7 @@ const soundUpload = multer({
     destination: require('os').tmpdir(),
     filename: (req, file, cb) => cb(null, 'dusky-som-' + crypto.randomBytes(12).toString('hex')),
   }),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { ...FORM_LIMITS, fileSize: 25 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, /^(audio|video)\//.test(file.mimetype) || file.mimetype === 'application/ogg'),
 });
 

@@ -5,7 +5,9 @@
 //! o app continua tocando normal, a captura é só uma cópia.
 //!
 //!   janela escolhida -> só os streams do processo dessa janela (e dos filhos dele)
-//!   tela inteira     -> todos os streams MENOS os do próprio dusky (senão a voz da call voltaria em eco)
+//!   tela inteira     -> todos os streams MENOS os marcados no seletor ("não levar o som de"): o
+//!                       próprio dusky por padrão (senão a voz da call voltaria em eco) e os apps
+//!                       que a pessoa escolher (pelo executável, igual à lista do seletor)
 //!
 //! Streams novos (app que abriu depois) são ligados por uma verificação a cada ~0,8 s.
 
@@ -27,8 +29,9 @@ const POLL_MS: u64 = 800;
 
 /// quais streams entram
 pub enum Plan {
-    /// tudo menos o dusky (e os processos filhos dele, onde roda a página)
-    AllButOwn { raw: bool },
+    /// tudo menos: o dusky (e os processos filhos dele, onde roda a página) se `own`, e os apps
+    /// dessas chaves (app_key_of)
+    AllBut { raw: bool, own: bool, apps: Vec<String> },
     /// só a árvore de processos de quem é dono da janela
     PidTree { pid: u32, raw: bool },
     /// só os streams desse app (Wayland: escolhido pelo nome do executável)
@@ -38,14 +41,16 @@ pub enum Plan {
 impl Plan {
     fn raw(&self) -> bool {
         match self {
-            Plan::AllButOwn { raw } | Plan::PidTree { raw, .. } | Plan::AppKey { raw, .. } => *raw,
+            Plan::AllBut { raw, .. } | Plan::PidTree { raw, .. } | Plan::AppKey { raw, .. } => *raw,
         }
     }
 
     fn accepts(&self, stream_pid: Option<u32>, props: &Value, own: u32) -> bool {
         let mine = stream_pid.map(|p| is_in_tree(p, own)).unwrap_or(false);
         match self {
-            Plan::AllButOwn { .. } => !mine,
+            Plan::AllBut { own, apps, .. } => {
+                !(*own && mine) && (apps.is_empty() || !apps.iter().any(|k| *k == app_key_of(props)))
+            }
             Plan::PidTree { pid, .. } => stream_pid.map(|p| is_in_tree(p, *pid)).unwrap_or(false),
             Plan::AppKey { key, .. } => !mine && app_key_of(props) == *key,
         }
@@ -150,7 +155,7 @@ fn ports_of(dump: &[Value], node_id: u64, direction: &str) -> Vec<Port> {
 }
 
 /// apps tocando áudio agora (menos o próprio dusky) — pro seletor do Wayland
-pub async fn list_audio_apps() -> AudioApps {
+pub async fn list_audio_apps(_app: &AppHandle) -> AudioApps {
     if !has_pipewire().await {
         return AudioApps { available: false, apps: Vec::new() };
     }
@@ -179,20 +184,30 @@ pub async fn prepare(target: Target, _app: &AppHandle) -> Option<Plan> {
         return None;
     }
     let raw = pw_record_has_raw().await;
+    let all_but = |ex: crate::picker::AudioExclude| {
+        if !ex.own || !ex.apps.is_empty() {
+            log::info(&format!(
+                "áudio da tela: sem {}{}",
+                if ex.own { "o dusky" } else { "tirar o dusky (vai ter eco da call)" },
+                if ex.apps.is_empty() { String::new() } else { format!(" e sem: {}", ex.apps.join(", ")) }
+            ));
+        }
+        Plan::AllBut { raw, own: ex.own, apps: ex.apps }
+    };
     match target {
         Target::Choice(c) => match c.mode.as_str() {
             "none" => None,
             "app" => c.app_key.map(|key| Plan::AppKey { key, raw }),
-            _ => Some(Plan::AllButOwn { raw }),
+            _ => Some(all_but(c.exclude)),
         },
-        Target::Source(src) if src.kind == Kind::Window => match src.pid {
+        Target::Source(src, _) if src.kind == Kind::Window => match src.pid {
             Some(pid) => Some(Plan::PidTree { pid, raw }),
             None => {
                 log::info("não consegui descobrir o processo dessa janela — compartilhando sem áudio");
                 None
             }
         },
-        Target::Source(_) => Some(Plan::AllButOwn { raw }),
+        Target::Source(_, ex) => Some(all_but(ex)),
     }
 }
 

@@ -298,6 +298,20 @@ if (emojiBtn) {
   });
 }
 
+// limites de anexo da conta (ver server/uploadLimits.js). Busca sempre na hora de enviar: o admin
+// pode ter mudado, e o "usado" muda a cada anexo. Se falhar, segue e o servidor decide.
+async function fetchUploadLimits() {
+  try {
+    const res = await fetch('/api/profile/upload-limits');
+    return res.ok ? await res.json() : null;
+  } catch (_) { return null; }
+}
+function formatLimitMB(mb) {
+  if (mb == null) return 'sem limite';
+  if (mb >= 1024) return `${Math.round((mb / 1024) * 10) / 10} GB`;
+  return `${Math.round(mb * 10) / 10} MB`;
+}
+
 chatComposer.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!currentChannelAllows('send')) return showComposerError('você não pode escrever neste canal');
@@ -310,6 +324,18 @@ chatComposer.addEventListener('submit', async (e) => {
     const file = pendingAttachment;
     const caption = content;
     showComposerError('');
+
+    // limite de anexo desta conta (padrão 100 MB; o admin muda no painel): avisa antes de mandar,
+    // em vez de subir o arquivo inteiro só pra ouvir "muito grande" no fim
+    const uploadLimits = await fetchUploadLimits();
+    if (uploadLimits && !uploadLimits.unlimited) {
+      if (file.size > uploadLimits.maxMB * 1024 * 1024) {
+        return showComposerError(`arquivo muito grande — seu limite é ${formatLimitMB(uploadLimits.maxMB)} por arquivo`);
+      }
+      if ((uploadLimits.usedMB + file.size / 1024 / 1024) > uploadLimits.quotaMB) {
+        return showComposerError(`sem espaço: seus anexos já ocupam ${formatLimitMB(uploadLimits.usedMB)} de ${formatLimitMB(uploadLimits.quotaMB)}`);
+      }
+    }
 
     // NÃO limpa o anexo pendente nem o input aqui — só depois do upload confirmar sucesso
     // (xhr 'load' com status 2xx). Assim, se a conexão cair ou o servidor recusar o arquivo

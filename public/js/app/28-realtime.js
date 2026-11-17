@@ -136,6 +136,13 @@ function wireRealtime() {
   Realtime.on('connection_status', ({ status }) => {
     if (status !== 'open') return;
     if (wsOpenedOnce) loadUnread();
+    // Só retoma se ainda estou na call. Sair/trocar de canal limpa o token.
+    if (voiceChannel && voiceResumeToken) {
+      Realtime.send('voice_resume', { channelId: voiceChannel.id, resumeToken: voiceResumeToken });
+    } else if (voiceChannel && voiceSpeakingReady) {
+      // A conexão caiu antes da confirmação da primeira entrada.
+      Realtime.send('voice_join', { channelId: voiceChannel.id });
+    }
     wsOpenedOnce = true;
   });
 
@@ -219,8 +226,12 @@ function wireRealtime() {
 
   // ---------- eventos de chamada de voz ----------
 
-  Realtime.on('voice_channel_state', async ({ channelId, participants, self }) => {
-    // atualiza a pré-visualização da sidebar independente de eu estar nesse canal
+  Realtime.on('voice_channel_state', async ({ channelId, participants, self, resumeToken }) => {
+    if (!voiceChannel || voiceChannel.id !== channelId) return;
+    const channel = voiceChannel;
+    voiceResumeToken = resumeToken || null;
+    syncLocalVoiceState();
+    // atualiza a pré-visualização da sidebar com o estado completo da call
     const map = getChannelVoiceMap(channelId);
     map.clear();
     for (const p of participants) {
@@ -230,8 +241,17 @@ function wireRealtime() {
     renderVoicePreviews();
 
     if (!voiceChannel || voiceChannel.id !== channelId) return;
+    // A lista recebida é autoritativa: durante a queda alguém pode ter saído.
+    const present = new Set(participants.map((p) => p.userId));
+    for (const id of [...callParticipantsState.keys()]) {
+      if (id === currentUser.id || present.has(id)) continue;
+      callParticipantsState.delete(id);
+      if (id === BOT_USER_ID) stopBotAudio();
+      else { closePeer(id); worldOnUserLeft(id); }
+    }
     worldOnChannelState(participants, self); // mundinho: posições de todo mundo (27-world.js)
     for (const p of participants) {
+      if (voiceChannel !== channel) return;
       callParticipantsState.set(p.userId, { muted: p.muted, deafened: p.deafened, cameraOn: !!p.cameraOn, screenOn: !!p.screenOn });
       // o bot nunca é uma RTCPeerConnection de verdade (ver comentário no topo do arquivo, perto
       // de BOT_USER_ID) — o áudio dele chega por HTTP. Só abre sinalização WebRTC pro humano de verdade.
@@ -354,6 +374,12 @@ function wireRealtime() {
     else toast(by ? `${by} te levou pra ${known.name}` : `você foi levado pra ${known.name}`);
     await joinVoiceCall(known);
     if (wasViewingCall && currentServerId === known.server_id) selectChannel(known);
+  });
+
+  Realtime.on('voice_resume_denied', ({ channelId }) => {
+    if (!voiceChannel || voiceChannel.id !== channelId) return;
+    leaveVoiceCall({ silent: true });
+    toast('não foi possível retomar a call — entre novamente', 'error');
   });
 
   Realtime.on('voice_join_denied', ({ channelId }) => {

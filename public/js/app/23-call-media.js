@@ -72,6 +72,21 @@ async function startScreenShare(opts = {}) {
   // apareceu no aviso do startNativeScreenShare)
   if (nativeScreenShareOnly()) return;
 
+  // som pelo getDisplayMedia: no Windows, "tela inteira com som" pega o som do PC INTEIRO — inclusive
+  // o próprio dusky (a voz de quem está na call e o bot voltavam em eco pra todo mundo). Com
+  // restrictOwnAudio o navegador tira o som desta página da captura. No app desktop este caminho é
+  // só o plano B (o normal é pela placa de vídeo, com o som capturado sem o dusky); se o motor não
+  // souber tirar o próprio som, compartilha SEM som em vez de mandar o eco.
+  const canExcludeOwnAudio = !!(navigator.mediaDevices.getSupportedConstraints
+    && navigator.mediaDevices.getSupportedConstraints().restrictOwnAudio);
+  let screenAudio = wantAudio
+    ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false, ...(canExcludeOwnAudio ? { restrictOwnAudio: true } : {}) }
+    : false;
+  if (screenAudio && nativeApi() && !canExcludeOwnAudio) {
+    screenAudio = false;
+    toast('compartilhando sem som: neste modo o som do próprio dusky iria junto (eco na call)', 'error');
+  }
+
   try {
     localScreenStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
@@ -84,9 +99,7 @@ async function startScreenShare(opts = {}) {
       // seletor. Quando `true`, ainda é só um pedido: se a pessoa não marcar a
       // caixinha (navegador) ou o SO não suportar, localScreenStream simplesmente
       // não vem com faixa de áudio — tratamos isso como opcional mais abaixo.
-      audio: wantAudio
-        ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
-        : false,
+      audio: screenAudio,
     });
   } catch (_) {
     return; // usuário cancelou o seletor do navegador
@@ -359,6 +372,8 @@ async function joinVoiceCall(ch) {
     leaveVoiceCall({ silent: true, noSound: true }); // trocando de canal: só o som de entrar
   }
 
+  voiceResumeToken = null;
+
   // som de entrar já no clique: antes ele só tocava depois de abrir o microfone e carregar a
   // supressão de ruído (até alguns segundos), e às vezes nem chegava a tocar
   playJoinSound();
@@ -435,6 +450,7 @@ async function joinVoiceCall(ch) {
 }
 
 function leaveVoiceCall(opts = {}) {
+  voiceResumeToken = null;
   if (currentUser) setParticipantSpeaking(currentUser.id, false);
   speakingSentState = false;
   voiceSpeakingReady = false;

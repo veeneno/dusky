@@ -138,7 +138,9 @@ function createVideoPlayer(src, opts = {}) {
   // prévia sem som ao passar o mouse (só antes de a pessoa dar play de verdade)
   if (opts.hoverPreview) {
     wrap.addEventListener('mouseenter', () => {
-      if (userStarted || !getPref('prefAutoplayVideo')) return;
+      // app do Linux: sem prévia muda — mutar um <video> lá deixa o app inteiro mudo no PipeWire
+      // (ver webkitGtkApp em 18-call-audio.js)
+      if (userStarted || !getPref('prefAutoplayVideo') || webkitGtkApp()) return;
       previewing = true; v.muted = true;
       v.play().catch(() => { previewing = false; });
     });

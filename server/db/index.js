@@ -87,6 +87,10 @@ ensureColumn('users', 'banned_at', 'TEXT');          // conta suspensa (null = n
 ensureColumn('users', 'ban_reason', 'TEXT');
 // sobe quando a senha é redefinida/a conta é suspensa: sessões antigas (cookie com versão menor) caem
 ensureColumn('users', 'session_version', 'INTEGER NOT NULL DEFAULT 0');
+// limites de anexo por conta, mudados no painel de admin (null = usa o padrão do .env, ver
+// server/uploadLimits.js). O admin do site nunca tem limite, independente do que estiver aqui.
+ensureColumn('users', 'upload_max_mb', 'INTEGER');    // tamanho máximo de UM arquivo
+ensureColumn('users', 'upload_quota_mb', 'INTEGER');  // soma de todos os anexos da conta
 // aparência (tema) de cada pessoa — ver routes/profile.js e public/js/themes.js
 ensureColumn('users', 'theme_json', 'TEXT');
 // efeito no nome (LED, neon, degradê…) — JSON {"effect","c1","c2"}, validado em routes/profile.js.

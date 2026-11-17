@@ -81,14 +81,14 @@ async function renderAdminOverview() {
 }
 
 async function renderAdminUsers(query = '') {
-  const { users } = await adminApi('GET', `/users${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+  const { users, uploadDefaults } = await adminApi('GET', `/users${query ? `?q=${encodeURIComponent(query)}` : ''}`);
   adminBody.innerHTML = `
       <div class="admin-toolbar">
         <input type="search" class="admin-search" placeholder="procurar pelo nome" autocomplete="off">
         <span class="admin-count"></span>
       </div>
       <div class="admin-table-wrap"><table class="admin-table">
-        <thead><tr><th>conta</th><th>criada</th><th>servidores</th><th>mensagens</th><th>última mensagem</th><th></th></tr></thead>
+        <thead><tr><th>conta</th><th>criada</th><th>servidores</th><th>mensagens</th><th>última mensagem</th><th>anexos</th><th></th></tr></thead>
         <tbody></tbody>
       </table></div>`;
   const search = adminBody.querySelector('.admin-search');
@@ -102,7 +102,7 @@ async function renderAdminUsers(query = '') {
     if (u.banned_at) tr.classList.add('is-suspended');
     tr.innerHTML = `
         <td><span class="admin-user"><span class="admin-avatar"></span><span class="admin-user-text"><strong></strong><small></small></span></span></td>
-        <td></td><td></td><td></td><td></td>
+        <td></td><td></td><td></td><td></td><td class="admin-uploads"></td>
         <td class="admin-actions"></td>`;
     tr.querySelector('.admin-avatar').innerHTML = memberAvatarInner(u);
     tr.querySelector('.admin-avatar').style.borderColor = u.accent_color || 'var(--line)';
@@ -117,7 +117,18 @@ async function renderAdminUsers(query = '') {
     cells[2].textContent = u.servers;
     cells[3].textContent = u.messages.toLocaleString('pt-BR');
     cells[4].textContent = fmtDate(u.last_message_at);
-    const actions = cells[5];
+    // anexos: quanto já usa e o limite (por arquivo · total). "(padrão)" quando não tem valor próprio
+    const usedMB = (u.upload_used_bytes || 0) / 1024 / 1024;
+    if (u.is_site_admin) {
+      cells[5].textContent = `${fmtMB(usedMB)} · sem limite`;
+    } else {
+      const maxMB = u.upload_max_mb ?? uploadDefaults.maxMB;
+      const quotaMB = u.upload_quota_mb ?? uploadDefaults.quotaMB;
+      cells[5].innerHTML = '<span></span><small></small>';
+      cells[5].querySelector('span').textContent = `${fmtMB(usedMB)} de ${fmtMB(quotaMB)}`;
+      cells[5].querySelector('small').textContent = `até ${fmtMB(maxMB)} por arquivo${u.upload_max_mb == null && u.upload_quota_mb == null ? ' (padrão)' : ''}`;
+    }
+    const actions = cells[6];
     if (!u.is_site_admin) {
       const mk = (label, cls, fn) => {
         const b = document.createElement('button');
@@ -138,6 +149,7 @@ async function renderAdminUsers(query = '') {
           try { await adminApi('POST', `/users/${u.id}/suspend`, { reason }); toast(`${u.username} suspenso`); renderAdminUsers(search.value.trim()); } catch (err) { toast(err.message, 'error'); }
         });
       }
+      mk('limite de anexos', 'btn-ghost', () => editUploadLimits(u, uploadDefaults, () => renderAdminUsers(search.value.trim())));
       mk('nova senha', 'btn-ghost', async () => {
         if (!confirm(`gerar uma senha temporária pra ${u.username}? todas as sessões dela serão desconectadas.`)) return;
         try {
@@ -148,6 +160,30 @@ async function renderAdminUsers(query = '') {
     }
     tbody.appendChild(tr);
   }
+}
+
+function fmtMB(mb) {
+  if (mb == null) return 'sem limite';
+  if (mb >= 1024) return `${(Math.round((mb / 1024) * 10) / 10).toLocaleString('pt-BR')} GB`;
+  return `${(Math.round(mb * 10) / 10).toLocaleString('pt-BR')} MB`;
+}
+
+// limite de anexo de UMA conta: tamanho máximo de cada arquivo e espaço total. Vazio = padrão
+// do servidor (UPLOAD_MAX_MB / UPLOAD_QUOTA_MB no .env). A sua conta (admin do site) não tem limite.
+function editUploadLimits(u, defaults, done) {
+  const ask = (label, current, fallback) => {
+    const v = prompt(`${label} de ${u.username}, em MB (1 GB = 1024 MB).\n\ndeixe vazio pra usar o padrão (${fmtMB(fallback)}):`, current == null ? '' : String(current));
+    if (v === null) return undefined; // cancelou
+    const t = v.trim();
+    return t === '' ? null : t;
+  };
+  const maxMB = ask('tamanho máximo de CADA arquivo', u.upload_max_mb, defaults.maxMB);
+  if (maxMB === undefined) return;
+  const quotaMB = ask('espaço TOTAL pra anexos', u.upload_quota_mb, defaults.quotaMB);
+  if (quotaMB === undefined) return;
+  adminApi('PUT', `/users/${u.id}/upload-limits`, { maxMB, quotaMB })
+    .then((r) => { toast(`${u.username}: até ${fmtMB(r.maxMB)} por arquivo, ${fmtMB(r.quotaMB)} no total`); done(); })
+    .catch((err) => toast(err.message, 'error'));
 }
 
 async function renderAdminServers() {

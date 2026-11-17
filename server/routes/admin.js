@@ -7,6 +7,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const realtime = require('../realtime');
 const access = require('../access');
+const uploadLimits = require('../uploadLimits');
 
 // Painel de admin do SITE (não confundir com admin de um servidor/cargos): quem tem
 // users.is_site_admin = 1 — marcado no primeiro boot pra conta definida em SITE_ADMINS (.env,
@@ -66,6 +67,8 @@ router.get('/users', (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 50);
   const rows = db.prepare(`
     SELECT u.id, u.username, u.avatar_url, u.accent_color, u.created_at, u.banned_at, u.ban_reason, u.is_site_admin,
+      u.upload_max_mb, u.upload_quota_mb,
+      (SELECT COALESCE(SUM(m.attachment_size), 0) FROM messages m WHERE m.user_id = u.id AND m.attachment_url LIKE '/uploads/%') AS upload_used_bytes,
       (SELECT COUNT(*) FROM server_members sm WHERE sm.user_id = u.id) AS servers,
       (SELECT COUNT(*) FROM messages m WHERE m.user_id = u.id) AS messages,
       (SELECT MAX(created_at) FROM messages m WHERE m.user_id = u.id) AS last_message_at
@@ -74,7 +77,10 @@ router.get('/users', (req, res) => {
     ORDER BY u.created_at DESC
     LIMIT 500
   `).all(...(q ? [`%${q}%`] : []));
-  res.json({ users: rows.map((u) => ({ ...u, is_site_admin: !!u.is_site_admin, online: realtime.isOnline(u.id) })) });
+  res.json({
+    users: rows.map((u) => ({ ...u, is_site_admin: !!u.is_site_admin, online: realtime.isOnline(u.id) })),
+    uploadDefaults: { maxMB: uploadLimits.DEFAULT_MAX_MB, quotaMB: uploadLimits.DEFAULT_QUOTA_MB, maxSettableMB: uploadLimits.MAX_SETTABLE_MB },
+  });
 });
 
 function loadTarget(req, res, next) {
@@ -93,6 +99,21 @@ router.post('/users/:id/suspend', loadTarget, (req, res) => {
   realtime.disconnectUser(req.target.id); // tira da call, se estiver
   realtime.dropUserConnections(req.target.id, { type: 'account_suspended', reason });
   res.json({ ok: true });
+});
+
+// PUT /api/admin/users/:id/upload-limits { maxMB, quotaMB } — limite de anexo dessa conta.
+// null (ou vazio) = volta pro padrão do .env. A conta do admin do site não tem limite (loadTarget
+// nem deixa mexer nela).
+router.put('/users/:id/upload-limits', loadTarget, (req, res) => {
+  const body = req.body || {};
+  const max = uploadLimits.parseSetting(body.maxMB);
+  const quota = uploadLimits.parseSetting(body.quotaMB);
+  if (!max.ok || !quota.ok) {
+    return res.status(400).json({ error: `use um número inteiro de MB entre 1 e ${uploadLimits.MAX_SETTABLE_MB} (ou deixe vazio pro padrão)` });
+  }
+  db.prepare('UPDATE users SET upload_max_mb = ?, upload_quota_mb = ? WHERE id = ?').run(max.value, quota.value, req.target.id);
+  const l = uploadLimits.limitsFor(req.target.id);
+  res.json({ ok: true, maxMB: l.maxMB, quotaMB: l.quotaMB, usedMB: l.usedMB, custom: l.custom });
 });
 
 // POST /api/admin/users/:id/unsuspend

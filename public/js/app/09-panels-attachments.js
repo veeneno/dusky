@@ -236,14 +236,14 @@ attachInput.addEventListener('change', () => {
   setPendingAttachment(file);
 });
 
-// colar (ctrl+v) uma imagem copiada (print, ou copiada de outro app/site) direto no chat —
-// igual Discord/Slack/WhatsApp Web. Só intercepta quando o clipboard realmente tem um arquivo
-// de imagem; colar texto normal continua funcionando sem nenhuma mudança de comportamento.
+// colar (ctrl+v) um arquivo copiado (print, imagem copiada de um site, ou um arquivo copiado no
+// explorador de arquivos) direto no chat — igual Discord/Slack/WhatsApp Web. Só intercepta quando
+// o clipboard realmente tem um arquivo; colar texto normal continua igual.
 chatInput.addEventListener('paste', (e) => {
   const items = e.clipboardData && e.clipboardData.items;
   if (!items) return;
   for (const item of items) {
-    if (item.kind === 'file' && item.type.startsWith('image/')) {
+    if (item.kind === 'file') {
       const file = item.getAsFile();
       if (!file) continue;
       e.preventDefault(); // evita colar também um nome de arquivo/lixo como texto no campo
@@ -252,6 +252,124 @@ chatInput.addEventListener('paste', (e) => {
     }
   }
 });
+
+// ---------- arrastar e soltar arquivos ----------
+// Arrastar um arquivo (do explorador, da área de trabalho, de outro app) pra cima da conversa
+// anexa ele, igual ao Discord. A mensagem leva um anexo só: com vários, fica o primeiro e avisa.
+// No app (Tauri) isso depende de a janela NÃO interceptar o arrastar nativo (dragDropEnabled
+// desligado em tauri/src-tauri/src/app.rs) — senão a página nem recebe o evento.
+const chatDropOverlay = document.createElement('div');
+chatDropOverlay.className = 'chat-drop-overlay';
+chatDropOverlay.hidden = true;
+chatDropOverlay.innerHTML = '<div class="chat-drop-card">'
+  + '<svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>'
+  + '<strong class="chat-drop-title"></strong><span>solte pra anexar à mensagem</span></div>';
+chatView.appendChild(chatDropOverlay);
+const chatDropTitle = chatDropOverlay.querySelector('.chat-drop-title');
+
+// É um arrastar que veio de FORA da página (explorador de arquivos, área de trabalho, outro app)?
+// Arrastar canal/cargo/texto dentro do site começa com um dragstart aqui dentro — esses não contam.
+// Não dá pra confiar só no tipo "Files": o WebKitGTK (app do Linux, Wayland) às vezes só diz
+// "text/uri-list" durante o arrastar — aí a página não segurava o evento e o WebKit tentava ABRIR
+// o arquivo no lugar do site.
+let pageDragActive = false;
+document.addEventListener('dragstart', () => { pageDragActive = true; }, true);
+document.addEventListener('dragend', () => { pageDragActive = false; }, true);
+document.addEventListener('drop', () => { setTimeout(() => { pageDragActive = false; }, 0); }, true);
+
+function dragHasFiles(e) {
+  if (pageDragActive) return false;
+  const types = e.dataTransfer && e.dataTransfer.types;
+  // de fora e sem tipo nenhum (o WebKit às vezes esconde até soltar): trata como arquivo
+  if (!types || !types.length) return true;
+  const list = Array.prototype.slice.call(types);
+  return list.includes('Files') || list.includes('application/x-moz-file') || list.includes('text/uri-list');
+}
+
+// os arquivos soltos: .files, ou .items (alguns motores só preenchem um dos dois)
+function droppedFiles(dt) {
+  let files = [...((dt && dt.files) || [])];
+  if (!files.length && dt && dt.items) {
+    for (const item of dt.items) {
+      if (item.kind !== 'file') continue;
+      const f = item.getAsFile();
+      if (f) files.push(f);
+    }
+  }
+  return files.filter((f) => f && (f.size > 0 || f.type));
+}
+function chatAcceptsDrop() {
+  return !chatView.hidden && !chatInput.disabled;
+}
+
+let chatDragDepth = 0; // dragenter/dragleave disparam em cada filho — conta pra não piscar
+function hideChatDropOverlay() {
+  chatDragDepth = 0;
+  chatDropOverlay.hidden = true;
+}
+
+chatView.addEventListener('dragenter', (e) => {
+  if (!dragHasFiles(e) || !chatAcceptsDrop()) return;
+  e.preventDefault();
+  chatDragDepth++;
+  if (chatDropOverlay.hidden) {
+    const where = (chatChannelName && chatChannelName.textContent.trim()) || 'a conversa';
+    chatDropTitle.textContent = `enviar em ${where}`;
+    chatDropOverlay.hidden = false;
+  }
+});
+chatView.addEventListener('dragover', (e) => {
+  if (!dragHasFiles(e) || !chatAcceptsDrop()) return;
+  e.preventDefault(); // sem isso o navegador não deixa soltar
+  e.dataTransfer.dropEffect = 'copy';
+});
+chatView.addEventListener('dragleave', (e) => {
+  if (!dragHasFiles(e)) return;
+  chatDragDepth = Math.max(0, chatDragDepth - 1);
+  if (!chatDragDepth) chatDropOverlay.hidden = true;
+});
+chatView.addEventListener('drop', async (e) => {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault();
+  hideChatDropOverlay();
+  if (!chatAcceptsDrop()) {
+    toast('você não pode mandar mensagens aqui', 'error');
+    return;
+  }
+  let files = droppedFiles(e.dataTransfer);
+  // app do Linux (Wayland): o WebKit não entrega o arquivo pra página — o app pega pelo GTK
+  // (tauri/src-tauri/src/drops.rs). Copia os tipos antes do await (o DataTransfer expira).
+  const dropTypes = Array.prototype.slice.call(e.dataTransfer.types || []);
+  if (!files.length && window.duskyDesktop && typeof window.duskyDesktop.droppedFiles === 'function') {
+    try {
+      const got = await window.duskyDesktop.droppedFiles();
+      files = got.files || [];
+      if (!files.length && got.tooBig && got.tooBig.length) {
+        toast(`"${got.tooBig[0]}" é grande demais pra arrastar — use o botão de anexo`, 'error');
+        return;
+      }
+    } catch (_) { /* segue sem */ }
+  }
+  if (!files.length) {
+    // o que o sistema entregou nesse soltar (ajuda a entender quando não vem arquivo)
+    console.warn('[drop] sem arquivo', JSON.stringify({ types: dropTypes, app: !!(window.duskyDesktop && window.duskyDesktop.droppedFiles) }));
+    toast('não deu pra pegar esse arquivo daqui — anexe pelo botão de anexo (pasta não pode, só arquivo)', 'error');
+    return;
+  }
+  setPendingAttachment(files[0]);
+  if (files.length > 1) toast(`uma mensagem leva um arquivo só — anexei "${files[0].name}"`);
+  chatInput.focus();
+});
+
+// soltar um arquivo FORA da conversa não pode abrir o arquivo no lugar do site (o navegador faz
+// isso por padrão e a pessoa perderia a página)
+window.addEventListener('dragover', (e) => { if (dragHasFiles(e)) e.preventDefault(); });
+window.addEventListener('drop', (e) => {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault();
+  hideChatDropOverlay();
+});
+window.addEventListener('dragend', hideChatDropOverlay);
 
 function clearPendingAttachment() {
   pendingAttachment = null;

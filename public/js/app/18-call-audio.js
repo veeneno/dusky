@@ -627,7 +627,7 @@ function getPeerAudioEl(peer) {
     peer.audioEl = el;
   }
   const el = peer.audioEl;
-  el.muted = isDeafened;
+  if (!webkitGtkApp()) el.muted = isDeafened; // Linux: nunca (ver webkitGtkApp)
   const savedSpeaker = getSavedDeviceId('speaker');
   if (SUPPORTS_SINK_ID && savedSpeaker && el.sinkId !== savedSpeaker) {
     el.setSinkId(savedSpeaker).catch(() => { /* dispositivo pode ter sido desconectado — segue no padrão */ });
@@ -637,7 +637,10 @@ function getPeerAudioEl(peer) {
 
 function connectPeerAudio(peer) {
   const el = getPeerAudioEl(peer);
-  if (el.srcObject !== peer.audioStream) {
+  // Linux: o som vai só pelo reforço (Web Audio) — o elemento fica sem fonte (ver webkitGtkApp)
+  if (webkitGtkApp()) {
+    if (el.srcObject) el.srcObject = null;
+  } else if (el.srcObject !== peer.audioStream) {
     el.srcObject = peer.audioStream;
     el.play().catch((err) => console.warn('[call] autoplay do áudio de', peer.userId, 'bloqueado pelo navegador:', err));
   }
@@ -672,6 +675,24 @@ function ensurePeerBoostGraph(peer) {
   }
 }
 
+// call pelo Rust (app do Linux, 21-call-sfu.js → sfuConnectNative): o som das pessoas só toca
+// pela Web Audio, nunca por <audio>/<video> (ver applyLocalOverridesToRemoteAudio)
+function nativeCallAudio() {
+  return typeof sfu !== 'undefined' && !!sfu && !!sfu.native;
+}
+
+// App do Linux (Tauri/WebKitGTK): o `.muted`/`.volume` de um <audio>/<video> vira o mudo/volume
+// do FLUXO no PipeWire, e o WirePlumber guarda isso por aplicativo ("dusky", em
+// ~/.local/state/wireplumber/stream-properties). Mutou um elemento uma vez (ex.: o <audio> de
+// alguém, que ficava sempre mudo pra o som ir pela Web Audio) e TODO som que o app abrir depois
+// nasce mudo — vozes, bot, tudo que passa pelo audioCtx — e nada dentro do app desfaz.
+// Por isso, no app do Linux, nenhum elemento da call carrega áudio nem é mutado/abaixado:
+// o som vai só pela Web Audio e volume, silenciar e ensurdecer são feitos nos GainNodes.
+function webkitGtkApp() {
+  const d = window.duskyDesktop;
+  return !!(d && d.shell === 'tauri' && d.platform === 'linux');
+}
+
 // aplica volume (0–200%) + silenciar-localmente no áudio de uma pessoa da call. Nunca mexe em
 // `.muted` do elemento além do ensurdecer (isDeafened).
 function applyLocalOverridesToRemoteAudio(userId) {
@@ -682,7 +703,15 @@ function applyLocalOverridesToRemoteAudio(userId) {
   const factor = override.mutedLocal ? 0 : vol / 100;
   // acima de 100%: o elemento fica mudo e o reforço leva o som inteiro (um caminho só — ver boostOutput).
   // Na call-mundo é sempre assim: o som tem que passar pelo PannerNode (áudio espacial).
-  const boosted = !!peer.boostGain && (factor > 1 || !!peer.spatialPanner);
+  // No app do Linux (call pelo Rust) também: o WebKitGTK toca SILÊNCIO num <audio> cujo srcObject
+  // vem de um MediaStreamAudioDestinationNode (o som chega certinho no stream, mas o elemento não
+  // toca) — então lá o som sempre vai pela Web Audio, o mesmo caminho do bot de música.
+  if (webkitGtkApp()) {
+    // Linux: elemento intocado (sem fonte, sem mudo); volume/silenciar/ensurdecer só no ganho
+    if (peer.boostGain) peer.boostGain.gain.setTargetAtTime(isDeafened ? 0 : factor, getAudioCtx().currentTime, 0.03);
+    return;
+  }
+  const boosted = !!peer.boostGain && (factor > 1 || !!peer.spatialPanner || nativeCallAudio());
   peer.audioEl.volume = boosted ? 1 : Math.min(1, Math.max(0, factor));
   peer.audioEl.muted = isDeafened || boosted;
   if (peer.boostGain) {
@@ -706,7 +735,7 @@ function getOrCreateBotAudioEl() {
     el.hidden = true;
     document.body.appendChild(el);
   }
-  el.muted = isDeafened;
+  if (!webkitGtkApp()) el.muted = isDeafened; // Linux: o ganho zera (ver webkitGtkApp)
   const savedSpeaker = getSavedDeviceId('speaker');
   if (SUPPORTS_SINK_ID && savedSpeaker) {
     el.setSinkId(savedSpeaker).catch(() => { /* dispositivo pode ter sido desconectado — segue no padrão */ });
@@ -722,16 +751,26 @@ function startBotAudio() {
   const serverId = voiceChannel.server_id;
   const el = getOrCreateBotAudioEl();
   const wanted = `/api/musicbot/stream?server=${serverId}`; // mesma origem — o cookie da sessão autentica
+  ensureBotAudioBoostGraph(el);
   if (el.dataset.stream !== wanted) {
     el.dataset.stream = wanted;
+    // começa em silêncio e só sobe (com fade) depois de saber o volume do /volume deste servidor —
+    // antes tocava o primeiro instante em 100% e só depois baixava: "entrava muito alto"
+    if (botAudioBoostGainNode) botAudioBoostGainNode.gain.setValueAtTime(0, getAudioCtx().currentTime);
+    botVolumeReady = false;
     el.src = wanted;
-    loadMusicbotState(serverId);
+    botSeekedToLive = false;
+    loadMusicbotState(serverId).finally(() => {
+      if (el.dataset.stream !== wanted) return; // trocou de servidor enquanto carregava
+      botVolumeReady = true;
+      applyLocalOverridesToBotAudio({ fadeIn: true });
+    });
+  } else {
+    applyLocalOverridesToBotAudio();
   }
   el.play().catch((err) => {
     console.warn('[musicbot] autoplay do áudio do bot foi bloqueado pelo navegador:', err);
   });
-  ensureBotAudioBoostGraph(el);
-  applyLocalOverridesToBotAudio();
   startBotCatchUp(el);
 }
 
@@ -742,8 +781,10 @@ function startBotAudio() {
 // se estiver atrasado, acelera de leve (sem mudar o tom) até ficar perto do ao vivo. Resultado:
 // todo mundo ouve o bot com ~1s de diferença no máximo, e sem travar por falta de reserva.
 const BOT_TARGET_LEAD_S = 1.0; // reserva ideal (protege contra oscilação da internet)
-const BOT_SEEK_LEAD_S = 4.0;   // atrasado demais: tenta pular direto pra perto do ao vivo
+const BOT_SEEK_LEAD_S = 2.5;   // atrasado demais: tenta pular direto pra perto do ao vivo
 let botCatchUpTimer = null;
+let botSeekedToLive = false;   // já pulou pro ao vivo nesta conexão?
+let botVolumeReady = false;    // já sabe o volume do /volume deste servidor?
 
 function botBufferedLead(el) {
   const b = el.buffered;
@@ -757,10 +798,18 @@ function startBotCatchUp(el) {
   botCatchUpTimer = setInterval(() => {
     if (el.paused || !el.getAttribute('src')) return;
     const lead = botBufferedLead(el);
+    // logo que começa a tocar: se chegou com mais reserva que o ideal, pula pro ponto dos outros
+    if (!botSeekedToLive && el.currentTime > 0) {
+      botSeekedToLive = true;
+      if (lead > BOT_TARGET_LEAD_S + 0.4) {
+        try { el.currentTime = el.buffered.end(el.buffered.length - 1) - BOT_TARGET_LEAD_S; } catch (_) { /* sem seek: a aceleração resolve */ }
+      }
+    }
     if (lead > BOT_SEEK_LEAD_S) {
       try { el.currentTime = el.buffered.end(el.buffered.length - 1) - BOT_TARGET_LEAD_S; } catch (_) { /* stream sem seek: a aceleração resolve */ }
     }
-    const rate = lead > BOT_TARGET_LEAD_S + 0.6 ? 1.08 : (lead < BOT_TARGET_LEAD_S + 0.15 ? 1.0 : el.playbackRate);
+    // atrasado: acelera de leve (sem mudar o tom) — mais forte quanto mais atrás estiver
+    const rate = lead > BOT_TARGET_LEAD_S + 1.2 ? 1.12 : lead > BOT_TARGET_LEAD_S + 0.4 ? 1.06 : (lead < BOT_TARGET_LEAD_S + 0.1 ? 1.0 : el.playbackRate);
     if (el.playbackRate !== rate) el.playbackRate = rate;
   }, 500);
 }
@@ -774,6 +823,8 @@ function stopBotCatchUp() {
 // pendurada consumindo banda à toa em segundo plano.
 function stopBotAudio() {
   stopBotCatchUp();
+  botVolumeReady = false;
+  botSeekedToLive = false;
   const el = document.getElementById('musicbotAudio');
   if (el) {
     el.pause();
@@ -798,7 +849,7 @@ function ensureBotAudioBoostGraph(el) {
     // createMediaElementSource só pode ser chamado UMA vez por elemento — o elemento do bot é reaproveitado
     if (!botAudioMediaSource || botAudioMediaSource.mediaElement !== el) botAudioMediaSource = ctx.createMediaElementSource(el);
     botAudioBoostGainNode = ctx.createGain();
-    botAudioBoostGainNode.gain.value = 1;
+    botAudioBoostGainNode.gain.value = 0; // sobe com applyLocalOverridesToBotAudio, nunca entra no máximo
     botAudioMediaSource.connect(botAudioBoostGainNode);
     botAudioBoostGainNode.connect(boostOutput(ctx));
     botAudioBoostSourceEl = el;
@@ -810,17 +861,23 @@ function ensureBotAudioBoostGraph(el) {
 // mesma lógica de applyLocalOverridesToRemoteAudio, só que sempre vale (não tem "é a pessoa
 // certa?" pra checar — só existe um bot) e usa getSavedVolume/getLocalOverride com BOT_USER_ID
 // como chave, reaproveitando o mesmo esquema de persistência local por participante
-function applyLocalOverridesToBotAudio() {
+// Ensurdecido = bot em silêncio. O som do bot passa pela Web Audio (elemento → ganho → saída), e
+// nesse caminho o `muted` do elemento NÃO silencia em todo navegador (no app do Linux não
+// silenciava) — por isso o ensurdecer zera o próprio ganho, além do muted.
+// opts.fadeIn: sobe devagar (~0,5 s) em vez de entrar de uma vez
+function applyLocalOverridesToBotAudio(opts = {}) {
   const el = document.getElementById('musicbotAudio');
   if (!el) return;
   const override = getLocalOverride(BOT_USER_ID);
   const vol = getSavedVolume(BOT_USER_ID); // 0–200
-  const factor = override.mutedLocal ? 0 : vol / 100;
+  const silenced = override.mutedLocal || isDeafened || !botVolumeReady;
+  const factor = silenced ? 0 : vol / 100;
+  if (!webkitGtkApp()) el.muted = isDeafened; // Linux: só o ganho (ver webkitGtkApp)
   if (botAudioBoostGainNode) {
     // todo o som do bot já passa pelo ganho: o elemento fica em 100% e o ganho faz 0–200%
     el.volume = 1;
-    botAudioBoostGainNode.gain.setTargetAtTime(factor, getAudioCtx().currentTime, 0.03);
-  } else {
+    botAudioBoostGainNode.gain.setTargetAtTime(factor, getAudioCtx().currentTime, opts.fadeIn ? 0.15 : 0.03);
+  } else if (!webkitGtkApp()) {
     el.volume = Math.min(1, Math.max(0, factor));
   }
 }
@@ -850,8 +907,14 @@ function applyLocalOverrideToRemoteScreenAudio(userId, videoEl) {
   const el = videoEl || callScreenShareArea.querySelector(`.call-screenshare-tile[data-kind="remote"][data-user-id="${userId}"] video`);
   // 0–200%; na call-mundo, a TV pode estar mutada/mais baixa só pra mim (27-world.js)
   const factor = (getSavedScreenVolume(userId) / 100) * worldScreenAudioFactor(userId);
-  // acima de 100%: o <video> fica mudo e o reforço leva o som inteiro (um caminho só)
-  const boosted = factor > 1 && !!peer.screenBoostGain && !!el;
+  // acima de 100%: o <video> fica mudo e o reforço leva o som inteiro (um caminho só). No app do
+  // Linux, sempre pelo reforço (ver nativeCallAudio)
+  if (webkitGtkApp()) {
+    // Linux: o <video> da tela não carrega áudio (19-call-ui.js); sem tile = sem som
+    if (peer.screenBoostGain) peer.screenBoostGain.gain.setTargetAtTime(el && !isDeafened ? factor : 0, getAudioCtx().currentTime, 0.03);
+    return;
+  }
+  const boosted = (factor > 1 || nativeCallAudio()) && !!peer.screenBoostGain && !!el;
   if (el) {
     el.volume = boosted ? 1 : Math.min(1, Math.max(0, factor));
     el.muted = isDeafened || boosted;
@@ -864,15 +927,24 @@ function applyLocalOverrideToRemoteScreenAudio(userId, videoEl) {
 }
 
 function applyLocalTrackState() {
-  callMicGraph?.gate.mute(isMuted);
-  if (localStream) localStream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
+  // apertar para falar (30-shortcuts.js): sem a tecla apertada o microfone fica fechado, mesmo desmutado
+  const pttOpen = typeof pushToTalkAllowsTransmit === 'function' ? pushToTalkAllowsTransmit() : true;
+  const off = isMuted || !pttOpen;
+  callMicGraph?.gate.mute(off);
+  if (localStream) localStream.getAudioTracks().forEach((t) => (t.enabled = !off));
   if (rawMicStream && rawMicStream !== localStream) {
-    rawMicStream.getAudioTracks().forEach((track) => { track.enabled = !isMuted; });
+    rawMicStream.getAudioTracks().forEach((track) => { track.enabled = !off; });
   }
+  if (typeof updatePushToTalkIndicator === 'function') updatePushToTalkIndicator();
 }
 
 // opts.quiet: sem som (ex: ensurdecer muta junto e já toca o som próprio dele)
 function setMuted(val, opts = {}) {
+  // desmutar o microfone ensurdecido = desensurdecer (igual Discord): volta a ouvir e a falar
+  if (!val && isDeafened) {
+    setDeafened(false);
+    return;
+  }
   const changed = isMuted !== val;
   isMuted = val;
   applyLocalTrackState();
@@ -891,12 +963,14 @@ function setDeafened(val) {
     applyLocalOverridesToRemoteAudio(peer.userId);
     applyLocalOverrideToRemoteScreenAudio(peer.userId);
   }
-  const botEl = document.getElementById('musicbotAudio');
-  if (botEl) botEl.muted = isDeafened;
+  applyLocalOverridesToBotAudio(); // bot também fica mudo ensurdecido (ganho zerado, não só o muted)
   deafenBtn.classList.toggle('active', isDeafened);
   callViewDeafenBtn.classList.toggle('active', isDeafened);
   if (isDeafened && !isMuted) {
     setMuted(true, { quiet: true }); // ensurdecer também muta o microfone, igual Discord
+  } else if (!isDeafened && changed && isMuted && !muteBtn.disabled) { // sem microfone: segue mutado
+    // desensurdecer libera ouvir E falar — sempre, mesmo se o microfone já estava mutado antes
+    setMuted(false, { quiet: true });
   } else {
     syncLocalVoiceState();
   }

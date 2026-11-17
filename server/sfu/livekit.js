@@ -212,7 +212,11 @@ function createToken({ room, identity, name, publishOnly, watchOnly }) {
     sub: String(identity),
     name: name || String(identity),
     nbf: now - 10,
-    exp: now + 24 * 60 * 60, // 24 h: cobre reconexões numa call longa
+    // curto de propósito: enquanto a pessoa está conectada o próprio LiveKit renova o ingresso
+    // sozinho (manda um novo pro cliente de tempos em tempos), então call longa não cai por isso.
+    // Um ingresso vazado/guardado só serve por esse tempo — e, mesmo dentro dele, a porta de
+    // entrada (gate, abaixo) só deixa passar quem está na call de verdade.
+    exp: now + TOKEN_TTL_SEC,
     video: {
       room, roomJoin: true, canPublish: !watchOnly, canSubscribe: !publishOnly, canPublishData: false,
       ...(watchOnly ? { hidden: true } : {}),
@@ -226,6 +230,162 @@ function createToken({ room, identity, name, publishOnly, watchOnly }) {
 
 const roomForChannel = (channelId) => `canal-${channelId}`;
 
+// ------------------------------------------------------------------ quem pode estar na mídia
+//
+// A interface mostra quem está na call pelo estado do site (realtime.js → voiceStates). O LiveKit
+// tem o dele. Sem amarrar os dois, alguém expulso (ou um cliente modificado) podia continuar
+// ouvindo e falando na sala do LiveKit sem aparecer pra ninguém. A regra agora:
+//
+//   1. a porta de entrada (proxy /livekit) só deixa conectar quem está na call daquele canal no
+//      site — ou quem acabou de pedir o ingresso pra entrar (janela de ENTRY_WINDOW_MS, porque o
+//      app conecta na mídia um instante ANTES de mandar o voice_join);
+//   2. se a janela fecha e a pessoa não entrou na call, ela é tirada da sala;
+//   3. sair da call no site (sair, ser desconectado/movido, perder permissão, ser suspenso)
+//      tira da sala do LiveKit na hora, com a pessoa e os auxiliares dela (tela-<id>, ver-<id>).
+//
+// Quem é o "estado do site" vem do realtime.js, ligado pelo index.js (setVoiceLookup) — este
+// arquivo não importa o realtime pra não criar dependência circular.
+
+const TOKEN_TTL_SEC = 15 * 60;
+const ENTRY_WINDOW_MS = 30 * 1000;
+const ENTRY_STRIKE_MS = 2 * 60 * 1000; // pediu ingresso e não entrou: 2 min sem janela de entrada
+
+let voiceChannelOf = () => null; // (userId) -> channelId em que a pessoa está na call, ou null
+function setVoiceLookup(fn) { voiceChannelOf = fn; }
+
+const entryWindows = new Map(); // `${userId}:${channelId}` -> expira em (ms)
+const entryStrikes = new Map(); // userId -> até quando não ganha janela de entrada
+
+const inCall = (userId, channelId) => voiceChannelOf(Number(userId)) === Number(channelId);
+
+// chamado pela rota /api/rtc/sfu ao emitir o ingresso principal (ou o do assistente "ver-")
+// pra quem AINDA não está na call. false = recusado (insistiu sem entrar).
+function openEntryWindow(userId, channelId) {
+  const strike = entryStrikes.get(userId);
+  if (strike && strike > Date.now()) return false;
+  const key = `${userId}:${channelId}`;
+  entryWindows.set(key, Date.now() + ENTRY_WINDOW_MS);
+  // não é cancelado por um pedido novo: cada janela é conferida no fim dela
+  setTimeout(() => {
+    const exp = entryWindows.get(key);
+    // sumiu: a pessoa entrou na call e já saiu (onLeftCall fecha a janela e cuida da sala)
+    if (!exp) return;
+    // tem uma janela mais nova aberta: quem confere é o timer dela
+    if (exp > Date.now()) return;
+    entryWindows.delete(key);
+    if (inCall(userId, channelId)) return;
+    log(`conta ${userId} pegou ingresso do canal ${channelId} e não entrou na call — tirando da sala`);
+    entryStrikes.set(userId, Date.now() + ENTRY_STRIKE_MS);
+    kickUser(channelId, userId);
+  }, ENTRY_WINDOW_MS + 500).unref();
+  return true;
+}
+
+function hasEntryWindow(userId, channelId) {
+  const exp = entryWindows.get(`${userId}:${channelId}`);
+  return !!exp && exp > Date.now();
+}
+
+// a pessoa saiu da call no site: fecha a janela e, se ela não voltou pra MESMA call logo em
+// seguida (trocar de aba faz sair e entrar de novo no mesmo instante), tira da sala do LiveKit
+function onLeftCall(channelId, userId) {
+  if (userId < 0) return; // bot de música não está no LiveKit
+  entryWindows.delete(`${userId}:${channelId}`);
+  setImmediate(() => { if (!inCall(userId, channelId)) kickUser(channelId, userId); });
+}
+
+const IDENTITY_RE = /^(?:(tela|ver)-)?(\d+)$/;
+const ROOM_RE = /^canal-(\d+)$/;
+
+// pode estar na sala? `helper` = auxiliar de tela ("tela-") ou assistente ("ver-")
+function mediaAllowed(identity, room) {
+  const im = IDENTITY_RE.exec(String(identity || ''));
+  const rm = ROOM_RE.exec(String(room || ''));
+  if (!im || !rm) return false;
+  const userId = Number(im[2]);
+  const channelId = Number(rm[1]);
+  if (inCall(userId, channelId)) return true;
+  // o auxiliar de tela só existe com a pessoa já na call; o principal e o assistente podem
+  // conectar um instante antes do voice_join
+  return im[1] !== 'tela' && hasEntryWindow(userId, channelId);
+}
+
+// confere a assinatura e a validade de um ingresso (nosso, ou o renovado pelo próprio LiveKit — os
+// dois são assinados com o mesmo segredo). Devolve o conteúdo ou null.
+function verifyToken(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3 || token.length > 8192) return null;
+  const { apiKey, apiSecret } = loadKeys();
+  const expected = crypto.createHmac('sha256', apiSecret).update(`${parts[0]}.${parts[1]}`).digest();
+  let given;
+  try { given = Buffer.from(parts[2], 'base64url'); } catch (_) { return null; }
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
+  let payload;
+  try { payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')); } catch (_) { return null; }
+  const now = Math.floor(Date.now() / 1000);
+  if (!payload || payload.iss !== apiKey) return null;
+  if (typeof payload.exp === 'number' && payload.exp < now - 5) return null;
+  if (typeof payload.nbf === 'number' && payload.nbf > now + 60) return null;
+  return payload;
+}
+
+// porta de entrada do proxy: o ingresso vem na URL (?access_token=) ou no cabeçalho Authorization
+function gateRequest(req) {
+  let token = null;
+  try { token = new URL(req.url, 'http://localhost').searchParams.get('access_token'); } catch (_) { /* url torta */ }
+  if (!token) {
+    const auth = String(req.headers.authorization || '');
+    if (/^Bearer\s+/i.test(auth)) token = auth.replace(/^Bearer\s+/i, '').trim();
+  }
+  // pedidos sem ingresso (ex: a página inicial do LiveKit) não abrem sala nenhuma
+  if (!token) return { ok: true };
+  const payload = verifyToken(token);
+  if (!payload || !payload.video || !payload.video.room) return { ok: false, status: 401, why: 'ingresso inválido' };
+  if (!mediaAllowed(payload.sub, payload.video.room)) {
+    return { ok: false, status: 403, why: `${payload.sub} não está na call de ${payload.video.room}` };
+  }
+  return { ok: true };
+}
+
+// ------------------------------------------------------------------ tirar alguém da sala
+
+function adminToken(room) {
+  const { apiKey, apiSecret } = loadKeys();
+  const now = Math.floor(Date.now() / 1000);
+  const head = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const body = b64url(JSON.stringify({ iss: apiKey, nbf: now - 10, exp: now + 60, video: { room, roomAdmin: true } }));
+  const sig = crypto.createHmac('sha256', apiSecret).update(`${head}.${body}`).digest('base64url');
+  return `${head}.${body}.${sig}`;
+}
+
+// API do LiveKit (Twirp): POST /twirp/livekit.RoomService/RemoveParticipant. Não estar na sala
+// (404) é o caso normal de quem já saiu sozinho — não é erro.
+function removeParticipant(room, identity) {
+  if (!isReady()) return Promise.resolve(false);
+  const payload = JSON.stringify({ room, identity: String(identity) });
+  return new Promise((resolve) => {
+    const req = http.request({
+      host: '127.0.0.1', port: HTTP_PORT, method: 'POST',
+      path: '/twirp/livekit.RoomService/RemoveParticipant',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), Authorization: `Bearer ${adminToken(room)}` },
+      timeout: 5000,
+    }, (res) => {
+      res.resume();
+      if (res.statusCode === 200) log(`tirei ${identity} da sala ${room}`);
+      resolve(res.statusCode === 200);
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(payload);
+  });
+}
+
+// tira a pessoa E os auxiliares dela (tela, assistente) da sala do canal
+function kickUser(channelId, userId) {
+  const room = roomForChannel(channelId);
+  return Promise.all([String(userId), `tela-${userId}`, `ver-${userId}`].map((id) => removeParticipant(room, id)));
+}
+
 // ------------------------------------------------------------------ repasse /livekit -> 127.0.0.1
 
 const PREFIX = '/livekit';
@@ -234,6 +394,13 @@ const isProxyPath = (pathname) => pathname === PREFIX || pathname.startsWith(PRE
 // WebSocket da sinalização: repassa os bytes crus (o pedido de upgrade é reescrito sem o prefixo)
 function proxyUpgrade(req, socket, head) {
   if (!isReady()) { socket.destroy(); return; }
+  const gate = gateRequest(req);
+  if (!gate.ok) {
+    log(`entrada recusada na mídia: ${gate.why}`);
+    socket.end(`HTTP/1.1 ${gate.status} ${gate.status === 401 ? 'Unauthorized' : 'Forbidden'}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+    return;
+  }
+  socket.setTimeout(0); // sinalização fica aberta a call inteira
   const upstream = net.connect(HTTP_PORT, '127.0.0.1', () => {
     const target = req.url.slice(PREFIX.length) || '/';
     let raw = `${req.method} ${target.startsWith('/') ? target : '/' + target} HTTP/1.1\r\n`;
@@ -256,6 +423,10 @@ function proxyUpgrade(req, socket, head) {
 // pedidos HTTP comuns do cliente do LiveKit (ex: /rtc/validate, quando a conexão falha)
 function proxyHttp(req, res) {
   if (!isReady()) { res.status(503).json({ error: 'servidor de mídia fora do ar' }); return; }
+  // a API de administração do LiveKit (twirp) fica só pra este servidor, nunca pelo site
+  if (/^\/twirp(\/|$)/i.test(req.path || req.url)) { res.status(404).end(); return; }
+  const gate = gateRequest(req);
+  if (!gate.ok) { res.status(gate.status).json({ error: gate.why }); return; }
   const upstream = http.request({
     host: '127.0.0.1', port: HTTP_PORT, method: req.method, path: req.url,
     headers: { ...req.headers, host: `127.0.0.1:${HTTP_PORT}` },
@@ -269,5 +440,6 @@ function proxyHttp(req, res) {
 
 module.exports = {
   start, stop, isReady, createToken, roomForChannel, proxyUpgrade, proxyHttp, isProxyPath, PREFIX,
+  setVoiceLookup, openEntryWindow, onLeftCall, kickUser, mediaAllowed, verifyToken, TOKEN_TTL_SEC,
   ports: { http: HTTP_PORT, tcp: TCP_PORT, udp: UDP_PORT },
 };

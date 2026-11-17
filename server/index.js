@@ -42,6 +42,21 @@ app.set('trust proxy', 'loopback');
 // gerado uma vez e fixado aqui; se você mudar isso, todo mundo é deslogado
 const SESSION_SECRET = process.env.SESSION_SECRET || 'troque-essa-chave-antes-de-expor-o-site-na-internet';
 
+// server.requestTimeout fica desligado (lá embaixo) por causa dos anexos grandes, que têm prazo
+// próprio em routes/messages.js. Todo o resto precisa terminar de mandar o corpo do pedido em
+// 5 min — senão uma conexão que manda 1 byte por vez ficaria pendurada pra sempre.
+const BODY_DEADLINE_MS = 5 * 60 * 1000;
+const ATTACHMENT_PATH = /^\/api\/channels\/\d+\/messages\/attachment\/?$/;
+app.use((req, res, next) => {
+  if (req.complete || ATTACHMENT_PATH.test(req.path)) return next();
+  const timer = setTimeout(() => { if (!req.complete) req.socket.destroy(); }, BODY_DEADLINE_MS);
+  timer.unref();
+  const done = () => clearTimeout(timer);
+  req.once('end', done);
+  req.once('close', done);
+  next();
+});
+
 // sinalização do servidor de mídia (LiveKit) pelo mesmo endereço do site — antes do express.json,
 // pra o corpo do pedido chegar intacto lá. Só responde quando SFU=livekit está ligado e de pé.
 app.use(sfu.PREFIX, sfu.proxyHttp);
@@ -96,6 +111,7 @@ app.get('/invite/:code', (req, res) => {
 // do navegador — sem isso, a pessoa baixaria 24 MB de novo toda vez que entrasse numa call.
 const DECOR_MEDIA_DIR = path.join(__dirname, '..', 'public', 'decor', 'media') + path.sep;
 const VENDOR_DIR = path.join(__dirname, '..', 'public', 'vendor') + path.sep;
+app.use(require('./routes/uploads'));
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.startsWith(DECOR_MEDIA_DIR)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -107,6 +123,24 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
 // app desktop: /baixar, /downloads/*, /api/downloads (público, sem login)
 app.use(downloadRoutes);
 app.use(versionRoutes); // /api/version (público)
+
+// frequência por conta (ou por IP, sem login) — ver server/limits.js. Mensagens e anexos têm os
+// limites deles em routes/messages.js. Os números são folgados pro uso normal: só pega abuso.
+const { perUser } = require('./limits');
+const HOUR = 60 * 60 * 1000;
+app.use('/api', perUser('api', 900, 60 * 1000, 'muitos pedidos seguidos — espera um minuto'));
+app.post('/api/servers', perUser('server-create', 10, HOUR, 'você criou servidores demais em pouco tempo'));
+app.post('/api/servers/:serverId/invites', perUser('invite-create', 40, HOUR, 'muitos convites criados — espera um pouco'));
+app.post('/api/invites/:code/accept', perUser('invite-accept', 20, 10 * 60 * 1000, 'muitas tentativas de convite — espera uns minutos'));
+app.get('/api/invites/:code', perUser('invite-peek', 60, 10 * 60 * 1000, 'muitas tentativas de convite — espera uns minutos'));
+app.post('/api/dms', perUser('dm-create', 30, 10 * 60 * 1000));
+app.get('/api/embed', perUser('embed', 120, 60 * 1000));
+app.get('/api/giphy/search', perUser('giphy', 60, 60 * 1000));
+app.get('/api/musicbot/search', perUser('music-search', 40, 60 * 1000, 'muitas buscas seguidas — espera um pouco'));
+app.use('/api/soundboard', perUser('soundboard', 60, 10 * 60 * 1000));
+app.use('/api/servers/:serverId/soundboard', perUser('soundboard', 60, 10 * 60 * 1000));
+app.use('/api/profile', (req, res, next) => (req.method === 'GET' ? next() : perUser('profile', 60, 10 * 60 * 1000)(req, res, next)));
+app.get('/api/rtc/sfu', perUser('rtc-sfu', 60, 60 * 1000));
 
 // rotas de autenticação (registro, login, logout, /me)
 app.use('/api/auth', authRoutes);
@@ -132,6 +166,10 @@ app.use('/api/embed', embedRoutes);
 
 const server = http.createServer(app);
 realtime.init(server); // liga o WebSocket em /ws no mesmo servidor HTTP
+// amarra a sala do LiveKit à call do site: só entra na mídia quem está na call, e sair da call
+// (por vontade própria, expulsão, perda de permissão ou suspensão) tira da sala na hora
+sfu.setVoiceLookup(realtime.voiceChannelOf);
+realtime.onVoiceLeave(sfu.onLeftCall);
 // os outros upgrades: /livekit vai pro servidor de mídia; qualquer outra coisa é recusada
 server.on('upgrade', (req, socket, head) => {
   let pathname = '';
@@ -142,11 +180,12 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 // o Node (18+) mata qualquer request que passe de 5min por padrão (server.requestTimeout).
-// isso é curto demais pra upload de anexo de até 2GB numa conexão mais lenta — desativado aqui
-// (0 = sem limite). headersTimeout continua com um teto baixo (só os HEADERS da request, não
-// o corpo/arquivo), então isso não abre brecha pra conexões penduradas sem nunca mandar nada.
+// isso é curto demais pra anexo grande numa conexão lenta — desativado aqui (0 = sem limite), e
+// no lugar dele: prazo de 5 min pro corpo dos pedidos comuns (middleware no topo deste arquivo) e,
+// nos anexos, 60 s sem chegar nada ou 30 min no total (routes/messages.js). headersTimeout continua
+// com um teto baixo (só os HEADERS da request).
 server.requestTimeout = 0;
-server.headersTimeout = 60000;
+server.headersTimeout = 30000;
 
 server.listen(PORT, () => {
   console.log(`dusky rodando em http://localhost:${PORT}`);

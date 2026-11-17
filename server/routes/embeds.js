@@ -2,8 +2,7 @@
 // imagem e (pra YouTube) o id do vídeo. Buscar daqui (e não do navegador) evita bloqueio de CORS e
 // deixa guardar em cache — o mesmo link mandado por várias pessoas só é buscado uma vez.
 const express = require('express');
-const dns = require('dns').promises;
-const net = require('net');
+const { safeFetch } = require('../publicFetch');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -27,45 +26,6 @@ function cacheGet(url) {
 function cacheSet(url, data) {
   cache.set(url, { at: Date.now(), data });
   if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
-}
-
-// não deixa o servidor ser usado pra espiar a rede de casa (roteador, localhost, etc.)
-function isPrivateIp(ip) {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
-      || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-  }
-  const v = ip.toLowerCase();
-  if (v.startsWith('::ffff:')) return isPrivateIp(v.slice(7));
-  return v === '::1' || v === '::' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe80');
-}
-
-async function assertPublicUrl(url) {
-  const u = new URL(url);
-  if (!['http:', 'https:'].includes(u.protocol)) throw new Error('protocolo não suportado');
-  const host = u.hostname.replace(/^\[|\]$/g, '');
-  const addrs = net.isIP(host) ? [{ address: host }] : await dns.lookup(host, { all: true });
-  if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) throw new Error('endereço não permitido');
-}
-
-// fetch seguindo no máximo 4 redirecionamentos, conferindo cada destino
-async function safeFetch(url, opts = {}) {
-  let current = url;
-  for (let i = 0; i < 5; i++) {
-    await assertPublicUrl(current);
-    const res = await fetch(current, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8', ...(opts.headers || {}) },
-    });
-    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
-      current = new URL(res.headers.get('location'), current).href;
-      continue;
-    }
-    return { res, finalUrl: current };
-  }
-  throw new Error('redirecionamentos demais');
 }
 
 async function readLimited(res, max) {

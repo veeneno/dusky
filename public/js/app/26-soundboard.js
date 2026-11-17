@@ -71,14 +71,40 @@ async function playSoundUrl(url, gain) {
   } catch (_) { return null; }
 }
 
+// Fontes por participante: silenciar interrompe também o som que já está tocando.
+const participantSoundboardSources = new Map();
+function stopParticipantSoundboard(userId) {
+  const sources = participantSoundboardSources.get(userId);
+  if (!sources) return;
+  for (const src of sources) { try { src.stop(); } catch (_) { /* já terminou */ } }
+  participantSoundboardSources.delete(userId);
+}
+
+function canHearParticipantSoundboard(userId) {
+  const o = getLocalOverride(userId);
+  return !isDeafened && !o.soundboardMuted
+    && !(currentUser && userId !== currentUser.id && o.mutedLocal);
+}
+
 // alguém (talvez eu) tocou um som na minha call
-function handleSoundboardPlay({ userId, sound }) {
+async function handleSoundboardPlay({ userId, sound }) {
   if (!sound || !voiceChannel) return;
   showSoundboardBurst(userId, sound);
-  if (isDeafened) return;
-  // silenciei essa pessoa só pra mim: os sons dela também ficam quietos (igual ao Discord)
-  if (currentUser && userId !== currentUser.id && getLocalOverride(userId).mutedLocal) return;
-  playSoundUrl(sound.url, (sound.volume || 1) * getSoundboardVolume() / 100);
+  if (!canHearParticipantSoundboard(userId)) return;
+  const channel = voiceChannel;
+  try {
+    const buffer = await loadSoundBuffer(sound.url);
+    // O download pode terminar depois de silenciar a pessoa ou sair/trocar de call.
+    if (voiceChannel !== channel || !canHearParticipantSoundboard(userId)) return;
+    const src = playAudioBuffer(buffer, (sound.volume || 1) * getSoundboardVolume() / 100);
+    let sources = participantSoundboardSources.get(userId);
+    if (!sources) participantSoundboardSources.set(userId, sources = new Set());
+    sources.add(src);
+    src.onended = () => {
+      sources.delete(src);
+      if (!sources.size && participantSoundboardSources.get(userId) === sources) participantSoundboardSources.delete(userId);
+    };
+  } catch (_) { /* som indisponível: não interrompe a call */ }
 }
 
 // emoji subindo em cima de quem tocou (na tela da call)
