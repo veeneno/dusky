@@ -5,33 +5,38 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="dusky">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="theme-color" content="#16141f">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e1f22">
-  <script src="/js/compat.js?v=62"></script>
-  <script src="/js/themes.js?v=62"></script>
+  <script src="/js/compat.js?v=63"></script>
+  <script src="/js/themes.js?v=63"></script>
   <script src="/js/theme-boot.js"></script>
   <title>concord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/theme.css?v=62">
-  <link rel="stylesheet" href="/css/app.css?v=62">
-  <link rel="stylesheet" href="/css/chat.css?v=62">
-  <link rel="stylesheet" href="/css/members.css?v=62">
-  <link rel="stylesheet" href="/css/profile.css?v=62">
-  <link rel="stylesheet" href="/css/voice.css?v=62">
-  <link rel="stylesheet" href="/css/settings.css?v=62">
-  <link rel="stylesheet" href="/css/servers.css?v=62">
-  <link rel="stylesheet" href="/css/call-roles.css?v=62">
-  <link rel="stylesheet" href="/css/chat-extras.css?v=62">
-  <link rel="stylesheet" href="/css/design.css?v=62">
-  <link rel="stylesheet" href="/css/media.css?v=62">
-  <link rel="stylesheet" href="/css/server-options.css?v=62">
-  <link rel="stylesheet" href="/css/server-settings.css?v=62">
-  <link rel="stylesheet" href="/css/world.css?v=62">
-  <link rel="stylesheet" href="/css/mobile.css?v=62">
-  <link rel="stylesheet" href="/css/sidebar-dc.css?v=62">
-  <link rel="stylesheet" href="/css/reports.css?v=62">
+  <link rel="stylesheet" href="/css/theme.css?v=63">
+  <link rel="stylesheet" href="/css/app.css?v=63">
+  <link rel="stylesheet" href="/css/chat.css?v=63">
+  <link rel="stylesheet" href="/css/members.css?v=63">
+  <link rel="stylesheet" href="/css/profile.css?v=63">
+  <link rel="stylesheet" href="/css/voice.css?v=63">
+  <link rel="stylesheet" href="/css/settings.css?v=63">
+  <link rel="stylesheet" href="/css/servers.css?v=63">
+  <link rel="stylesheet" href="/css/call-roles.css?v=63">
+  <link rel="stylesheet" href="/css/chat-extras.css?v=63">
+  <link rel="stylesheet" href="/css/design.css?v=63">
+  <link rel="stylesheet" href="/css/media.css?v=63">
+  <link rel="stylesheet" href="/css/server-options.css?v=63">
+  <link rel="stylesheet" href="/css/server-settings.css?v=63">
+  <link rel="stylesheet" href="/css/world.css?v=63">
+  <link rel="stylesheet" href="/css/mobile.css?v=63">
+  <link rel="stylesheet" href="/css/sidebar-dc.css?v=63">
+  <link rel="stylesheet" href="/css/reports.css?v=63">
 </head>
 <body>
   <div class="app-shell">
@@ -1350,6 +1355,7 @@
           <p class="settings-lead">O app pro computador compartilha a tela pela placa de vídeo, pega o som de um app só, avisa quando te chamam e se atualiza sozinho.</p>
           <div class="settings-row">
             <a class="btn btn-primary" href="/baixar" target="_blank" rel="noopener" id="settingsDownloadBtn">página de download</a>
+            <button type="button" class="btn btn-primary" id="settingsInstallPwaBtn" hidden>instalar no celular</button>
             <button type="button" class="btn btn-ghost" id="settingsCheckUpdatesBtn" hidden>procurar atualização</button>
             <button type="button" class="btn btn-ghost" id="settingsOpenLogsBtn" hidden title="abre a pasta com o dusky.log — mande esse arquivo quando algo der errado">abrir pasta do log</button>
           </div>
@@ -1397,45 +1403,45 @@
     </div>
   </div>
 
-  <script src="/js/realtime.js?v=62"></script>
-  <script src="/js/markdown.js?v=62"></script>
-  <script src="/js/emoji.js?v=62"></script>
+  <script src="/js/realtime.js?v=63"></script>
+  <script src="/js/markdown.js?v=63"></script>
+  <script src="/js/emoji.js?v=63"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=62"></script>
-  <script src="/js/app/02-preferences.js?v=62"></script>
-  <script src="/js/app/03-context-menus.js?v=62"></script>
-  <script src="/js/app/04-sidebar.js?v=62"></script>
-  <script src="/js/app/05-chat.js?v=62"></script>
-  <script src="/js/app/06-message-content.js?v=62"></script>
-  <script src="/js/app/07-composer.js?v=62"></script>
-  <script src="/js/app/08-notifications.js?v=62"></script>
-  <script src="/js/app/09-panels-attachments.js?v=62"></script>
-  <script src="/js/app/10-video-player.js?v=62"></script>
-  <script src="/js/app/11-slash-commands.js?v=62"></script>
-  <script src="/decor/catalog.js?v=62"></script>
-  <script src="/js/decor-catalog.js?v=62"></script>
-  <script src="/js/decor-picker.js?v=62"></script>
-  <script src="/js/app/12-members-profile.js?v=62"></script>
-  <script src="/js/app/13-servers.js?v=62"></script>
-  <script src="/js/app/14-roles.js?v=62"></script>
-  <script src="/js/app/15-media-viewer.js?v=62"></script>
-  <script src="/js/app/16-site-admin.js?v=62"></script>
-  <script src="/js/app/17-settings.js?v=62"></script>
-  <script src="/js/app/18-call-audio.js?v=62"></script>
-  <script src="/js/app/19-call-ui.js?v=62"></script>
-  <script src="/js/app/20-screencast-native.js?v=62"></script>
-  <script src="/js/app/21-call-sfu.js?v=62"></script>
-  <script src="/js/app/22-call-mesh.js?v=62"></script>
-  <script src="/js/app/23-call-media.js?v=62"></script>
-  <script src="/js/app/24-presence.js?v=62"></script>
-  <script src="/js/app/25-server-settings.js?v=62"></script>
-  <script src="/js/app/26-soundboard.js?v=62"></script>
-  <script src="/js/app/27-world.js?v=62"></script>
-  <script src="/js/app/28-realtime.js?v=62"></script>
-  <script src="/js/app/29-mobile.js?v=62"></script>
-  <script src="/js/app/30-shortcuts.js?v=62"></script>
-  <script src="/js/app/31-account-security.js?v=62"></script>
-  <script src="/js/app/32-reports.js?v=62"></script>
-  <script src="/js/app/33-performance.js?v=62"></script>
+  <script src="/js/app/01-state.js?v=63"></script>
+  <script src="/js/app/02-preferences.js?v=63"></script>
+  <script src="/js/app/03-context-menus.js?v=63"></script>
+  <script src="/js/app/04-sidebar.js?v=63"></script>
+  <script src="/js/app/05-chat.js?v=63"></script>
+  <script src="/js/app/06-message-content.js?v=63"></script>
+  <script src="/js/app/07-composer.js?v=63"></script>
+  <script src="/js/app/08-notifications.js?v=63"></script>
+  <script src="/js/app/09-panels-attachments.js?v=63"></script>
+  <script src="/js/app/10-video-player.js?v=63"></script>
+  <script src="/js/app/11-slash-commands.js?v=63"></script>
+  <script src="/decor/catalog.js?v=63"></script>
+  <script src="/js/decor-catalog.js?v=63"></script>
+  <script src="/js/decor-picker.js?v=63"></script>
+  <script src="/js/app/12-members-profile.js?v=63"></script>
+  <script src="/js/app/13-servers.js?v=63"></script>
+  <script src="/js/app/14-roles.js?v=63"></script>
+  <script src="/js/app/15-media-viewer.js?v=63"></script>
+  <script src="/js/app/16-site-admin.js?v=63"></script>
+  <script src="/js/app/17-settings.js?v=63"></script>
+  <script src="/js/app/18-call-audio.js?v=63"></script>
+  <script src="/js/app/19-call-ui.js?v=63"></script>
+  <script src="/js/app/20-screencast-native.js?v=63"></script>
+  <script src="/js/app/21-call-sfu.js?v=63"></script>
+  <script src="/js/app/22-call-mesh.js?v=63"></script>
+  <script src="/js/app/23-call-media.js?v=63"></script>
+  <script src="/js/app/24-presence.js?v=63"></script>
+  <script src="/js/app/25-server-settings.js?v=63"></script>
+  <script src="/js/app/26-soundboard.js?v=63"></script>
+  <script src="/js/app/27-world.js?v=63"></script>
+  <script src="/js/app/28-realtime.js?v=63"></script>
+  <script src="/js/app/29-mobile.js?v=63"></script>
+  <script src="/js/app/30-shortcuts.js?v=63"></script>
+  <script src="/js/app/31-account-security.js?v=63"></script>
+  <script src="/js/app/32-reports.js?v=63"></script>
+  <script src="/js/app/33-performance.js?v=63"></script>
 </body>
 </html>

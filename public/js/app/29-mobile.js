@@ -141,3 +141,84 @@ new MutationObserver(() => {
   mobileBadgeQueued = true;
   requestAnimationFrame(updateMobileNavBadge);
 }).observe(document.querySelector('.app-shell'), { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden'] });
+
+// ---------- instalar como app (PWA) ----------
+// No celular o dusky pode ser instalado na tela inicial (public/manifest.webmanifest): abre em tela
+// cheia, com ícone, e as notificações push chegam com ele fechado (Android; iPhone com iOS 16.4+,
+// só depois de instalado). Android/Chrome avisa que dá pra instalar (beforeinstallprompt) e o botão
+// abre a janela de instalar do próprio navegador. No iPhone não existe esse aviso: o botão explica
+// o caminho no Safari (Compartilhar → Adicionar à Tela de Início).
+// Aparece em configurações → app e versão, e num aviso único no primeiro acesso pelo celular.
+
+const PWA_HINT_KEY = 'dusky:pwaHintShown';
+const pwaIsIos = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const pwaIsPhone = () => mobileMq.matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+let pwaInstallEvent = null;
+
+function pwaInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+function pwaCanOffer() {
+  return !window.duskyDesktop && !pwaInstalled() && pwaIsPhone() && (!!pwaInstallEvent || pwaIsIos);
+}
+function updatePwaInstallUi() {
+  const btn = document.getElementById('settingsInstallPwaBtn');
+  if (!btn) return;
+  const offer = pwaCanOffer();
+  btn.hidden = !offer;
+  // no celular o app pro computador não serve: o botão de instalar toma o lugar
+  if (offer) document.getElementById('settingsDownloadBtn').hidden = true;
+}
+async function installPwa() {
+  if (pwaInstallEvent) {
+    const ev = pwaInstallEvent;
+    pwaInstallEvent = null;
+    ev.prompt();
+    try { await ev.userChoice; } catch (_) { /* fechou a janela */ }
+    updatePwaInstallUi();
+    return;
+  }
+  if (pwaIsIos) {
+    toast('No Safari: toque em Compartilhar (o quadrado com a seta) e depois em "Adicionar à Tela de Início".');
+  }
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault(); // sem a barrinha automática do Chrome: quem oferece é o botão/aviso do dusky
+  pwaInstallEvent = e;
+  updatePwaInstallUi();
+  maybeShowPwaHint();
+});
+window.addEventListener('appinstalled', () => {
+  pwaInstallEvent = null;
+  updatePwaInstallUi();
+  toast('dusky instalado na tela inicial');
+});
+document.getElementById('settingsInstallPwaBtn').addEventListener('click', installPwa);
+
+// aviso único: um toast com o botão de instalar, uns segundos depois de abrir
+function maybeShowPwaHint() {
+  if (!pwaCanOffer()) return;
+  try { if (localStorage.getItem(PWA_HINT_KEY)) return; localStorage.setItem(PWA_HINT_KEY, '1'); } catch (_) { return; }
+  setTimeout(() => {
+    if (!pwaCanOffer()) return;
+    const el = document.createElement('div');
+    el.className = 'toast pwa-hint';
+    el.innerHTML = '<span>Instale o dusky na tela inicial: abre como app e avisa de mensagem mesmo fechado.</span>';
+    const yes = document.createElement('button');
+    yes.type = 'button';
+    yes.className = 'btn btn-primary btn-sm';
+    yes.textContent = 'instalar';
+    const no = document.createElement('button');
+    no.type = 'button';
+    no.className = 'btn btn-ghost btn-sm';
+    no.textContent = 'agora não';
+    const close = () => { el.classList.add('is-leaving'); setTimeout(() => el.remove(), 250); };
+    yes.addEventListener('click', () => { close(); installPwa(); });
+    no.addEventListener('click', close);
+    el.append(yes, no);
+    toastHost.appendChild(el);
+    setTimeout(close, 15000);
+  }, 4000);
+}
+if (pwaIsIos) maybeShowPwaHint();

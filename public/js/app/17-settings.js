@@ -429,6 +429,7 @@ function renderSettingsAppCard() {
   checkBtn.hidden = !(desk && typeof desk.checkForUpdates === 'function');
   document.getElementById('settingsOpenLogsBtn').hidden = !(desk && typeof desk.openLogs === 'function');
   document.getElementById('settingsDownloadBtn').textContent = desk ? 'página de download' : 'baixar o app';
+  updatePwaInstallUi(); // celular: "instalar no celular" (29-mobile.js)
   // aceleração de hardware: só o app novo (Tauri) sabe mudar
   const hwRow = document.getElementById('settingsHwAccelRow');
   const canHw = !!(desk && typeof desk.setHardwareAcceleration === 'function');
