@@ -11,6 +11,7 @@ mod call;
 mod deps;
 mod downloads;
 mod drops;
+mod perf;
 mod picker;
 mod presence;
 mod screencast;

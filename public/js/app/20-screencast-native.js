@@ -100,16 +100,37 @@ function resyncNativeViewer(userId, why) {
 // servidor distribui. Se não der (app antigo, servidor de mídia fora), vale o jeito de sempre: uma
 // conexão direta do auxiliar com cada pessoa (syncNativeViewer).
 
-async function publishNativeToSfu() {
+// IMPORTANTE: quem assiste pelo app do Linux (WebKitGTK, SEM WebRTC) só enxerga a tela que está no
+// servidor de mídia — a conexão direta do auxiliar (sc-offer) não tem como ser atendida lá. Antes,
+// se o servidor de mídia não estivesse pronto NA HORA de começar a compartilhar (call ainda
+// conectando/reconectando) ou desse um erro passageiro ao publicar, a tela ia direto pra cada
+// pessoa e NUNCA mais tentava o servidor: pro Linux, a tela simplesmente não aparecia ("às vezes").
+// Agora: tenta de novo quando o servidor de mídia (re)conecta (sfuSyncScreen), de tempos em tempos
+// enquanto estiver no modo direto, e na hora em que alguém sem WebRTC avisa (sc-need-sfu).
+let nativeSfuPublishing = null;
+function publishNativeToSfu() {
+  if (!nativeSfuPublishing) {
+    nativeSfuPublishing = publishNativeToSfuNow().finally(() => { nativeSfuPublishing = null; });
+  }
+  return nativeSfuPublishing;
+}
+
+async function publishNativeToSfuNow() {
   const api = nativeApi();
   const share = nativeScreencast;
   if (!api || !share || !share.sfuCapable || !sfu || !voiceChannel) return false;
+  share.lastSfuTry = Date.now();
   try {
     const res = await fetch(`/api/rtc/sfu?channelId=${voiceChannel.id}&screen=1`);
     const info = res.ok ? await res.json() : null;
     if (!info || !info.enabled || nativeScreencast !== share) return false;
     share.viaSfu = true;
+    clearTimeout(nativeMeshRetryTimer);
     api.command({ cmd: 'publish', path: info.path, token: info.token, width: share.width, height: share.height });
+    // estava indo direto pra cada pessoa: agora quem distribui é o servidor
+    for (const id of share.viewers) api.command({ cmd: 'remove', viewer: String(id) });
+    share.viewers.clear();
+    updateNativeScreencastBadge();
     return true;
   } catch (_) {
     return false;
@@ -117,6 +138,7 @@ async function publishNativeToSfu() {
 }
 
 // não deu pelo servidor de mídia: liga o auxiliar direto em cada pessoa que está assistindo
+// (e continua tentando voltar pro servidor — quem está no app do Linux só vê por lá)
 function fallbackNativeToViewers(why) {
   if (!nativeScreencast || !nativeScreencast.viaSfu) return;
   console.warn('[screencast] tela pelo servidor de mídia indisponível, indo direto pra cada pessoa:', why);
@@ -124,6 +146,25 @@ function fallbackNativeToViewers(why) {
   const api = nativeApi();
   if (api) api.command({ cmd: 'unpublish' });
   for (const peer of peers.values()) applyScreenSendersToPeer(peer);
+  retryNativeSfuFromMesh();
+}
+
+// no modo direto: tenta voltar pro servidor de mídia com espera crescente (5 s, 10 s, 20 s… até 30 s)
+let nativeMeshRetryTimer = null;
+function retryNativeSfuFromMesh() {
+  clearTimeout(nativeMeshRetryTimer);
+  const share = nativeScreencast;
+  if (!share || !share.sfuCapable || share.viaSfu) return;
+  share.meshRetryMs = Math.min((share.meshRetryMs || 2500) * 2, 30000);
+  nativeMeshRetryTimer = setTimeout(async () => {
+    if (nativeScreencast !== share || share.viaSfu) return;
+    if (!(await publishNativeToSfu())) retryNativeSfuFromMesh();
+  }, share.meshRetryMs);
+}
+
+// o servidor de mídia (re)conectou (chamado pelo sfuSyncScreen): se a tela está indo direto, sobe pra ele
+function ensureNativeOnSfu() {
+  if (nativeScreencast && nativeScreencast.sfuCapable && !nativeScreencast.viaSfu && sfu) publishNativeToSfu();
 }
 
 let nativeSfuRetryTimer = null;
@@ -139,7 +180,16 @@ function retryNativeSfuPublish() {
 // eventos do auxiliar (ofertas pra cada pessoa, estatísticas, fim)
 function handleNativeScreencastEvent(ev) {
   if (!ev || !nativeScreencast) return;
-  if (ev.ev === 'published') { console.log('[screencast] tela publicada no servidor de mídia'); return; }
+  if (ev.ev === 'published') {
+    console.log('[screencast] tela publicada no servidor de mídia');
+    nativeScreencast.meshRetryMs = 0;
+    return;
+  }
+  if (ev.ev === 'restarting') {
+    // a captura caiu (jogo entrando/saindo de tela cheia exclusiva…) e o auxiliar está subindo de novo
+    console.warn('[screencast] captura reiniciando:', ev.reason, `(tentativa ${ev.attempt})`);
+    return;
+  }
   if (ev.ev === 'sfu') {
     // caiu de vez: pede pra publicar de novo (com ingresso novo) até voltar
     if (ev.state === 'disconnected' && nativeScreencast.viaSfu) retryNativeSfuPublish();
@@ -235,8 +285,9 @@ async function startNativeScreenShare({ fps, width, height, wantAudio }) {
   screenOn = true;
   setScreenButtonsLive(true);
   for (const peer of peers.values()) peer.wantsMyScreen = true;
-  // call no servidor de mídia: a tela sai uma vez só, por ele (senão, direto pra cada pessoa)
-  await publishNativeToSfu();
+  // call no servidor de mídia: a tela sai uma vez só, por ele (senão, direto pra cada pessoa — e
+  // continua tentando o servidor, que é o único jeito de quem está no app do Linux ver)
+  if (!(await publishNativeToSfu())) retryNativeSfuFromMesh();
 
   // o som da tela vai pelo caminho de sempre (o main.js já preparou a captura pra fonte escolhida)
   localScreenAudioTrack = null;
@@ -269,6 +320,12 @@ async function handleScreencastSignal(from, data) {
   const peer = peers.get(from);
   if (data.kind === 'sc-offer') {
     if (!peer) return; // não estou na call com essa pessoa
+    // app do Linux (WebKitGTK): não tem WebRTC, não dá pra atender a conexão direta. Avisa quem
+    // compartilha pra mandar a tela pelo servidor de mídia (é por lá que eu assisto)
+    if (typeof RTCPeerConnection === 'undefined') {
+      Realtime.send('rtc_signal', { to: from, data: { kind: 'sc-need-sfu' } });
+      return;
+    }
     closeScreencastPc(peer);
     const pc = new RTCPeerConnection({ iceServers });
     peer.scPc = pc;
@@ -301,6 +358,13 @@ async function handleScreencastSignal(from, data) {
     else await peer.scPc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
   } else if (data.kind === 'sc-retry') {
     resyncNativeViewer(from, 'quem assiste pediu');
+  } else if (data.kind === 'sc-need-sfu') {
+    // quem assiste não tem WebRTC (app do Linux): só vê pelo servidor de mídia — tenta já (no máximo
+    // a cada 5 s: se o servidor estiver recusando, quem cuida é o retryNativeSfuFromMesh)
+    if (nativeScreencast && !nativeScreencast.viaSfu && Date.now() - (nativeScreencast.lastSfuTry || 0) > 5000) {
+      console.warn('[screencast]', from, 'só assiste pelo servidor de mídia — tentando publicar lá');
+      publishNativeToSfu();
+    }
   } else if (data.kind === 'sc-answer' || data.kind === 'sc-cand-v') {
     // eu sou quem compartilha: repassa pro auxiliar
     const api = nativeApi();

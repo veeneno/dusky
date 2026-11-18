@@ -1,6 +1,6 @@
 [package]
 name = "dusky"
-version = "1.0.7"
+version = "1.0.8"
 license = "AGPL-3.0-or-later"
 description = "App desktop do dusky (Tauri / Rust) — versão 1.0, codinome Mist"
 authors = ["veneno"]
@@ -48,7 +48,8 @@ jpeg-encoder = { version = "0.7", features = ["simd"] }
 [target.'cfg(windows)'.dependencies]
 xcap = "0.9"
 # "jogando X": lista os programas abertos (com o caminho completo) sem abrir PowerShell
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
+# + aba "desempenho" (perf.rs): tempo de CPU, memória e os contadores de GPU do sistema (PDH)
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Performance"] }
 # "Salvar como" dos downloads (downloads.rs) — o mesmo rfd que o tauri-plugin-dialog já usa
 rfd = { version = "0.17", default-features = false, features = ["common-controls-v6"] }
 

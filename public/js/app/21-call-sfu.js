@@ -183,6 +183,9 @@ function sfuSetTrack(kind, track) {
 // a tela pelo navegador vai pelo SFU; pela placa de vídeo o VÍDEO sai pelo auxiliar e só o som vai por aqui
 function sfuSyncScreen() {
   if (!sfu) return Promise.resolve();
+  // tela pela placa de vídeo que ficou indo direto pra cada pessoa (o servidor de mídia não estava
+  // pronto quando ela começou, ou caiu): agora que ele está aqui, ela passa a ir por ele
+  ensureNativeOnSfu();
   const video = screenOn && !nativeScreencast && localScreenStream ? (localScreenStream.getVideoTracks()[0] || null) : null;
   const audio = screenOn ? (localScreenAudioTrack || (localScreenStream && localScreenStream.getAudioTracks()[0]) || null) : null;
   return Promise.all([sfuSetTrack('screen', video), sfuSetTrack('screenAudio', audio)]);

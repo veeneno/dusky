@@ -8,6 +8,7 @@ const COMMANDS: &[&str] = &[
     "update_check",
     "app_set_hardware_acceleration",
     "app_open_logs",
+    "perf_snapshot",
     "drop_files",
     "drop_read",
     "presence_configure",

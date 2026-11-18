@@ -8,29 +8,29 @@
   <meta name="theme-color" content="#16141f">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e1f22">
-  <script src="/js/compat.js?v=57"></script>
-  <script src="/js/themes.js?v=57"></script>
+  <script src="/js/compat.js?v=58"></script>
+  <script src="/js/themes.js?v=58"></script>
   <script src="/js/theme-boot.js"></script>
   <title>concord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/theme.css?v=57">
-  <link rel="stylesheet" href="/css/app.css?v=57">
-  <link rel="stylesheet" href="/css/chat.css?v=57">
-  <link rel="stylesheet" href="/css/members.css?v=57">
-  <link rel="stylesheet" href="/css/profile.css?v=57">
-  <link rel="stylesheet" href="/css/voice.css?v=57">
-  <link rel="stylesheet" href="/css/settings.css?v=57">
-  <link rel="stylesheet" href="/css/servers.css?v=57">
-  <link rel="stylesheet" href="/css/call-roles.css?v=57">
-  <link rel="stylesheet" href="/css/chat-extras.css?v=57">
-  <link rel="stylesheet" href="/css/design.css?v=57">
-  <link rel="stylesheet" href="/css/media.css?v=57">
-  <link rel="stylesheet" href="/css/server-options.css?v=57">
-  <link rel="stylesheet" href="/css/server-settings.css?v=57">
-  <link rel="stylesheet" href="/css/world.css?v=57">
-  <link rel="stylesheet" href="/css/mobile.css?v=57">
-  <link rel="stylesheet" href="/css/sidebar-dc.css?v=57">
+  <link rel="stylesheet" href="/css/theme.css?v=58">
+  <link rel="stylesheet" href="/css/app.css?v=58">
+  <link rel="stylesheet" href="/css/chat.css?v=58">
+  <link rel="stylesheet" href="/css/members.css?v=58">
+  <link rel="stylesheet" href="/css/profile.css?v=58">
+  <link rel="stylesheet" href="/css/voice.css?v=58">
+  <link rel="stylesheet" href="/css/settings.css?v=58">
+  <link rel="stylesheet" href="/css/servers.css?v=58">
+  <link rel="stylesheet" href="/css/call-roles.css?v=58">
+  <link rel="stylesheet" href="/css/chat-extras.css?v=58">
+  <link rel="stylesheet" href="/css/design.css?v=58">
+  <link rel="stylesheet" href="/css/media.css?v=58">
+  <link rel="stylesheet" href="/css/server-options.css?v=58">
+  <link rel="stylesheet" href="/css/server-settings.css?v=58">
+  <link rel="stylesheet" href="/css/world.css?v=58">
+  <link rel="stylesheet" href="/css/mobile.css?v=58">
+  <link rel="stylesheet" href="/css/sidebar-dc.css?v=58">
   <link rel="stylesheet" href="/css/reports.css?v=1">
 </head>
 <body>
@@ -1024,6 +1024,7 @@
           <div class="settings-nav-sep"></div>
           <div class="settings-nav-group">dusky</div>
           <button type="button" class="settings-tab" data-settings-tab="app">app e versão</button>
+          <button type="button" class="settings-tab" data-settings-tab="desempenho" hidden>desempenho</button>
           <div class="settings-nav-sep"></div>
           <button type="button" class="settings-tab is-danger" data-settings-action="logout">sair da conta</button>
         </div>
@@ -1358,6 +1359,19 @@
           <div id="presenceSettings"></div>
         </section>
 
+        <section class="settings-tab-panel" data-settings-panel="desempenho" hidden>
+          <h2 class="settings-title">desempenho</h2>
+          <p class="settings-lead">Quanto cada parte do app está usando agora de processador, memória e placa de vídeo. Atualiza a cada 2 segundos enquanto esta aba estiver aberta.</p>
+          <div class="perf-summary" id="perfSummary"></div>
+          <div class="perf-table-wrap">
+            <table class="perf-table">
+              <thead><tr><th scope="col">processo</th><th scope="col">CPU</th><th scope="col">RAM</th><th scope="col">GPU</th><th scope="col">VRAM</th></tr></thead>
+              <tbody id="perfTableBody"><tr><td colspan="5" class="perf-empty">medindo…</td></tr></tbody>
+            </table>
+          </div>
+          <p class="settings-section-help perf-foot" id="perfFoot"></p>
+        </section>
+
           <div class="field-error" id="settingsError"></div>
         </div>
       </div>
@@ -1369,44 +1383,45 @@
     </div>
   </div>
 
-  <script src="/js/realtime.js?v=57"></script>
-  <script src="/js/markdown.js?v=57"></script>
-  <script src="/js/emoji.js?v=57"></script>
+  <script src="/js/realtime.js?v=58"></script>
+  <script src="/js/markdown.js?v=58"></script>
+  <script src="/js/emoji.js?v=58"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=57"></script>
-  <script src="/js/app/02-preferences.js?v=57"></script>
-  <script src="/js/app/03-context-menus.js?v=57"></script>
-  <script src="/js/app/04-sidebar.js?v=57"></script>
-  <script src="/js/app/05-chat.js?v=57"></script>
-  <script src="/js/app/06-message-content.js?v=57"></script>
-  <script src="/js/app/07-composer.js?v=57"></script>
-  <script src="/js/app/08-notifications.js?v=57"></script>
-  <script src="/js/app/09-panels-attachments.js?v=57"></script>
-  <script src="/js/app/10-video-player.js?v=57"></script>
-  <script src="/js/app/11-slash-commands.js?v=57"></script>
-  <script src="/decor/catalog.js?v=57"></script>
-  <script src="/js/decor-catalog.js?v=57"></script>
-  <script src="/js/decor-picker.js?v=57"></script>
-  <script src="/js/app/12-members-profile.js?v=57"></script>
-  <script src="/js/app/13-servers.js?v=57"></script>
-  <script src="/js/app/14-roles.js?v=57"></script>
-  <script src="/js/app/15-media-viewer.js?v=57"></script>
-  <script src="/js/app/16-site-admin.js?v=57"></script>
-  <script src="/js/app/17-settings.js?v=57"></script>
-  <script src="/js/app/18-call-audio.js?v=57"></script>
-  <script src="/js/app/19-call-ui.js?v=57"></script>
-  <script src="/js/app/20-screencast-native.js?v=57"></script>
-  <script src="/js/app/21-call-sfu.js?v=57"></script>
-  <script src="/js/app/22-call-mesh.js?v=57"></script>
-  <script src="/js/app/23-call-media.js?v=57"></script>
-  <script src="/js/app/24-presence.js?v=57"></script>
-  <script src="/js/app/25-server-settings.js?v=57"></script>
-  <script src="/js/app/26-soundboard.js?v=57"></script>
-  <script src="/js/app/27-world.js?v=57"></script>
-  <script src="/js/app/28-realtime.js?v=57"></script>
-  <script src="/js/app/29-mobile.js?v=57"></script>
+  <script src="/js/app/01-state.js?v=58"></script>
+  <script src="/js/app/02-preferences.js?v=58"></script>
+  <script src="/js/app/03-context-menus.js?v=58"></script>
+  <script src="/js/app/04-sidebar.js?v=58"></script>
+  <script src="/js/app/05-chat.js?v=58"></script>
+  <script src="/js/app/06-message-content.js?v=58"></script>
+  <script src="/js/app/07-composer.js?v=58"></script>
+  <script src="/js/app/08-notifications.js?v=58"></script>
+  <script src="/js/app/09-panels-attachments.js?v=58"></script>
+  <script src="/js/app/10-video-player.js?v=58"></script>
+  <script src="/js/app/11-slash-commands.js?v=58"></script>
+  <script src="/decor/catalog.js?v=58"></script>
+  <script src="/js/decor-catalog.js?v=58"></script>
+  <script src="/js/decor-picker.js?v=58"></script>
+  <script src="/js/app/12-members-profile.js?v=58"></script>
+  <script src="/js/app/13-servers.js?v=58"></script>
+  <script src="/js/app/14-roles.js?v=58"></script>
+  <script src="/js/app/15-media-viewer.js?v=58"></script>
+  <script src="/js/app/16-site-admin.js?v=58"></script>
+  <script src="/js/app/17-settings.js?v=58"></script>
+  <script src="/js/app/18-call-audio.js?v=58"></script>
+  <script src="/js/app/19-call-ui.js?v=58"></script>
+  <script src="/js/app/20-screencast-native.js?v=58"></script>
+  <script src="/js/app/21-call-sfu.js?v=58"></script>
+  <script src="/js/app/22-call-mesh.js?v=58"></script>
+  <script src="/js/app/23-call-media.js?v=58"></script>
+  <script src="/js/app/24-presence.js?v=58"></script>
+  <script src="/js/app/25-server-settings.js?v=58"></script>
+  <script src="/js/app/26-soundboard.js?v=58"></script>
+  <script src="/js/app/27-world.js?v=58"></script>
+  <script src="/js/app/28-realtime.js?v=58"></script>
+  <script src="/js/app/29-mobile.js?v=58"></script>
   <script src="/js/app/30-shortcuts.js?v=1"></script>
   <script src="/js/app/31-account-security.js?v=1"></script>
   <script src="/js/app/32-reports.js?v=1"></script>
+  <script src="/js/app/33-performance.js?v=1"></script>
 </body>
 </html>

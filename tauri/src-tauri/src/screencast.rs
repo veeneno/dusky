@@ -957,7 +957,12 @@ pub async fn screencast_start(app: AppHandle, webview: Webview, opts: ShareOpts)
         st.audio.stop();
         return fail(e);
     }
-    st.screencast.send(&json!({ "cmd": "start", "ffmpeg": info.ffmpeg, "args": built.args, "iceServers": ice }));
+    // tela inteira no Windows (ddagrab): se o ffmpeg cair, o auxiliar sobe de novo. Jogo entrando em
+    // tela cheia EXCLUSIVA troca o modo de vídeo e derruba a Desktop Duplication (ACCESS_LOST /
+    // "Output parameters changed!") — antes isso encerrava o compartilhamento. Janela (gfxcapture)
+    // não: lá o ffmpeg sair quase sempre é a janela que fechou.
+    let restart = IS_WIN && matches!(source.kind, Kind::Screen);
+    st.screencast.send(&json!({ "cmd": "start", "ffmpeg": info.ffmpeg, "args": built.args, "iceServers": ice, "restart": restart }));
     StartResult {
         ok: true,
         encoder: Some(info.encoder.clone()),

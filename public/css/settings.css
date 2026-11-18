@@ -305,3 +305,25 @@ html[data-translucent] .theme-color { background: var(--bg-input); }
   font: 600 12px/1.5 var(--font-mono, ui-monospace, monospace);
   background: var(--bg-input, rgba(0, 0, 0, 0.3)); border: 1px solid var(--border, rgba(255, 255, 255, 0.12)); border-bottom-width: 2px;
 }
+
+/* aba "desempenho" (app desktop — js/app/33-performance.js) */
+.perf-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.perf-tile { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--bg-solid-sidebar); }
+html[data-translucent] .perf-tile { background: var(--bg-input); }
+.perf-tile-title { color: var(--text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.perf-tile-value { color: var(--text-heading); font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.perf-tile-detail { color: var(--text-muted); font-size: 0.8125rem; }
+.perf-bar { display: block; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 6px; }
+.perf-bar > span { display: block; height: 100%; background: var(--accent); transition: width 0.4s var(--ease); }
+.perf-table-wrap { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border); }
+.perf-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.perf-table th { text-align: right; padding: 10px 12px; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.perf-table th:first-child { text-align: left; }
+.perf-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.perf-table tr:last-child td { border-bottom: 0; }
+.perf-name strong { display: block; color: var(--text-normal); font-weight: 500; }
+.perf-name small { display: block; color: var(--text-faint); font-size: 0.75rem; font-family: var(--font-mono); }
+.perf-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-normal); }
+.perf-num.is-heavy { color: var(--danger); font-weight: 600; }
+.perf-empty { text-align: center; color: var(--text-muted); }
+.perf-foot { margin-top: 14px; }

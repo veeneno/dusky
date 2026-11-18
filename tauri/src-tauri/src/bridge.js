@@ -99,6 +99,10 @@
     checkForUpdates: () => invoke('update_check').catch((err) => console.warn('[dusky] atualização', err)),
     // abre a pasta com o dusky.log (pra mandar quando algo der errado)
     openLogs: () => { fire('app_open_logs'); },
+    // aba "desempenho" (src/perf.rs): CPU, RAM e placa de vídeo de cada processo do dusky
+    // -> { os, cpus, totalMemoryBytes, memoryKind, gpuSource, gpuNote, processes: [{ pid, ppid, name, role,
+    //      cpuPercent, memoryBytes, gpuPercent, gpuMemoryBytes }] } (null = não deu pra medir)
+    perfSnapshot: () => invoke('perf_snapshot'),
     // arrastar arquivo no Linux (src/drops.rs): os arquivos que a pessoa acabou de soltar, como File.
     // [] = nada (ou não é o caso). Grande demais: vem { tooBig: [nomes] } junto.
     droppedFiles: async () => {

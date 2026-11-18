@@ -37,6 +37,8 @@
 //	  {"ev":"candidate","viewer":"12","candidate":{...}}
 //	  {"ev":"state","viewer":"12","state":"connected"}
 //	  {"ev":"stats","fps":59.8,"kbps":7800,"viewers":2}
+//	  {"ev":"restarting","reason":"...","attempt":1}       a captura caiu e está subindo de novo
+//	                                                       (só com "restart": true no "start")
 //	  {"ev":"error","message":"..."}
 //	  {"ev":"ended","reason":"..."}                        ffmpeg parou (ou "stop") — o programa sai
 //
@@ -75,10 +77,11 @@ type message struct {
 	Viewer     string                     `json:"viewer,omitempty"`
 	SDP        *webrtc.SessionDescription `json:"sdp,omitempty"`
 	Candidate  *webrtc.ICECandidateInit   `json:"candidate,omitempty"`
-	URL        string                     `json:"url,omitempty"`    // publish: endereço do servidor de mídia
-	Token      string                     `json:"token,omitempty"`  // publish: ingresso da sala
-	Width      int                        `json:"width,omitempty"`  // publish: tamanho do vídeo
-	Height     int                        `json:"height,omitempty"` // (só informativo pro servidor)
+	URL        string                     `json:"url,omitempty"`     // publish: endereço do servidor de mídia
+	Token      string                     `json:"token,omitempty"`   // publish: ingresso da sala
+	Width      int                        `json:"width,omitempty"`   // publish: tamanho do vídeo
+	Height     int                        `json:"height,omitempty"`  // (só informativo pro servidor)
+	Restart    bool                       `json:"restart,omitempty"` // start: se a captura cair, sobe de novo (ver superviseCapture)
 }
 
 // servidor STUN/TURN como o site manda. A Metered manda "urls" como TEXTO ("turn:..."), e o tipo do
@@ -140,7 +143,8 @@ type caster struct {
 	track      *webrtc.TrackLocalStaticSample
 	api        *webrtc.API
 	iceServers []webrtc.ICEServer
-	ffmpeg     *exec.Cmd
+	ffmpeg     *exec.Cmd // a captura no ar (troca a cada reinício) — sempre lido/escrito com mu
+	stopping   bool      // stop() começou: nenhuma captura nova pode subir (protegido por mu)
 	portal     *portalSession
 	portalBusy bool
 	stopOnce   sync.Once
@@ -255,10 +259,11 @@ func (c *caster) viewerCount() int {
 
 func (c *caster) stop(reason string) {
 	c.stopOnce.Do(func() {
+		c.mu.Lock()
+		c.stopping = true // antes de matar: o supervisor não sobe outra captura no lugar
 		if c.ffmpeg != nil && c.ffmpeg.Process != nil {
 			c.ffmpeg.Process.Kill()
 		}
-		c.mu.Lock()
 		portal := c.portal
 		c.portal = nil
 		for id, v := range c.viewers {
@@ -285,7 +290,23 @@ func firstSliceOfFrame(nal *h264reader.NAL) bool {
 	return len(nal.Data) > 1 && nal.Data[1]&0x80 != 0
 }
 
-func (c *caster) runFfmpeg(bin string, args []string, usePortal bool) error {
+// Reinício da captura (só com "restart": true — hoje, tela inteira no Windows pelo ddagrab).
+//
+// Por que: o ddagrab (Desktop Duplication) do ffmpeg NÃO se recupera de nada. Quando um jogo entra
+// em tela cheia EXCLUSIVA o Windows troca o modo de vídeo, a duplicação perde o acesso
+// (DXGI_ERROR_ACCESS_LOST → "AcquireNextFrame failed: 887a0026") e, se a resolução do jogo for
+// outra, ele reclama "Output parameters changed!". Nos dois casos o ffmpeg sai — e antes isso
+// encerrava o compartilhamento. Em "tela cheia em janela" o modo não muda, por isso aquele funcionava.
+//
+// Agora: a faixa de vídeo, as pessoas assistindo e a publicação no servidor de mídia continuam; só o
+// ffmpeg sobe de novo (com quadro-chave novo, SPS/PPS na frente — quem assiste se reajusta sozinho,
+// até se o tamanho mudar). Se cair de novo logo em seguida várias vezes, desiste.
+const (
+	captureMaxRestarts = 8                // seguidas, sem a captura ficar de pé
+	captureHealthy     = 15 * time.Second // ficou no ar isso tudo: zera a contagem
+)
+
+func (c *caster) runFfmpeg(bin string, args []string, usePortal, restart bool) error {
 	if usePortal {
 		c.mu.Lock()
 		p := c.portal
@@ -300,36 +321,108 @@ func (c *caster) runFfmpeg(bin string, args []string, usePortal bool) error {
 		}
 		args = out
 	}
+	cmd, stdout, err := c.spawnCapture(bin, args, usePortal)
+	if err != nil {
+		return err
+	}
+	go c.superviseCapture(bin, args, usePortal, restart, cmd, stdout)
+	return nil
+}
+
+// sobe o ffmpeg/gst-launch. Não sobe nada se o stop() já começou.
+func (c *caster) spawnCapture(bin string, args []string, usePortal bool) (*exec.Cmd, io.Reader, error) {
 	cmd := exec.Command(bin, args...)
 	cmd.Stderr = os.Stderr
 	if usePortal {
 		c.mu.Lock()
+		if c.portal == nil || c.portal.pwFile == nil {
+			c.mu.Unlock()
+			return nil, nil, errors.New("nenhuma tela escolhida no portal")
+		}
 		cmd.ExtraFiles = []*os.File{c.portal.pwFile} // vira o fd 3 do gst-launch (pipewiresrc fd=3)
 		c.mu.Unlock()
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, nil, err
+	}
+	c.mu.Lock()
+	if c.stopping {
+		c.mu.Unlock()
+		cmd.Process.Kill()
+		cmd.Wait()
+		return nil, nil, errors.New("parado")
 	}
 	c.ffmpeg = cmd
+	c.mu.Unlock()
 	logf("%s iniciado (pid %d)", bin, cmd.Process.Pid)
+	return cmd, stdout, nil
+}
 
-	go func() {
-		err := c.pump(stdout)
-		waitErr := cmd.Wait()
-		switch {
-		case err != nil && !errors.Is(err, io.EOF):
-			c.stop("erro lendo o vídeo: " + err.Error())
-		case waitErr != nil:
-			c.stop("ffmpeg parou: " + waitErr.Error())
-		default:
-			c.stop("ffmpeg terminou")
+func (c *caster) isStopping() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.stopping
+}
+
+// acompanha a captura até ela acabar; com restart, sobe de novo (ver captureMaxRestarts)
+func (c *caster) superviseCapture(bin string, args []string, usePortal, restart bool, cmd *exec.Cmd, stdout io.Reader) {
+	fails := 0
+	for {
+		reason := "a captura não reiniciou"
+		startedAt := time.Now()
+		if cmd != nil {
+			err := c.pump(stdout)
+			waitErr := cmd.Wait()
+			switch {
+			case err != nil && !errors.Is(err, io.EOF):
+				reason = "erro lendo o vídeo: " + err.Error()
+			case waitErr != nil:
+				reason = "ffmpeg parou: " + waitErr.Error()
+			default:
+				reason = "ffmpeg terminou"
+			}
 		}
-	}()
-	return nil
+		if c.isStopping() {
+			return // quem parou foi o app (ou o stop já está em andamento)
+		}
+		if !restart {
+			c.stop(reason)
+			return
+		}
+		if time.Since(startedAt) >= captureHealthy {
+			fails = 0
+		}
+		fails++
+		if fails > captureMaxRestarts {
+			c.stop(fmt.Sprintf("%s (desisti depois de %d tentativas)", reason, captureMaxRestarts))
+			return
+		}
+		// a troca de modo de vídeo leva um instante: espera um pouco mais a cada tentativa
+		delay := time.Duration(fails) * 400 * time.Millisecond
+		logf("captura caiu (%s) — subindo de novo em %v (tentativa %d de %d)", reason, delay, fails, captureMaxRestarts)
+		emit(map[string]any{"ev": "restarting", "reason": reason, "attempt": fails})
+		select {
+		case <-c.done:
+			return
+		case <-time.After(delay):
+		}
+		var err error
+		cmd, stdout, err = c.spawnCapture(bin, args, usePortal)
+		if err != nil {
+			logf("não consegui subir a captura de novo: %v", err)
+			cmd, stdout = nil, nil
+		}
+	}
+}
+
+func (c *caster) capturing() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ffmpeg != nil
 }
 
 // lê os NALs do ffmpeg, junta em quadros (access units) e manda cada quadro pra todo mundo
@@ -445,7 +538,7 @@ func handle(c *caster, msg message) {
 	}
 	switch msg.Cmd {
 	case "portal":
-		if c.portalBusy || c.portal != nil || c.ffmpeg != nil {
+		if c.portalBusy || c.portal != nil || c.capturing() {
 			fail(errors.New("o seletor já foi aberto"))
 			return
 		}
@@ -480,7 +573,7 @@ func handle(c *caster, msg message) {
 			emit(map[string]any{"ev": "source", "width": p.width, "height": p.height, "sourceType": p.sourceType})
 		}()
 	case "start":
-		if c.ffmpeg != nil {
+		if c.capturing() {
 			fail(errors.New("já iniciado"))
 			return
 		}
@@ -489,7 +582,7 @@ func handle(c *caster, msg message) {
 		if bin == "" {
 			bin = msg.Ffmpeg
 		}
-		if err := c.runFfmpeg(bin, msg.Args, msg.Portal); err != nil {
+		if err := c.runFfmpeg(bin, msg.Args, msg.Portal, msg.Restart); err != nil {
 			fail(fmt.Errorf("não consegui iniciar a captura: %w", err))
 			c.stop("a captura não iniciou")
 		}

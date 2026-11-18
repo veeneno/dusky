@@ -2,7 +2,7 @@
   "name": "dusky-tauri",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "App desktop do dusky em Rust (Tauri 2)",
   "scripts": {
     "dev": "node scripts/tauri.js dev",

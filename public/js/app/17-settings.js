@@ -326,6 +326,9 @@ let settingsEditorMounted = false;
 let currentSettingsTab = null;
 
 function switchSettingsTab(tabName) {
+  // "desempenho" só existe no app desktop que sabe medir (33-performance.js)
+  const hasPerf = typeof perfApi === 'function' && !!perfApi();
+  if (tabName === 'desempenho' && !hasPerf) tabName = 'aparencia';
   if (!settingsModalBackdrop.querySelector(`.settings-tab-panel[data-settings-panel="${tabName}"]`)) tabName = 'aparencia';
   currentSettingsTab = tabName;
   try { localStorage.setItem(SETTINGS_TAB_KEY, tabName); } catch (_) { /* ok */ }
@@ -341,6 +344,7 @@ function switchSettingsTab(tabName) {
     DuskyTheme.mountEditor(document.getElementById('themeEditor'), { toast });
   }
   if (tabName === 'app') renderSettingsAppCard();
+  if (hasPerf) { if (tabName === 'desempenho') startPerfPanel(); else stopPerfPanel(); }
   if (!settingsModalBackdrop.hidden) {
     if (tabName === 'microfone' || tabName === 'video') startSettingsPreview().catch(() => {});
     else stopSettingsStream();
@@ -482,6 +486,7 @@ async function openSettingsModal(tab) {
 function closeSettingsModal() {
   settingsModalBackdrop.hidden = true;
   stopSettingsStream();
+  if (typeof stopPerfPanel === 'function') stopPerfPanel();
 }
 
 settingsBtn.addEventListener('click', (e) => { e.stopPropagation(); openSettingsModal(); });
