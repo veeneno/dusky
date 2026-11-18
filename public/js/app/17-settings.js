@@ -434,7 +434,28 @@ function renderSettingsAppCard() {
   const canHw = !!(desk && typeof desk.setHardwareAcceleration === 'function');
   hwRow.hidden = !canHw;
   if (canHw) document.getElementById('settingsHwAccel').checked = !(info && info.gpu && info.gpu.hardwareAcceleration === false);
+  // iniciar com o sistema: só o app que sabe (1.1.1+), desligado por padrão
+  const autoRow = document.getElementById('settingsAutostartRow');
+  const canAuto = !!(desk && desk.autostart && typeof desk.autostart.set === 'function');
+  autoRow.hidden = !canAuto;
+  if (canAuto) document.getElementById('settingsAutostart').checked = !!desk.autostart.enabled;
 }
+document.getElementById('settingsAutostart').addEventListener('change', async (e) => {
+  const desk = window.duskyDesktop;
+  if (!desk || !desk.autostart) return;
+  const box = e.target;
+  box.disabled = true;
+  try {
+    const now = await desk.autostart.set(box.checked);
+    desk.autostart.enabled = !!now;
+    box.checked = !!now;
+  } catch (err) {
+    box.checked = !!desk.autostart.enabled;
+    toast(`não deu pra mudar: ${err}`);
+  } finally {
+    box.disabled = false;
+  }
+});
 document.getElementById('settingsHwAccel').addEventListener('change', (e) => {
   const desk = window.duskyDesktop;
   if (!desk || !desk.setHardwareAcceleration) return;

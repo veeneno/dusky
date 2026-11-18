@@ -9,6 +9,7 @@ mod call;
 #[path = "call_stub.rs"]
 mod call;
 mod deps;
+mod desktop;
 mod downloads;
 mod drops;
 mod perf;
@@ -19,6 +20,7 @@ mod server;
 mod shortcuts;
 mod sources;
 mod tray;
+mod tray_watch;
 mod updater;
 mod webview_setup;
 

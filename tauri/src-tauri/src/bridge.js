@@ -101,6 +101,19 @@
     checkForUpdates: () => invoke('update_check').catch((err) => console.warn('[dusky] atualização', err)),
     // abre a pasta com o dusky.log (pra mandar quando algo der errado)
     openLogs: () => { fire('app_open_logs'); },
+    // abre um endereço no navegador do sistema (links de fora são mandados pra cá sozinhos, abaixo)
+    openExternal: (url) => invoke('desktop_open_external', { url: String(url || '') }),
+    // tela cheia da janela: true/false liga/desliga, null alterna. -> como estava antes
+    setFullscreen: (on) => invoke('desktop_fullscreen', { on: on == null ? null : !!on }),
+    // a página está numa call: a bandeja não descarrega a página (src/tray_watch.rs)
+    setBusy: (busy) => { fire('desktop_set_busy', { busy: !!busy }); },
+    // nível de notificação ('all' | 'mentions' | 'none') pros avisos da bandeja com a página descarregada
+    trayConfig: (level) => { fire('desktop_tray_config', { level: String(level || '') }); },
+    // iniciar com o sistema (desligado por padrão). set(on) -> como ficou
+    autostart: {
+      enabled: !!appInfo.autostart,
+      set: (on) => invoke('app_set_autostart', { on: !!on }),
+    },
     // aba "desempenho" (src/perf.rs): CPU, RAM e placa de vídeo de cada processo do dusky
     // -> { os, cpus, totalMemoryBytes, memoryKind, gpuSource, gpuNote, processes: [{ pid, ppid, name, role,
     //      cpuPercent, memoryBytes, gpuPercent, gpuMemoryBytes }] } (null = não deu pra medir)
@@ -163,6 +176,60 @@
 
   // nome antigo: páginas de antes do "dusky" procuravam window.didiscordDesktop
   window.didiscordDesktop = window.duskyDesktop;
+
+  // ---------- links de fora: sempre no navegador do sistema ----------
+  // O clique não depende mais do motor web pedir uma janela nova (no Linux, às vezes não chegava
+  // nada e o link não abria). Escuta no fim da propagação: se o site tratou o clique (convite, pular
+  // pra mensagem...), defaultPrevented já vem true e fica com ele. Links do próprio site sem
+  // target=_blank continuam navegando normal.
+  const openOutside = (href) => { invoke('desktop_open_external', { url: href }).catch((err) => console.warn('[dusky] link', err)); };
+  const outsideUrl = (href, blank) => {
+    let u;
+    try { u = new URL(href, location.href); } catch (_) { return null; }
+    if (!/^(https?|mailto):$/.test(u.protocol)) return null;
+    if (u.origin === location.origin && !blank) return null;
+    return u.href;
+  };
+  const onLinkClick = (e) => {
+    if (e.defaultPrevented || (e.button !== 0 && e.button !== 1)) return;
+    const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a || a.hasAttribute('download')) return;
+    const href = outsideUrl(a.getAttribute('href'), a.target === '_blank' || e.button === 1 || e.ctrlKey || e.shiftKey);
+    if (!href) return;
+    e.preventDefault();
+    openOutside(href);
+  };
+  window.addEventListener('click', onLinkClick);
+  window.addEventListener('auxclick', onLinkClick);
+  const nativeOpen = window.open;
+  window.open = function (url, target, features) {
+    const href = url == null ? null : outsideUrl(String(url), true);
+    if (href) { openOutside(href); return null; }
+    return nativeOpen.call(window, url, target, features);
+  };
+
+  // ---------- tela cheia ----------
+  // F11 alterna a tela cheia da janela (Linux e Windows). No Windows, o vídeo/tela em tela cheia
+  // (requestFullscreen) só ocupava a área da página: aqui a janela acompanha. Ao sair do vídeo,
+  // volta como estava (se já estava no F11, continua).
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'F11' || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || e.repeat) return;
+    e.preventDefault();
+    invoke('desktop_fullscreen', { on: null }).catch(() => {});
+  }, true);
+  if (platform === 'win32') {
+    let windowWasFullscreen = null;
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement) {
+        if (windowWasFullscreen !== null) return;
+        invoke('desktop_fullscreen', { on: true }).then((was) => { windowWasFullscreen = !!was; }).catch(() => {});
+      } else {
+        const was = windowWasFullscreen;
+        windowWasFullscreen = null;
+        if (!was) invoke('desktop_fullscreen', { on: false }).catch(() => {});
+      }
+    });
+  }
 
   // Linux: a call pelo servidor de mídia vai pelo Rust (o WebKitGTK não tem RTCPeerConnection).
   // O site (21-call-sfu.js) usa isto no lugar do LiveKit do navegador quando existe.

@@ -26,6 +26,10 @@ hospedado e adiciona o que o navegador não faz. O site não precisa mudar nada:
 | Servidor caiu → volta pra "conectando…" e reabre sozinho | ✅ | ✅ |
 | Aceleração de hardware (configurações e bandeja; reinicia) | ✅ | ✅ |
 | Migração do app Electron sem reinstalar | ✅ | ✅ |
+| Links abrem no navegador do sistema (o clique vai direto pro Rust, não depende do motor web) | ✅ | ✅ |
+| Tela cheia: F11, e vídeo/tela em tela cheia ocupando a janela inteira | ✅ | ✅ |
+| Iniciar com o sistema (opcional, desligado por padrão; abre na bandeja) | ✅ autostart XDG | ✅ registro (Run) |
+| Página descarregada na bandeja fora de call (memória equilibrado/mínimo), com avisos de DM e menção | ✅ | ✅ |
 
 A versão aparece nas configurações do site ("dusky Mist 1.0 · app 1.0.0 · site …") e na bandeja.
 Pra uma versão nova: mude `version` em `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` e

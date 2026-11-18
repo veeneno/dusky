@@ -199,6 +199,7 @@ async function loadOlderMessages() {
     currentMessages = older.concat(currentMessages);
 
     chatMessages.scrollTop = chatMessages.scrollHeight - fromBottom;
+    trimChatDom('newest');
   } catch (_) {
     /* sem conexão — tenta de novo na próxima rolagem */
   } finally {
@@ -210,6 +211,50 @@ async function loadOlderMessages() {
 }
 
 chatMessages.addEventListener('scroll', maybeLoadOlderMessages, { passive: true });
+
+// ---------- teto de mensagens no DOM ----------
+// Rolar pra cima vai encaixando mensagens antigas; sem teto, um canal lido por horas acumulava
+// milhares de mensagens (cada uma com avatar, imagens e prévias) e a memória só subia. Passando de
+// CHAT_DOM_MAX, corta do lado oposto ao que a pessoa está lendo até sobrar CHAT_DOM_KEEP:
+//   'newest' (rolou pra cima): tira as mais novas e entra no modo "vendo mensagens antigas"
+//            (08-notifications.js): rolar pra baixo busca de novo, e "voltar ao presente" aparece.
+//   'oldest' (rolou pra baixo / chegou mensagem nova): tira as mais antigas; o topo volta a buscar.
+const CHAT_DOM_MAX = 200;
+const CHAT_DOM_KEEP = 150;
+
+function trimChatDom(side) {
+  const extra = currentMessages.length - CHAT_DOM_MAX;
+  if (extra <= 0) return;
+  const cut = currentMessages.length - CHAT_DOM_KEEP;
+  if (side === 'newest') {
+    const removed = currentMessages.splice(currentMessages.length - cut, cut);
+    for (const m of removed) chatMessages.querySelector(`.msg-group[data-message-id="${m.id}"]`)?.remove();
+    setViewingHistory(true);
+    return;
+  }
+  // tirar de cima muda a altura acima do que está na tela: devolve a rolagem pro mesmo ponto
+  const removed = currentMessages.splice(0, cut);
+  let height = 0;
+  for (const m of removed) {
+    const el = chatMessages.querySelector(`.msg-group[data-message-id="${m.id}"]`);
+    if (!el) continue;
+    height += el.offsetHeight;
+    el.remove();
+  }
+  chatMessages.scrollTop -= height;
+  hasOlderMessages = true;
+  updateHistoryTop();
+  // a nova primeira mensagem pode ter ficado sem cabeçalho (era continuação da que saiu)
+  const first = currentMessages[0];
+  const firstEl = first && chatMessages.querySelector(`.msg-group[data-message-id="${first.id}"]`);
+  if (firstEl && firstEl.classList.contains('is-continued')) {
+    const rebuilt = buildMessageEl(first, false);
+    rebuilt.classList.add('no-anim');
+    const before = rebuilt.offsetHeight;
+    firstEl.replaceWith(rebuilt);
+    chatMessages.scrollTop += rebuilt.offsetHeight - before;
+  }
+}
 
 // "grudado no fim": se a pessoa está no fim da conversa, qualquer imagem/vídeo/prévia que termine de
 // carregar depois (e empurre tudo pra cima) mantém a rolagem lá embaixo. load não borbulha, por isso
@@ -235,6 +280,7 @@ function appendMessageToDom(m) {
   chatMessages.appendChild(el);
 
   if (isMine || wasNearBottom) {
+    trimChatDom('oldest');
     scrollToBottom();
     // imagens/vídeos de anexo carregam de forma assíncrona e mudam a altura depois —
     // reforça o scroll quando o conteúdo terminar de carregar, senão a rolagem para "quase lá"

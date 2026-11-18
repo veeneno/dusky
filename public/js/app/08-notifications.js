@@ -20,7 +20,15 @@ const notificationPermissionBtn = document.getElementById('notificationPermissio
 function getNotifyLevel() {
   try { const v = localStorage.getItem(NOTIFY_KEY); return ['mentions', 'all', 'none'].includes(v) ? v : 'mentions'; } catch (_) { return 'mentions'; }
 }
-function setNotifyLevel(v) { try { localStorage.setItem(NOTIFY_KEY, v); } catch (_) { /* ok */ } }
+function setNotifyLevel(v) {
+  try { localStorage.setItem(NOTIFY_KEY, v); } catch (_) { /* ok */ }
+  sendTrayNotifyLevel();
+}
+// app desktop: com a página descarregada na bandeja, quem avisa é o app (src/tray_watch.rs)
+function sendTrayNotifyLevel() {
+  if (window.duskyDesktop && window.duskyDesktop.trayConfig) window.duskyDesktop.trayConfig(getNotifyLevel());
+}
+sendTrayNotifyLevel();
 
 function notificationsSupported() { return typeof Notification !== 'undefined'; }
 
@@ -205,6 +213,7 @@ async function loadNewerMessages() {
       prev = m;
     }
     setViewingHistory(!!data.has_more_after);
+    trimChatDom('oldest');
     if (!hasNewerMessages) syncRead(channel.id);
   } catch (_) { /* tenta de novo na próxima rolagem */ } finally {
     loadingNewerMessages = false;

@@ -112,6 +112,23 @@ html[data-bg-image] body::before {
   pointer-events: none;
 }
 html[data-bg-image] body { background: #000; }
+/* fundo já desfocado e escurecido num canvas (themes.js, bakeBackground): sem filtro aqui, e as duas
+   cópias (esta e a das configurações) usam a mesma imagem pequena */
+html[data-bg-baked] body::before,
+html[data-bg-baked] .settings-backdrop::before {
+  inset: 0;
+  filter: none;
+}
+
+/* uso de memória "mínimo" (app desktop, theme-boot.js): sem desfoque atrás dos painéis. Cada
+   backdrop-filter vira uma camada a mais na placa de vídeo, do tamanho do painel. A transparência e
+   a imagem de fundo do tema continuam; só o desfoque sai. */
+html[data-low-memory] *,
+html[data-low-memory] *::before,
+html[data-low-memory] *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
 
 h1, h2, h3, .display {
   font-family: var(--font-heading);

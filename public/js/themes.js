@@ -278,6 +278,7 @@
     root.toggleAttribute('data-glass', t.glass.blur > 0);
     root.toggleAttribute('data-translucent', alpha < 1);
     root.toggleAttribute('data-bg-image', !!(t.background.image || t.background.gradient));
+    bakeBackground(t);
     root.style.colorScheme = dark ? 'dark' : 'light';
     ensureFont(t.text.font);
     if (t.text.heading !== 'same') ensureFont(t.text.heading);
@@ -293,6 +294,87 @@
     if (meta) meta.content = c.bgApp;
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(t)); } catch (_) { /* sem storage */ }
     return t;
+  }
+
+  // ---------- imagem de fundo "assada" ----------
+  // O fundo era a imagem original (às vezes 4K) com filter: blur() + brightness() no CSS, e com as
+  // configurações abertas ela era desenhada DUAS vezes (body::before e .settings-backdrop::before).
+  // O motor web guardava a imagem inteira decodificada (3840×2160 = ~33 MB) e mais uma camada com o
+  // filtro de cada cópia — com aceleração ligada, mais de 100 MB só pro fundo. Aqui o desfoque e o
+  // escurecimento são feitos UMA vez num canvas do tamanho da tela, e o CSS só mostra o resultado,
+  // sem filtro (html[data-bg-baked], theme.css). GIF fica como estava (perderia a animação), e
+  // imagem de outro site que não deixa ler os pixels (canvas "contaminado") também.
+  let bakedKey = '';
+  let bakedUrl = '';
+  let bakeSeq = 0;
+  function bakeBackground(t) {
+    const root = document.documentElement;
+    const src = t.background.image;
+    const key = src ? `${src}|${t.background.blur}|${t.background.dim}` : '';
+    if (key && key === bakedKey && bakedUrl) {
+      root.style.setProperty('--bg-image', `url("${bakedUrl}")`);
+      root.setAttribute('data-bg-baked', '');
+      return;
+    }
+    const seq = ++bakeSeq;
+    root.removeAttribute('data-bg-baked');
+    if (!src || /\.gif(\?|$)/i.test(src) || typeof document.createElement('canvas').getContext !== 'function') return;
+    // enquanto assa, sem imagem (senão o motor já baixava e decodificava a original inteira)
+    const original = `url("${src}")`;
+    const fallback = () => { if (seq === bakeSeq) root.style.setProperty('--bg-image', original); };
+    root.style.setProperty('--bg-image', 'none');
+    // espera a pessoa parar de mexer no controle de desfoque/escurecer (cada assada decodifica a original)
+    setTimeout(() => {
+    if (seq !== bakeSeq) return;
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = src;
+    img.decode().then(() => {
+      if (seq !== bakeSeq) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.min(2560, Math.round(screen.width * dpr)) || 1920;
+      const h = Math.min(1600, Math.round(screen.height * dpr)) || 1080;
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { fallback(); return; }
+      // desfoque sem ctx.filter (o WebKitGTK não tem): desenha a imagem pequena e amplia de volta com
+      // suavização — quanto maior o desfoque, menor a cópia. Em "cover".
+      const blur = t.background.blur * dpr;
+      const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+      const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      if (blur >= 1) {
+        const f = Math.max(2, blur / 1.5);
+        const small = document.createElement('canvas');
+        small.width = Math.max(8, Math.round(w / f)); small.height = Math.max(8, Math.round(h / f));
+        const sctx = small.getContext('2d');
+        sctx.imageSmoothingEnabled = true;
+        sctx.imageSmoothingQuality = 'high';
+        sctx.drawImage(img, (w - dw) / 2 / f, (h - dh) / 2 / f, dw / f, dh / f);
+        ctx.drawImage(small, 0, 0, w, h);
+        small.width = 0; small.height = 0;
+      } else {
+        ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+      }
+      // brightness(1 - dim) = pintar preto por cima com opacidade dim
+      if (t.background.dim > 0) {
+        ctx.fillStyle = `rgba(0,0,0,${t.background.dim / 100})`;
+        ctx.fillRect(0, 0, w, h);
+      }
+      canvas.toBlob((blob) => {
+        canvas.width = 0; canvas.height = 0;
+        if (!blob) { fallback(); return; }
+        if (seq !== bakeSeq) return;
+        if (bakedUrl) URL.revokeObjectURL(bakedUrl);
+        bakedUrl = URL.createObjectURL(blob);
+        bakedKey = key;
+        root.style.setProperty('--bg-image', `url("${bakedUrl}")`);
+        root.setAttribute('data-bg-baked', '');
+      }, 'image/jpeg', 0.92);
+    }).catch(fallback); // imagem que não carrega ou de outro site: o caminho antigo
+    }, 120);
   }
 
   // (só agora: normalize depende de FONTS e companhia, declarados depois da lista)

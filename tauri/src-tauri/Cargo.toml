@@ -1,6 +1,6 @@
 [package]
 name = "dusky"
-version = "1.1.0"
+version = "1.1.1"
 license = "AGPL-3.0-or-later"
 description = "App desktop do dusky (Tauri / Rust) — versão 1.0, codinome Mist"
 authors = ["veneno"]
@@ -29,6 +29,9 @@ url = "2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # TLS do sistema (OpenSSL no Linux, SChannel no Windows) — não precisa de compilador C extra
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "http2", "charset", "system-proxy"] }
+# conexão leve com o servidor enquanto a página está descarregada na bandeja (tray_watch.rs)
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "native-tls"] }
+futures-util = "0.3"
 
 # Linux: configurar o WebKitGTK (mic/câmera/autoplay) e listar telas/janelas do X11
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -39,7 +42,6 @@ x11rb = { version = "0.13", features = ["randr"] }
 # call pelo servidor de mídia feita no Rust (o WebKitGTK não tem WebRTC). Precisa de clang++ 21+
 # pra compilar (o libwebrtc vem pronto, mas com a libc++ do Chromium) — ver README.
 livekit = { version = "0.10", default-features = false, features = ["native", "native-tls"] }
-futures-util = "0.3"
 # atalhos globais no Wayland: portal org.freedesktop.portal.GlobalShortcuts (shortcuts.rs)
 ashpd = { version = "0.14", default-features = false, features = ["tokio", "global_shortcuts"] }
 jpeg-encoder = { version = "0.7", features = ["simd"] }
@@ -49,7 +51,7 @@ jpeg-encoder = { version = "0.7", features = ["simd"] }
 xcap = "0.9"
 # "jogando X": lista os programas abertos (com o caminho completo) sem abrir PowerShell
 # + aba "desempenho" (perf.rs): tempo de CPU, memória e os contadores de GPU do sistema (PDH)
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Performance"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Performance", "Win32_System_Registry"] }
 # "Salvar como" dos downloads (downloads.rs) — o mesmo rfd que o tauri-plugin-dialog já usa
 rfd = { version = "0.17", default-features = false, features = ["common-controls-v6"] }
 # uso de memória (webview_setup::apply_memory_level): ICoreWebView2_19::SetMemoryUsageTargetLevel —

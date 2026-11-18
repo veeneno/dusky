@@ -419,6 +419,7 @@ async function joinVoiceCall(ch) {
   callViewMuteBtn.title = hasMic ? '' : 'nenhum microfone disponível';
 
   voiceChannel = ch;
+  if (window.duskyDesktop && window.duskyDesktop.setBusy) window.duskyDesktop.setBusy(true);
   updateNoiseSuppressionStatus();
   refreshVoiceSettings();
   updateSelfMonitor();
@@ -511,6 +512,7 @@ function leaveVoiceCall(opts = {}) {
   setCallConnectionStatus('');
   const leftChannel = voiceChannel;
   voiceChannel = null;
+  if (window.duskyDesktop && window.duskyDesktop.setBusy) window.duskyDesktop.setBusy(false);
   micRebuildId++;
   refreshVoiceSettings();
   updateNoiseSuppressionStatus();

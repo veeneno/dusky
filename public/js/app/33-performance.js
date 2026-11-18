@@ -32,7 +32,7 @@ function perfApi() {
 const PERF_MEMORY_MODES = [
   {
     id: 'alto', title: 'alto desempenho', tag: 'como era antes',
-    what: 'Guarda bastante coisa na memória (imagens e partes do site que já saíram da tela) e só começa a liberar quando o computador estiver ficando sem memória.',
+    what: 'Guarda bastante coisa na memória (imagens e partes do site que já saíram da tela) e só começa a liberar quando o computador estiver ficando sem memória. A página fica carregada mesmo na bandeja.',
     good: 'trocar de canal e voltar pra conversas que você já abriu é o mais rápido possível; quase nada precisa ser recarregado.',
     bad: 'é o que mais usa memória, e o uso vai crescendo com o tempo que o app fica aberto.',
     linux: 'cache do WebKit no modo "navegador" (até 128 MB, segurando por 60 s o que saiu da tela) e 1 GB de cache em disco; limpeza só perto de 1/3 da RAM do PC.',
@@ -40,18 +40,18 @@ const PERF_MEMORY_MODES = [
   },
   {
     id: 'equilibrado', title: 'equilibrado', tag: 'recomendado',
-    what: 'Guarda só um pouco do que saiu da tela e começa a limpar a memória quando o site passa de uns 320 MB.',
+    what: 'Guarda só um pouco do que saiu da tela e começa a limpar a memória quando o site passa de uns 320 MB. Na bandeja e fora de call, depois de 1 minuto e meio a página é descarregada: o app fica com o mínimo de memória e continua avisando mensagem direta e menção.',
     good: 'usa menos memória, principalmente depois de horas com o app aberto; no dia a dia a diferença de velocidade é pequena.',
-    bad: 'voltar pra um canal que você não abria há um tempo pode recarregar algumas imagens (do disco, é rápido).',
+    bad: 'voltar pra um canal que você não abria há um tempo pode recarregar algumas imagens (do disco, é rápido); abrir o app depois de muito tempo na bandeja leva 1–2 s pra carregar o site.',
     linux: 'cache do WebKit no modo "documentos" (até 96 MB, 75 MB em disco); limpeza a partir de ~320 MB e limpeza de tudo que dá a partir de ~480 MB.',
     win: 'normal com a janela aberta; quando o app vai pra bandeja, o WebView2 devolve memória pro sistema.',
   },
   {
     id: 'minimo', title: 'mínimo', tag: 'menos memória possível',
-    what: 'Limpa a memória sempre que dá: a partir de uns 130 MB no site, conferindo a cada 5 segundos.',
+    what: 'Limpa a memória sempre que dá: a partir de uns 130 MB no site, conferindo a cada 5 segundos. Também tira o desfoque atrás dos painéis (efeito vidro do tema). Na bandeja e fora de call, depois de 1 minuto e meio a página é descarregada: o app fica com o mínimo de memória e continua avisando mensagem direta e menção.',
     good: 'o menor uso de memória com o app aberto — bom pra PC com pouca RAM ou pra jogar com o app aberto do lado.',
     bad: 'usa mais processador (as limpezas são frequentes), imagens e emojis recarregam mais vezes, e rolar o chat ou trocar de canal pode dar umas engasgadas.',
-    linux: 'cache do WebKit no modo "documentos"; limpeza a partir de ~130 MB e de tudo que dá a partir de ~190 MB, conferindo a cada 5 s.',
+    linux: 'cache do WebKit no modo "documentos"; limpeza a partir de ~130 MB e de tudo que dá a partir de ~190 MB, conferindo a cada 5 s; sem backdrop-filter (cada um é uma camada a mais na placa de vídeo).',
     win: 'o WebView2 fica no modo de economia de memória o tempo todo (a Microsoft avisa que isso pode deixar a janela mais lenta).',
   },
 ];

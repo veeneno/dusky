@@ -41,6 +41,8 @@ struct AppInfo {
     os: &'static str,
     /// aceleração de hardware e variáveis que pesam no WebGL (contador de fps do mundinho)
     gpu: serde_json::Value,
+    /// "iniciar com o sistema" ligado (desktop.rs)
+    autostart: bool,
 }
 
 fn app_info() -> AppInfo {
@@ -52,6 +54,7 @@ fn app_info() -> AppInfo {
         shell: "tauri",
         os: std::env::consts::OS,
         gpu: webview_setup::diagnostics(),
+        autostart: crate::desktop::autostart_enabled(),
     }
 }
 
@@ -105,6 +108,14 @@ pub struct AppState {
     pub call: call::Call,
     pub deps: deps::Deps,
     pub tray: Mutex<Option<tray::TrayItems>>,
+    /// a página está numa call (o site avisa): a bandeja não a descarrega (tray_watch.rs)
+    pub busy: AtomicBool,
+    /// a janela foi destruída de propósito na bandeja (não é pra sair do app)
+    pub unloaded: AtomicBool,
+    /// muda a cada vez que a janela some/aparece (cancela o descarregamento agendado)
+    pub hide_gen: AtomicU64,
+    /// nível de notificação do site ("all" | "mentions" | "none"), pros avisos da bandeja
+    pub notify_level: Mutex<String>,
 }
 
 impl AppState {
@@ -156,19 +167,35 @@ pub fn is_local(url: &Url) -> bool {
 /// limpo (screencast::system_child_env): o opener passaria GTK_PATH/GIO_MODULE_DIR/GST_* do
 /// pacote pro navegador, que carregaria módulos do Ubuntu empacotados e podia nem abrir.
 pub fn open_external(app: &AppHandle, url: &str) {
+    // só o endereço até o caminho vai pro log (sem ?query, que pode ter token)
+    let shown = Url::parse(url).map(|u| format!("{}://{}{}", u.scheme(), u.host_str().unwrap_or(""), u.path())).unwrap_or_default();
     if cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_some() {
         let mut cmd = std::process::Command::new("xdg-open");
         cmd.arg(url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
         crate::screencast::clean_std_child_env(&mut cmd);
-        if let Ok(mut child) = cmd.spawn() {
-            // o xdg-open sai logo; espera numa thread pra não ficar processo zumbi
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-            return;
+        match cmd.spawn() {
+            Ok(mut child) => {
+                // o xdg-open pode ficar esperando o navegador: espera numa thread (sem zumbi) e, se
+                // ele falhar (sem navegador configurado), tenta pelo opener do Tauri
+                let app = app.clone();
+                let url = url.to_string();
+                std::thread::spawn(move || match child.wait() {
+                    Ok(code) if code.success() => {}
+                    other => {
+                        log::warn(&format!("abrir link: xdg-open falhou ({other:?}) com {shown}; tentando de outro jeito"));
+                        if let Err(e) = app.opener().open_url(&url, None::<&str>) {
+                            log::warn(&format!("abrir link: também falhou: {e}"));
+                        }
+                    }
+                });
+                return;
+            }
+            Err(e) => log::warn(&format!("abrir link: xdg-open não abriu ({e}); tentando de outro jeito")),
         }
     }
-    let _ = app.opener().open_url(url, None::<&str>);
+    if let Err(e) = app.opener().open_url(url, None::<&str>) {
+        log::warn(&format!("abrir link: não abriu {shown}: {e}"));
+    }
 }
 
 pub fn local_url(path: &str) -> Url {
@@ -235,6 +262,11 @@ fn grant_site(app: &AppHandle, origin: &str) {
         "allow-app-set-hardware-acceleration",
         "allow-app-set-memory-mode",
         "allow-app-open-logs",
+        "allow-desktop-open-external",
+        "allow-desktop-fullscreen",
+        "allow-desktop-set-busy",
+        "allow-desktop-tray-config",
+        "allow-app-set-autostart",
         "allow-perf-snapshot",
         "allow-drop-files",
         "allow-drop-read",
@@ -272,7 +304,7 @@ fn grant_site(app: &AppHandle, origin: &str) {
 
 // ---------- janela principal ----------
 
-fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+fn create_main_window(app: &AppHandle, visible: bool) -> tauri::Result<WebviewWindow> {
     let nav_app = app.clone();
     let open_app = app.clone();
     let perm_app = app.clone();
@@ -282,6 +314,7 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .title("dusky")
         .inner_size(1280.0, 800.0)
         .min_inner_size(940.0, 560.0)
+        .visible(visible)
         .background_color(tauri::window::Color(30, 31, 34, 255))
         .initialization_script(bridge_script())
         // arrastar arquivos pra conversa: quem trata é a PÁGINA (eventos drop do HTML). Com o
@@ -346,6 +379,7 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 }
 
 pub fn show_main(app: &AppHandle) {
+    crate::tray_watch::cancel_unload(app);
     match app.get_webview_window(MAIN) {
         Some(win) => {
             let _ = win.unminimize();
@@ -354,7 +388,10 @@ pub fn show_main(app: &AppHandle) {
             webview_setup::apply_memory_level(app, true);
         }
         None => {
-            if create_main_window(app).is_ok() {
+            // a página tinha sido descarregada na bandeja (tray_watch.rs): recria
+            crate::tray_watch::stop(app);
+            if create_main_window(app, true).is_ok() {
+                webview_setup::apply_memory_level(app, true);
                 spawn_connect(app.clone(), "connect");
             }
         }
@@ -731,7 +768,12 @@ pub fn run() {
                 audio: audio::ScreenAudio::default(),
                 call: call::Call::default(),
                 tray: Mutex::new(None),
+                busy: AtomicBool::new(false),
+                unloaded: AtomicBool::new(false),
+                hide_gen: AtomicU64::new(0),
+                notify_level: Mutex::new("mentions".into()),
             });
+            app.manage(crate::tray_watch::Watch::default());
             app.manage(updater::Updates::default());
             app.manage(presence::Presence::default());
             let handle = app.handle().clone();
@@ -739,8 +781,14 @@ pub fn run() {
             app.state::<AppState>().audio.set_app(&handle);
             // depois do GTK iniciar (a API exige) e antes da janela (vale pros processos de página novos)
             webview_setup::init_memory_pressure();
-            create_main_window(&handle)?;
-            webview_setup::apply_memory_level(&handle, true);
+            // iniciado pelo sistema (desktop.rs): começa na bandeja, sem mostrar a janela
+            let autostarted = crate::desktop::started_by_autostart();
+            create_main_window(&handle, !autostarted)?;
+            webview_setup::apply_memory_level(&handle, !autostarted);
+            if autostarted {
+                crate::tray_watch::schedule_unload(&handle);
+            }
+            crate::desktop::refresh_autostart();
             if let Err(err) = tray::create(&handle) {
                 log::warn(&format!("não deu pra criar o ícone da bandeja: {err}"));
             }
@@ -775,8 +823,13 @@ pub fn run() {
                     // na bandeja (modo equilibrado no Windows): o WebView2 devolve memória pro sistema
                     webview_setup::apply_memory_level(app, false);
                     show_tray_hint_once(app);
+                    // depois de um tempo na bandeja e fora de call, a página é descarregada
+                    crate::tray_watch::schedule_unload(app);
                 }
                 WindowEvent::Destroyed => {
+                    if crate::tray_watch::is_unloaded(app) {
+                        return; // descarregada na bandeja: o app continua
+                    }
                     st.audio.stop();
                     app.state::<presence::Presence>().stop();
                     quit_for_real(app);
@@ -794,6 +847,11 @@ pub fn run() {
             app_set_hardware_acceleration,
             app_set_memory_mode,
             app_open_logs,
+            crate::desktop::desktop_open_external,
+            crate::desktop::desktop_fullscreen,
+            crate::desktop::desktop_set_busy,
+            crate::desktop::desktop_tray_config,
+            crate::desktop::app_set_autostart,
             crate::perf::perf_snapshot,
             crate::drops::drop_files,
             crate::drops::drop_read,
@@ -830,6 +888,13 @@ pub fn run() {
         .expect("falha ao iniciar o dusky");
 
     app.run(|app, event| {
+        // sem janela nenhuma o Tauri sairia do app; com a página descarregada na bandeja, não
+        if let RunEvent::ExitRequested { code: None, api, .. } = &event {
+            let st = app.state::<AppState>();
+            if !st.quitting.load(Ordering::SeqCst) && st.unloaded.load(Ordering::SeqCst) {
+                api.prevent_exit();
+            }
+        }
         if let RunEvent::Exit = event {
             let st = app.state::<AppState>();
             st.audio.stop();
