@@ -96,6 +96,40 @@ async function selectChannel(ch, opts = {}) {
   }
 }
 
+// a conexão em tempo real caiu e voltou: o que chegou no canal aberto nesse meio-tempo não veio
+// pelo WebSocket — e o canal aberto conta como lido, então nem aparecia como não lida. Busca a
+// página mais recente e troca o fim da lista por ela (pega também editadas e apagadas). Só
+// redesenha se algo mudou, e mantém a rolagem de quem está lendo mais pra cima.
+async function resyncOpenChannel() {
+  const ch = currentChannel;
+  if (!ch || ch.type === 'voice' || ch.type === 'world' || chatView.hidden || hasNewerMessages) return;
+  let data = null;
+  try {
+    const res = await fetch(`/api/channels/${ch.id}/messages`);
+    if (res.ok) data = await res.json();
+  } catch (_) { return; }
+  if (!data || currentChannel !== ch || hasNewerMessages) return;
+  const latest = data.messages || [];
+  const firstId = latest.length ? latest[0].id : Infinity;
+  const lastId = latest.length ? latest[latest.length - 1].id : 0;
+  const kept = currentMessages.filter((m) => m.id < firstId);
+  // chegou alguma pelo WebSocket enquanto a busca voltava: continua no fim
+  const arrived = currentMessages.filter((m) => m.id > lastId);
+  // perdeu mais de uma página: o que estava na tela não encosta mais na página nova
+  const gap = !!data.has_more && kept.length > 0 && !currentMessages.some((m) => m.id >= firstId);
+  const next = gap ? latest.concat(arrived) : kept.concat(latest, arrived);
+  const same = next.length === currentMessages.length
+    && next.every((m, i) => JSON.stringify(m) === JSON.stringify(currentMessages[i]));
+  if (same) return;
+  if (gap || kept.length === 0) hasOlderMessages = !!data.has_more;
+  const wasStuck = stuckToBottom;
+  const keepTop = chatMessages.scrollTop;
+  currentMessages = next;
+  renderMessages(); // desce pro fim
+  if (!wasStuck && !gap) { chatMessages.scrollTop = keepTop; stuckToBottom = false; }
+  if (appIsInFront()) syncRead(ch.id);
+}
+
 function messageGroupKey(m) {
   if (m.system_type) return `s${m.id}`; // aviso do sistema nunca agrupa com nada
   return m.user_id ? `u${m.user_id}` : `b${m.bot_name || 'bot'}`;

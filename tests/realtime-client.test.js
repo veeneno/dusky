@@ -13,13 +13,14 @@ function setup(status=200){
     open(){this.readyState=1;this.handlers.open();}
   }
   const timer=(fn,ms)=>{const t={fn,ms,active:true};timers.push(t);return t;};
-  const ctx=vm.createContext({WebSocket:Socket,window:{location:{protocol:'https:',host:'test'}},
+  const win={};
+  const ctx=vm.createContext({WebSocket:Socket,window:{location:{protocol:'https:',host:'test'},addEventListener:(type,fn)=>{win[type]=fn;}},
     console:{warn(){},error(){}}, AbortSignal,
     fetch:async()=>({ok:status===200,status,json:async()=>({ticket:'test'})}),
     setTimeout:timer,setInterval:timer,clearTimeout:t=>{if(t)t.active=false;},Date:{now:()=>now},
   });
   vm.runInContext(fs.readFileSync(require.resolve('../public/js/realtime.js'),'utf8')+'\nthis.api=Realtime;',ctx);
-  return {ctx,timers,sockets,api:ctx.api,advance:n=>now+=n};
+  return {ctx,timers,sockets,win,api:ctx.api,advance:n=>now+=n};
 }
 test('503 é recuperável; 401 não gera loop de reconexão',async()=>{
   for(const status of [503,401]){const x=setup(status);await x.api.connect();assert.equal(x.timers.some(t=>t.ms===1000),status===503);}
@@ -35,6 +36,20 @@ test('watchdog recupera conexão zumbi e ignora close atrasado do socket velho',
   old.handlers.message({data:JSON.stringify({type:'ping'})});assert.equal(old.sent.length,0);
   next.handlers.message({data:JSON.stringify({type:'ping'})});assert.equal(next.sent[1].type,'pong');
 });
+test('rede/janela voltando: troca socket mudo na hora e pula o backoff',async()=>{
+  const x=setup();await x.api.connect();const first=x.sockets[0];first.open();
+  const tick=()=>new Promise(r=>setImmediate(r));
+  // aberto e recebendo os pings: voltar pra janela não mexe em nada
+  x.advance(10000);x.win.focus();await tick();assert.equal(x.sockets.length,1);
+  // mudo há mais de 45 s (o PC dormiu): troca na hora, sem esperar o vigia de 75 s
+  x.advance(50000);x.win.online();await tick();
+  assert.equal(first.readyState,3);assert.equal(x.sockets.length,2);
+  // caiu e está esperando o backoff: a internet voltando reconecta já
+  const second=x.sockets[1];second.open();second.handlers.close({code:1006});
+  x.win.online();await tick();assert.equal(x.sockets.length,3);
+  // socket velho fechando atrasado não atrapalha o novo
+  x.sockets[2].open();first.handlers.close({code:1006});assert.equal(x.api.send('probe'),true);
+});
 test('listener com erro não impede a recuperação da call por outro listener',async()=>{
   const x=setup();let calls=0;x.api.on('connection_status',()=>{throw Error('UI');});
   x.api.on('connection_status',()=>calls++);await x.api.connect();x.sockets[0].open();assert.equal(calls,1);
@@ -43,7 +58,7 @@ test('cliente retoma sessão; sair da call não dispara nova entrada',async()=>{
   const handlers=new Map(), sent=[];
   const ctx=vm.createContext({Realtime:{connect(){},on:(type,fn)=>{if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);},send:(...args)=>sent.push(args)},
     window:{addEventListener(){}}, document:{addEventListener(){}},voiceChannel:{id:1},voiceResumeToken:'token',voiceSpeakingReady:true,
-    loadUnread(){},sendMyActivity(){},sendMyPresenceStatus(){},
+    loadUnread(){},resyncOpenChannel(){},loadMembers(){},sendMyActivity(){},sendMyPresenceStatus(){},
   });
   const source=fs.readFileSync(require.resolve('../public/js/app/28-realtime.js'),'utf8');
   vm.runInContext(source.slice(0,source.indexOf('(async function init()'))+'\nwireRealtime();',ctx);

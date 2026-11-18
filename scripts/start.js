@@ -93,30 +93,45 @@ if (!bin) {
   } else {
     args = ['tunnel', '--no-autoupdate', 'run', '--url', `http://localhost:${port}`, tunnelName];
   }
-  const tunnel = spawn(bin, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
-  children.push(tunnel);
-  console.log(`[start] túnel do Cloudflare (${mode === 'quick' ? 'rápido' : 'nomeado'}) iniciando…`);
-  let announced = false;
-  const onOutput = (chunk) => {
-    const text = String(chunk);
-    // o --config vazio (de propósito) gera um aviso inofensivo — não polui o terminal com ele
-    const shown = text.split('\n').filter((l) => l && !/Configuration file .* was empty/.test(l));
-    if (shown.length) process.stderr.write(shown.map((l) => '[cloudflared] ' + l).join('\n') + '\n');
-    if (mode === 'quick' && !announced) {
-      const m = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
-      if (m) { announced = true; announce(m[0]); }
-    }
-    // túnel nomeado: avisa quando a primeira conexão com o Cloudflare subiu
-    if (mode === 'named' && !announced && /Registered tunnel connection/i.test(text)) {
-      announced = true;
-      if (hostnames.length) console.log(`\n[start] túnel no ar: ${hostnames.map((h) => 'https://' + h).join('  e  ')}\n`);
-    }
+  // se o cloudflared cair (crash, internet fora por muito tempo), o site sumia da internet até
+  // reiniciar o serviço inteiro. Agora ele sobe de novo sozinho: 5 s, 10 s… até 1 min entre tentativas
+  // (volta pros 5 s quando ficou de pé por mais de 2 min).
+  let tunnelFails = 0;
+  const startTunnel = () => {
+    const startedAt = Date.now();
+    const tunnel = spawn(bin, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    children.push(tunnel);
+    console.log(`[start] túnel do Cloudflare (${mode === 'quick' ? 'rápido' : 'nomeado'}) iniciando…`);
+    let announced = false;
+    const onOutput = (chunk) => {
+      const text = String(chunk);
+      // o --config vazio (de propósito) gera um aviso inofensivo — não polui o terminal com ele
+      const shown = text.split('\n').filter((l) => l && !/Configuration file .* was empty/.test(l));
+      if (shown.length) process.stderr.write(shown.map((l) => '[cloudflared] ' + l).join('\n') + '\n');
+      if (mode === 'quick' && !announced) {
+        const m = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+        if (m) { announced = true; announce(m[0]); }
+      }
+      // túnel nomeado: avisa quando a primeira conexão com o Cloudflare subiu
+      if (mode === 'named' && !announced && /Registered tunnel connection/i.test(text)) {
+        announced = true;
+        if (hostnames.length) console.log(`\n[start] túnel no ar: ${hostnames.map((h) => 'https://' + h).join('  e  ')}\n`);
+      }
+    };
+    tunnel.stdout.on('data', onOutput);
+    tunnel.stderr.on('data', onOutput);
+    tunnel.on('error', (err) => console.warn(`[start] não consegui rodar o cloudflared: ${err.message}`));
+    tunnel.on('exit', (code) => {
+      const i = children.indexOf(tunnel);
+      if (i >= 0) children.splice(i, 1);
+      if (shuttingDown) return;
+      tunnelFails = Date.now() - startedAt > 120000 ? 0 : tunnelFails + 1;
+      const wait = Math.min(60000, 5000 * 2 ** Math.min(tunnelFails, 4));
+      console.warn(`[start] cloudflared encerrou (código ${code}) — subindo de novo em ${Math.round(wait / 1000)} s`);
+      setTimeout(() => { if (!shuttingDown) startTunnel(); }, wait);
+    });
   };
-  tunnel.stdout.on('data', onOutput);
-  tunnel.stderr.on('data', onOutput);
-  tunnel.on('exit', (code) => {
-    if (!shuttingDown) console.warn(`[start] cloudflared encerrou (código ${code}); o servidor segue rodando só local.`);
-  });
+  startTunnel();
 }
 
 process.on('SIGINT', () => shutdown(0));

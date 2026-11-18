@@ -135,7 +135,11 @@ function wireRealtime() {
   let wsOpenedOnce = false;
   Realtime.on('connection_status', ({ status }) => {
     if (status !== 'open') return;
-    if (wsOpenedOnce) loadUnread();
+    if (wsOpenedOnce) {
+      loadUnread();
+      resyncOpenChannel(); // mensagens que chegaram no canal aberto enquanto estava sem conexão
+      loadMembers(); // quem entrou/saiu nesse meio-tempo (online/offline)
+    }
     // Só retoma se ainda estou na call. Sair/trocar de canal limpa o token.
     if (voiceChannel && voiceResumeToken) {
       Realtime.send('voice_resume', { channelId: voiceChannel.id, resumeToken: voiceResumeToken });

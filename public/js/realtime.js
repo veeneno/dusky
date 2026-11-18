@@ -123,5 +123,32 @@ const Realtime = (function () {
     scheduleReconnect();
   }, 15000);
 
+  // voltou a internet, o PC acordou ou a janela voltou pra frente: não espera o backoff (até 15 s)
+  // nem o vigia de 75 s acima. Socket "aberto" mas mudo há mais de 2 pings (o servidor manda um a
+  // cada 20 s) provavelmente morreu junto com a rede — troca por um novo na hora.
+  function reviveNow() {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      if (Date.now() - lastMessageAt <= 45000) return;
+      const stale = socket;
+      socket = null;
+      connecting = false;
+      try { stale.close(); } catch (_) { /* já fechado */ }
+      emit('connection_status', { status: 'reconnecting' });
+    } else if (!reconnectTimer) {
+      return; // nunca conectou (tela de login) ou já está tentando agora
+    }
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    reconnectDelay = 1000;
+    connect();
+  }
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('online', reviveNow);
+    window.addEventListener('focus', reviveNow);
+  }
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reviveNow(); });
+  }
+
   return { connect, on, send };
 })();

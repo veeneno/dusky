@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
@@ -173,12 +174,59 @@ function launch() {
   });
 }
 
+// ------------------------------------------------------------------ IP público mudou
+// Com use_external_ip, o LiveKit descobre o IP público UMA vez, ao iniciar, e anuncia esse IP pra
+// todo mundo. Se a operadora troca o IP (roteador reiniciou, caiu a energia, a conexão renovou), o
+// site continua no ar (vai pelo túnel), mas as calls param de conectar pra quem está fora de casa
+// até reiniciar tudo. Aqui confere o IP de tempos em tempos e, se mudou (confirmado em duas
+// checagens seguidas), reinicia só o livekit-server — quem estava na call reconecta sozinho.
+const IP_CHECK_MS = 2 * 60 * 1000;
+function fetchPublicIp() {
+  return new Promise((resolve) => {
+    const req = https.get('https://1.1.1.1/cdn-cgi/trace', { timeout: 8000 }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      res.on('end', () => {
+        const m = body.match(/^ip=(\d{1,3}(?:\.\d{1,3}){3})$/m);
+        resolve(m ? m[1] : null);
+      });
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(null));
+    req.on('close', () => resolve(null)); // se nada resolveu antes (resolve só vale na 1ª vez)
+  });
+}
+
+let ipWatch = null;
+function watchPublicIp() {
+  if (NODE_IP || ipWatch) return; // IP fixo no .env (ou "local"): não tem o que vigiar
+  let known = null;
+  let pending = null;
+  const check = async () => {
+    const ip = await fetchPublicIp();
+    if (!ip || state.stopping) return;
+    if (!known) { known = ip; return; }
+    if (ip === known) { pending = null; return; }
+    if (pending !== ip) { pending = ip; return; } // confirma na próxima checagem
+    log(`o IP público mudou (${known} → ${ip}) — reiniciando o livekit-server pra anunciar o novo`);
+    known = ip;
+    pending = null;
+    // o 'exit' do launch() sobe de novo em ~1 s
+    if (state.child) { try { state.child.kill(); } catch (_) { /* já morreu */ } }
+  };
+  check();
+  ipWatch = setInterval(check, IP_CHECK_MS);
+  ipWatch.unref();
+}
+
 // chamado uma vez pelo server/index.js. Nunca derruba o site: se algo falhar, fica em malha.
 async function start() {
   if (!WANTED) return;
   try {
     await ensureBinary();
     launch();
+    watchPublicIp();
   } catch (err) {
     log('servidor de mídia indisponível, as calls seguem em malha (conexão direta):', err.message);
   }
