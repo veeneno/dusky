@@ -26,6 +26,112 @@ function perfApi() {
   if (btn) btn.hidden = !perfApi();
 })();
 
+// ---------- uso de memória: 3 modos (o app reinicia pra trocar) ----------
+// O que cada um faz de verdade está em tauri/src-tauri/src/webview_setup.rs (MemoryMode). Aqui o
+// texto pra pessoa: o que muda, o que melhora e o que piora — e, em letra menor, o que é por dentro.
+const PERF_MEMORY_MODES = [
+  {
+    id: 'alto', title: 'alto desempenho', tag: 'como era antes',
+    what: 'Guarda bastante coisa na memória (imagens e partes do site que já saíram da tela) e só começa a liberar quando o computador estiver ficando sem memória.',
+    good: 'trocar de canal e voltar pra conversas que você já abriu é o mais rápido possível; quase nada precisa ser recarregado.',
+    bad: 'é o que mais usa memória, e o uso vai crescendo com o tempo que o app fica aberto.',
+    linux: 'cache do WebKit no modo "navegador" (até 128 MB, segurando por 60 s o que saiu da tela) e 1 GB de cache em disco; limpeza só perto de 1/3 da RAM do PC.',
+    win: 'WebView2 no modo normal o tempo todo.',
+  },
+  {
+    id: 'equilibrado', title: 'equilibrado', tag: 'recomendado',
+    what: 'Guarda só um pouco do que saiu da tela e começa a limpar a memória quando o site passa de uns 320 MB.',
+    good: 'usa menos memória, principalmente depois de horas com o app aberto; no dia a dia a diferença de velocidade é pequena.',
+    bad: 'voltar pra um canal que você não abria há um tempo pode recarregar algumas imagens (do disco, é rápido).',
+    linux: 'cache do WebKit no modo "documentos" (até 96 MB, 75 MB em disco); limpeza a partir de ~320 MB e limpeza de tudo que dá a partir de ~480 MB.',
+    win: 'normal com a janela aberta; quando o app vai pra bandeja, o WebView2 devolve memória pro sistema.',
+  },
+  {
+    id: 'minimo', title: 'mínimo', tag: 'menos memória possível',
+    what: 'Limpa a memória sempre que dá: a partir de uns 130 MB no site, conferindo a cada 5 segundos.',
+    good: 'o menor uso de memória com o app aberto — bom pra PC com pouca RAM ou pra jogar com o app aberto do lado.',
+    bad: 'usa mais processador (as limpezas são frequentes), imagens e emojis recarregam mais vezes, e rolar o chat ou trocar de canal pode dar umas engasgadas.',
+    linux: 'cache do WebKit no modo "documentos"; limpeza a partir de ~130 MB e de tudo que dá a partir de ~190 MB, conferindo a cada 5 s.',
+    win: 'o WebView2 fica no modo de economia de memória o tempo todo (a Microsoft avisa que isso pode deixar a janela mais lenta).',
+  },
+];
+
+function perfMemoryModeCurrent() {
+  const info = window.duskyDesktop && window.duskyDesktop.appInfo;
+  return (info && info.gpu && info.gpu.memoryMode) || null;
+}
+
+// cartões de escolha (um rádio por opção) com "melhora / afeta / por dentro" — modos de memória e
+// efeitos de perfil usam o mesmo desenho (.perf-mode, settings.css)
+function perfOptionCards(box, name, options, current, techOf) {
+  box.replaceChildren(...options.map((m) => {
+    const label = document.createElement('label');
+    label.className = `perf-mode${m.id === current ? ' is-current' : ''}`;
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = name;
+    input.value = m.id;
+    input.checked = m.id === current;
+    const body = document.createElement('span');
+    body.className = 'perf-mode-body';
+    const head = document.createElement('span');
+    head.className = 'perf-mode-head';
+    const title = document.createElement('strong');
+    title.textContent = m.title;
+    const tag = document.createElement('span');
+    tag.className = 'perf-mode-tag';
+    tag.textContent = m.id === current ? `${m.tag} · em uso agora` : m.tag;
+    head.append(title, tag);
+    const what = document.createElement('span');
+    what.className = 'perf-mode-what';
+    what.textContent = m.what;
+    const list = document.createElement('ul');
+    const rows = [['melhora:', m.good, ''], ['afeta:', m.bad, '']];
+    const tech = techOf ? techOf(m) : null;
+    if (tech) rows.push(tech.concat('perf-mode-tech'));
+    for (const [label2, text, cls] of rows) {
+      const li = document.createElement('li');
+      if (cls) li.className = cls;
+      const b = document.createElement('b');
+      b.textContent = `${label2} `;
+      li.append(b, document.createTextNode(text));
+      list.appendChild(li);
+    }
+    body.append(head, what, list);
+    label.append(input, body);
+    return label;
+  }));
+}
+
+function renderPerfMemoryModes() {
+  const section = document.getElementById('perfModesSection');
+  const box = document.getElementById('perfModes');
+  const d = window.duskyDesktop;
+  const current = perfMemoryModeCurrent();
+  // app antigo (sem os modos): a seção fica escondida
+  const supported = !!(d && typeof d.setMemoryMode === 'function' && current);
+  if (section) section.hidden = !supported;
+  if (!box || !supported) return;
+  const win = d.platform === 'win32';
+  perfOptionCards(box, 'perfMemoryMode', PERF_MEMORY_MODES, current,
+    (m) => [win ? 'por dentro (Windows):' : 'por dentro (Linux):', win ? m.win : m.linux]);
+}
+
+document.getElementById('perfModes').addEventListener('change', (e) => {
+  const input = e.target.closest('input[name="perfMemoryMode"]');
+  const d = window.duskyDesktop;
+  if (!input || !d || typeof d.setMemoryMode !== 'function') return;
+  const current = perfMemoryModeCurrent();
+  const mode = PERF_MEMORY_MODES.find((m) => m.id === input.value);
+  if (!mode || mode.id === current) return;
+  const inCall = typeof inVoiceCallForSettings === 'function' && inVoiceCallForSettings();
+  if (!confirm(`Trocar o uso de memória pra "${mode.title}"? O app reinicia agora${inCall ? ' (e sai da call)' : ''}.`)) {
+    renderPerfMemoryModes(); // volta a marcar o que está em uso
+    return;
+  }
+  d.setMemoryMode(mode.id);
+});
+
 function perfFmtPercent(v) {
   if (v == null || !Number.isFinite(v)) return '—';
   return `${v.toLocaleString('pt-BR', { minimumFractionDigits: v < 10 ? 1 : 0, maximumFractionDigits: v < 10 ? 1 : 0 })}%`;
@@ -167,6 +273,7 @@ async function perfTick() {
 
 // chamado pelo switchSettingsTab (17-settings.js) ao abrir a aba, e ao trocar de aba/fechar
 function startPerfPanel() {
+  renderPerfMemoryModes();
   if (perfRunning || !perfApi()) return;
   perfRunning = true;
   clearTimeout(perfTimer);
@@ -178,3 +285,39 @@ function stopPerfPanel() {
   clearTimeout(perfTimer);
   perfTimer = null;
 }
+
+// ---------- efeitos de perfil: quando animam (aba "acessibilidade") ----------
+// O CSS de cada modo está no fim do profile.css. Vale no site e no app (não precisa reiniciar).
+const FX_MOTION_OPTIONS = [
+  {
+    id: 'always', title: 'sempre', tag: 'como era antes',
+    what: 'Todos os efeitos (nome, moldura do avatar, placa do nome) animam o tempo todo: no chat, na lista de membros, nas conversas e no perfil.',
+    good: 'o app fica do jeito mais vivo, com tudo se mexendo.',
+    bad: 'é o que mais pesa: com vários efeitos na tela o app pode gastar até um núcleo inteiro do processador mesmo parado (medido), e o tema de vidro deixa ainda mais pesado.',
+  },
+  {
+    id: 'hover', title: 'ao passar o mouse', tag: 'recomendado',
+    what: 'No chat, na lista de membros, nas conversas e na call, o efeito aparece parado e anima quando você passa o mouse na pessoa. No cartão de perfil e no editor de perfil, anima sempre.',
+    good: 'o app parado quase não gasta processador, e os efeitos continuam aparecendo (com cor, moldura e placa).',
+    bad: 'na lista e no chat você só vê o movimento quando passa o mouse.',
+  },
+  {
+    id: 'off', title: 'nunca', tag: 'o mais leve',
+    what: 'Os efeitos aparecem parados em todo lugar, inclusive no perfil. As cores, molduras e placas continuam, só não se mexem.',
+    good: 'o mais leve possível pro processador.',
+    bad: 'nenhum efeito se mexe, nem no seu perfil.',
+  },
+];
+
+function renderFxMotionOptions() {
+  const box = document.getElementById('prefFxMotionGroup');
+  if (!box) return;
+  perfOptionCards(box, 'prefFxMotion', FX_MOTION_OPTIONS, getPref('prefFxMotion'), null);
+}
+
+document.getElementById('prefFxMotionGroup').addEventListener('change', (e) => {
+  const input = e.target.closest('input[name="prefFxMotion"]');
+  if (!input) return;
+  setPref('prefFxMotion', input.value);
+  renderFxMotionOptions();
+});

@@ -96,6 +96,8 @@
     // procura versão nova (as respostas aparecem em janelinhas do próprio app)
     // aceleração de hardware (reinicia o app). appInfo.gpu.hardwareAcceleration diz como está
     setHardwareAcceleration: (on) => { fire('app_set_hardware_acceleration', { on: !!on }); },
+    // uso de memória: 'alto' | 'equilibrado' | 'minimo' (reinicia o app). appInfo.gpu.memoryMode diz qual está
+    setMemoryMode: (mode) => { fire('app_set_memory_mode', { mode: String(mode || '') }); },
     checkForUpdates: () => invoke('update_check').catch((err) => console.warn('[dusky] atualização', err)),
     // abre a pasta com o dusky.log (pra mandar quando algo der errado)
     openLogs: () => { fire('app_open_logs'); },

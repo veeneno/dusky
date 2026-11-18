@@ -135,16 +135,19 @@ const PREF_DEFAULTS = {
   prefLinkPreviews: true, prefJumboEmoji: true, prefShortcodes: true, prefTyping: true, prefEnterSends: true,
   prefClock24: true, prefAutoplayVideo: true, prefReduceMotion: false, prefUnderlineLinks: false,
   prefAlwaysTimestamps: false, prefSaturation: 100,
+  // efeitos de perfil (nome, moldura, placa): 'always' | 'hover' | 'off' — ver profile.css e 33-performance.js
+  prefFxMotion: 'hover',
 };
 function getPref(key) {
   try {
     const v = localStorage.getItem(`dusky:${key}`);
     if (v === null) return PREF_DEFAULTS[key];
+    if (typeof PREF_DEFAULTS[key] === 'string') return v;
     return typeof PREF_DEFAULTS[key] === 'number' ? Number(v) : v === '1';
   } catch (_) { return PREF_DEFAULTS[key]; }
 }
 function setPref(key, value) {
-  try { localStorage.setItem(`dusky:${key}`, typeof value === 'number' ? String(value) : (value ? '1' : '0')); } catch (_) { /* ok */ }
+  try { localStorage.setItem(`dusky:${key}`, typeof value === 'number' || typeof value === 'string' ? String(value) : (value ? '1' : '0')); } catch (_) { /* ok */ }
   applyPrefs();
 }
 // as que mudam o visual viram atributos no <html> (o CSS faz o resto)
@@ -153,11 +156,23 @@ function applyPrefs() {
   root.toggleAttribute('data-reduce-motion', getPref('prefReduceMotion'));
   root.toggleAttribute('data-underline-links', getPref('prefUnderlineLinks'));
   root.toggleAttribute('data-always-time', getPref('prefAlwaysTimestamps'));
+  const fx = getPref('prefFxMotion');
+  root.setAttribute('data-fx-motion', ['always', 'hover', 'off'].includes(fx) ? fx : 'hover');
   const sat = getPref('prefSaturation');
   root.toggleAttribute('data-saturation', sat < 100);
   root.style.setProperty('--app-saturation', String(sat / 100));
 }
 applyPrefs();
+
+// janela sem foco ou escondida (outra janela na frente, minimizado, bandeja): os efeitos de perfil
+// param de animar — ninguém está olhando, e cada quadro deles custa processador (ver profile.css)
+function syncFxIdle() {
+  document.documentElement.toggleAttribute('data-fx-idle', document.hidden || !document.hasFocus());
+}
+window.addEventListener('focus', syncFxIdle);
+window.addEventListener('blur', syncFxIdle);
+document.addEventListener('visibilitychange', syncFxIdle);
+syncFxIdle();
 
 function getSavedNoiseSuppression() {
   try {

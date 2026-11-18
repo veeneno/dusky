@@ -1008,3 +1008,51 @@ html[data-reduce-motion] .catalog-nameplate-video { display: none; }
 .account-security .sec-codes code { font-size: 15px; letter-spacing: 1px; }
 .account-security .sec-warn { color: #f0b232; }
 .account-security .sec-error { margin-top: 6px; }
+
+/* ===================================================================
+   efeitos de perfil x processador: QUANDO cada efeito anima
+   ===================================================================
+   Os efeitos animam sombra borrada, brilho e cor de texto: a placa de vídeo não consegue só "mover
+   o desenho pronto" — o motor das páginas REDESENHA a cada quadro (60x por segundo), e com o tema
+   de vidro ainda refaz o desfoque por cima. Medido no app do Linux, parado no chat com ~30 efeitos
+   na tela (aura, pulso, neon, pétalas…): ~95% de um núcleo; com eles parados, ~8%.
+   Preferência "efeitos de perfil" (acessibilidade, js/app/33-performance.js) → html[data-fx-motion]:
+     always  anima sempre (como era)
+     hover   (padrão) no chat, membros, DMs e call: parado no 1º quadro, anima ao passar o mouse na
+             linha; nas vitrines (cartão de perfil, editor de perfil) anima sempre
+     off     tudo parado (as cores, molduras e placas continuam)
+   E em qualquer modo: janela sem foco ou escondida (html[data-fx-idle], 02-preferences.js) = parado. */
+html[data-fx-motion="hover"] .name-fx,
+html[data-fx-motion="hover"] .avatar-deco::before,
+html[data-fx-motion="hover"] .avatar-deco::after,
+html[data-fx-motion="hover"] .has-nameplate::before,
+html[data-fx-idle] .name-fx,
+html[data-fx-idle] .avatar-deco::before,
+html[data-fx-idle] .avatar-deco::after,
+html[data-fx-idle] .has-nameplate::before,
+html[data-fx-idle] .pc-fx::before,
+html[data-fx-idle] .pc-fx::after { animation-play-state: paused; }
+
+/* "ao passar o mouse": a linha inteira (mensagem, membro, DM, pessoa na call) acorda o efeito */
+html[data-fx-motion="hover"]:not([data-fx-idle]) :is(.msg-group, .member-item, .dm-item, .call-participant):hover .name-fx,
+html[data-fx-motion="hover"]:not([data-fx-idle]) .name-fx:hover,
+html[data-fx-motion="hover"]:not([data-fx-idle]) :is(.msg-group, .member-item, .dm-item, .call-participant):hover .avatar-deco::before,
+html[data-fx-motion="hover"]:not([data-fx-idle]) :is(.msg-group, .member-item, .dm-item, .call-participant):hover .avatar-deco::after,
+html[data-fx-motion="hover"]:not([data-fx-idle]) .has-nameplate:hover::before,
+/* vitrines: o cartão de perfil (aberto de propósito) e o editor de perfil animam sempre */
+html[data-fx-motion="hover"]:not([data-fx-idle]) .pc-name,
+html[data-fx-motion="hover"]:not([data-fx-idle]) .pc-avatar .avatar-deco::before,
+html[data-fx-motion="hover"]:not([data-fx-idle]) .pc-avatar .avatar-deco::after,
+html[data-fx-motion="hover"]:not([data-fx-idle]) :is(.name-fx-picker, #decorEditor) .name-fx,
+html[data-fx-motion="hover"]:not([data-fx-idle]) :is(.name-fx-picker, #decorEditor) .avatar-deco::before,
+html[data-fx-motion="hover"]:not([data-fx-idle]) :is(.name-fx-picker, #decorEditor) .avatar-deco::after,
+html[data-fx-motion="hover"]:not([data-fx-idle]) #decorEditor .has-nameplate::before { animation-play-state: running; }
+
+/* "nunca": parado de vez, inclusive nas vitrines */
+html[data-fx-motion="off"] .name-fx,
+html[data-fx-motion="off"] .avatar-deco::before,
+html[data-fx-motion="off"] .avatar-deco::after,
+html[data-fx-motion="off"] .has-nameplate::before,
+html[data-fx-motion="off"] .pc-fx::before,
+html[data-fx-motion="off"] .pc-fx::after { animation: none !important; }
+html[data-fx-motion="off"] .name-fx-pulso { color: var(--nfx-c1) !important; }

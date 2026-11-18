@@ -1,6 +1,6 @@
 [package]
 name = "dusky"
-version = "1.0.8"
+version = "1.1.0"
 license = "AGPL-3.0-or-later"
 description = "App desktop do dusky (Tauri / Rust) — versão 1.0, codinome Mist"
 authors = ["veneno"]
@@ -52,6 +52,10 @@ xcap = "0.9"
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Performance"] }
 # "Salvar como" dos downloads (downloads.rs) — o mesmo rfd que o tauri-plugin-dialog já usa
 rfd = { version = "0.17", default-features = false, features = ["common-controls-v6"] }
+# uso de memória (webview_setup::apply_memory_level): ICoreWebView2_19::SetMemoryUsageTargetLevel —
+# as mesmas versões que o wry já usa (nada novo pra baixar)
+webview2-com = "0.39"
+windows-core = "0.62"
 
 [profile.release]
 codegen-units = 1

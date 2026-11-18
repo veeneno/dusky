@@ -53,7 +53,7 @@ Por que não módulos (`import`/`export`)? O estado do app (`currentChannel`, `p
 | `30-shortcuts.js` | **Teclas de atalho.** atalhos dentro do app e globais (app desktop), incluindo apertar pra falar | registro e configuração dos atalhos |
 | `31-account-security.js` | **Conta e segurança.** perfil → "conta e segurança": e-mail, 2 etapas, códigos de recuperação, baixar meus dados e excluir conta | `loadAccountSecurity()`, `renderAccountSecurity()` |
 | `32-reports.js` | **Denúncias.** janela de denunciar (mensagem ou pessoa) e a aba "denúncias" do painel rápido de admin | `openReportDialog()`, `renderAdminReports()` |
-| `33-performance.js` | **Desempenho (app desktop).** aba "desempenho" das configurações: CPU, RAM e placa de vídeo de cada processo do dusky (números de `tauri/src-tauri/src/perf.rs`), atualizando a cada 2 s só com a aba aberta | `startPerfPanel()`, `stopPerfPanel()`, `renderPerfSnapshot()` |
+| `33-performance.js` | **Desempenho (app desktop).** aba "desempenho" das configurações: CPU, RAM e placa de vídeo de cada processo do dusky (números de `tauri/src-tauri/src/perf.rs`), atualizando a cada 2 s só com a aba aberta; os 3 modos de uso de memória do app; e as opções de "efeitos de perfil" (acessibilidade: sempre / ao passar o mouse / nunca) | `startPerfPanel()`, `renderPerfMemoryModes()`, `renderFxMotionOptions()` |
 
 ## Onde procurar
 

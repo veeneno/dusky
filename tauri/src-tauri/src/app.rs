@@ -233,6 +233,7 @@ fn grant_site(app: &AppHandle, origin: &str) {
         "allow-status-report",
         "allow-update-check",
         "allow-app-set-hardware-acceleration",
+        "allow-app-set-memory-mode",
         "allow-app-open-logs",
         "allow-perf-snapshot",
         "allow-drop-files",
@@ -350,6 +351,7 @@ pub fn show_main(app: &AppHandle) {
             let _ = win.unminimize();
             let _ = win.show();
             let _ = win.set_focus();
+            webview_setup::apply_memory_level(app, true);
         }
         None => {
             if create_main_window(app).is_ok() {
@@ -631,6 +633,33 @@ fn app_set_hardware_acceleration(app: AppHandle, webview: Webview, on: bool) {
     }
 }
 
+/// troca o modo de uso de memória e reinicia o app (o motor web só lê isso ao abrir)
+pub fn set_memory_mode(app: &AppHandle, mode: &str) {
+    let Some(mode) = webview_setup::MemoryMode::parse(mode) else { return };
+    let st = app.state::<AppState>();
+    {
+        let mut prefs = st.prefs.lock().unwrap();
+        if prefs.memory_mode == mode.as_str() && webview_setup::memory_mode() == mode {
+            return;
+        }
+        prefs.memory_mode = mode.as_str().to_string();
+        server::save_prefs(&st.data_dir, &prefs);
+    }
+    log::info(&format!("uso de memória: {} — reiniciando", mode.as_str()));
+    st.quitting.store(true, Ordering::SeqCst);
+    st.audio.stop();
+    st.screencast.stop();
+    st.call.leave();
+    app.restart();
+}
+
+#[tauri::command]
+fn app_set_memory_mode(app: AppHandle, webview: Webview, mode: String) {
+    if require_site(&app, &webview).is_ok() {
+        set_memory_mode(&app, &mode);
+    }
+}
+
 // ---------- ciclo de vida ----------
 
 pub fn run() {
@@ -647,6 +676,11 @@ pub fn run() {
         .map(|d| server::load_prefs(&d).hardware_acceleration)
         .unwrap_or(true);
     webview_setup::init_hardware_acceleration(hw);
+    // uso de memória: também decidido antes da primeira janela
+    let mem = server::data_dir_for(&context.config().identifier)
+        .map(|d| server::load_prefs(&d).memory_mode)
+        .unwrap_or_default();
+    webview_setup::init_memory_mode(&mem);
 
     // atalhos globais (shortcuts.rs): o plugin só fora do Wayland — lá ele precisaria do X11 (e,
     // sem XWayland, nem iniciaria); no Wayland os atalhos vão pelo portal do sistema
@@ -703,7 +737,10 @@ pub fn run() {
             let handle = app.handle().clone();
             init_local_base(&handle);
             app.state::<AppState>().audio.set_app(&handle);
+            // depois do GTK iniciar (a API exige) e antes da janela (vale pros processos de página novos)
+            webview_setup::init_memory_pressure();
             create_main_window(&handle)?;
+            webview_setup::apply_memory_level(&handle, true);
             if let Err(err) = tray::create(&handle) {
                 log::warn(&format!("não deu pra criar o ícone da bandeja: {err}"));
             }
@@ -735,6 +772,8 @@ pub fn run() {
                     // só esconde: a página continua viva (call, mensagens, sons, notificações)
                     api.prevent_close();
                     let _ = window.hide();
+                    // na bandeja (modo equilibrado no Windows): o WebView2 devolve memória pro sistema
+                    webview_setup::apply_memory_level(app, false);
                     show_tray_hint_once(app);
                 }
                 WindowEvent::Destroyed => {
@@ -753,6 +792,7 @@ pub fn run() {
             desktop_focus,
             status_report,
             app_set_hardware_acceleration,
+            app_set_memory_mode,
             app_open_logs,
             crate::perf::perf_snapshot,
             crate::drops::drop_files,

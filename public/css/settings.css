@@ -327,3 +327,20 @@ html[data-translucent] .perf-tile { background: var(--bg-input); }
 .perf-num.is-heavy { color: var(--danger); font-weight: 600; }
 .perf-empty { text-align: center; color: var(--text-muted); }
 .perf-foot { margin-top: 14px; }
+
+/* aba "desempenho": os 3 modos de uso de memória */
+.perf-modes { display: grid; gap: 10px; margin-bottom: 24px; }
+.perf-mode { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--radius-md); background: var(--bg-solid-sidebar); border: 1px solid var(--border); cursor: pointer; }
+html[data-translucent] .perf-mode { background: var(--bg-input); }
+.perf-mode:hover { border-color: var(--border-strong); }
+.perf-mode.is-current { border-color: var(--accent); }
+.perf-mode input { margin-top: 3px; accent-color: var(--accent); flex-shrink: 0; }
+.perf-mode-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.perf-mode-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.perf-mode-head strong { color: var(--text-heading); font-size: 0.9375rem; }
+.perf-mode-tag { color: var(--text-muted); font-size: 0.75rem; }
+.perf-mode.is-current .perf-mode-tag { color: var(--accent); }
+.perf-mode-what { color: var(--text-normal); font-size: 0.875rem; line-height: 1.45; }
+.perf-mode ul { margin: 2px 0 0; padding-left: 18px; color: var(--text-muted); font-size: 0.8125rem; line-height: 1.5; }
+.perf-mode li b { color: var(--text-normal); font-weight: 600; }
+.perf-mode li.perf-mode-tech, .perf-mode li.perf-mode-tech b { color: var(--text-faint); font-weight: 400; }

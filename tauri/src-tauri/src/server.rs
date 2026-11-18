@@ -275,11 +275,14 @@ pub struct Prefs {
     /// desenhar a página na placa de vídeo (padrão). Mudar reinicia o app: o motor web só lê isso
     /// ao abrir (ver webview_setup.rs)
     pub hardware_acceleration: bool,
+    /// uso de memória: "alto" | "equilibrado" (padrão) | "minimo". Mudar reinicia o app (ver
+    /// webview_setup::MemoryMode)
+    pub memory_mode: String,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { close_to_tray: true, tray_hint_shown: false, hardware_acceleration: true }
+        Self { close_to_tray: true, tray_hint_shown: false, hardware_acceleration: true, memory_mode: "equilibrado".into() }
     }
 }
 

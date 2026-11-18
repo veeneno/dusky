@@ -22,7 +22,7 @@
 //! branca: aí cada quadro do WebGL é copiado da placa pro processador e de volta). O app avisa no
 //! terminal e mostra isso no contador de fps do mundinho (F9).
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use tauri::{AppHandle, WebviewWindow};
 
 static HW_ACCEL: AtomicBool = AtomicBool::new(true);
@@ -30,6 +30,127 @@ static HW_ACCEL: AtomicBool = AtomicBool::new(true);
 pub fn hardware_acceleration() -> bool {
     HW_ACCEL.load(Ordering::SeqCst)
 }
+
+// ---------- uso de memória ----------
+
+/// Modo de uso de memória (preferência do app, padrão "equilibrado"; mudar reinicia o app: o motor
+/// web só lê isso ao abrir). Explicado pra pessoa na aba "desempenho" (public/js/app/33-performance.js).
+///   alto         Linux: cache "navegador" do WebKit (até 128 MB, segurando por 60 s o que saiu da
+///                tela; 1 GB de cache em disco) e limpeza só perto de 1/3 da RAM (até 3 GB) — o
+///                padrão do WebKitGTK, como era antes da 1.0.9. Windows: WebView2 normal.
+///   equilibrado  Linux: cache "documentos" (até 96 MB, só 12–24 MB do que saiu da tela; 75 MB em
+///                disco) e limpeza a partir de 320 MB (tudo que dá a partir de 480 MB). Medido no
+///                Linux, aberto e parado: ~50 MB a menos que o "alto". Windows: normal com a
+///                janela aberta; economia (MemoryUsageTargetLevel LOW) quando vai pra bandeja.
+///   minimo       Linux: cache "documentos" e limpeza a partir de ~134 MB (tudo que dá a partir de
+///                192 MB), conferindo a cada 5 s — mais coleta de lixo = mais processador.
+///                Windows: economia (LOW) o tempo todo.
+/// O modelo "visualizador" do WebKit (DocumentViewer) não é usado: além de não guardar nada fora da
+/// tela, ele zera o cache em DISCO — avatares e anexos seriam baixados de novo toda vez, por ~20 MB.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MemoryMode {
+    Alto,
+    Equilibrado,
+    Minimo,
+}
+
+impl MemoryMode {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "alto" => Some(Self::Alto),
+            "equilibrado" => Some(Self::Equilibrado),
+            "minimo" => Some(Self::Minimo),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Alto => "alto",
+            Self::Equilibrado => "equilibrado",
+            Self::Minimo => "minimo",
+        }
+    }
+}
+
+static MEMORY_MODE: AtomicU8 = AtomicU8::new(1);
+
+pub fn memory_mode() -> MemoryMode {
+    match MEMORY_MODE.load(Ordering::SeqCst) {
+        0 => MemoryMode::Alto,
+        2 => MemoryMode::Minimo,
+        _ => MemoryMode::Equilibrado,
+    }
+}
+
+/// lido das preferências antes de qualquer janela (texto desconhecido = equilibrado)
+pub fn init_memory_mode(mode: &str) {
+    let m = MemoryMode::parse(mode).unwrap_or(MemoryMode::Equilibrado);
+    MEMORY_MODE.store(
+        match m {
+            MemoryMode::Alto => 0,
+            MemoryMode::Equilibrado => 1,
+            MemoryMode::Minimo => 2,
+        },
+        Ordering::SeqCst,
+    );
+}
+
+/// Linux: limites de limpeza do processo das páginas (ver MemoryMode). Vale pros processos de página
+/// criados DEPOIS desta chamada — por isso roda antes da janela, mas depois do GTK iniciar
+/// (MemoryPressureSettings::new entra em pânico sem GTK: fica no setup do Tauri). Ninguém é
+/// encerrado: o limite de "matar o processo" fica desligado (padrão do WebKit).
+#[cfg(target_os = "linux")]
+pub fn init_memory_pressure() {
+    // (limite em MB, fração "estrita", fração "conservadora", conferir a cada N s)
+    let (limit, strict, conservative, poll) = match memory_mode() {
+        MemoryMode::Alto => return, // padrão do WebKit
+        MemoryMode::Equilibrado => (640, 0.75, 0.5, 10.0),
+        MemoryMode::Minimo => (384, 0.5, 0.35, 5.0),
+    };
+    let mut s = webkit2gtk::MemoryPressureSettings::new();
+    s.set_memory_limit(limit);
+    // a ordem importa: o WebKit recusa "conservadora" >= "estrita" (a estrita começa em 0,5)
+    s.set_strict_threshold(strict);
+    s.set_conservative_threshold(conservative);
+    s.set_poll_interval(poll);
+    webkit2gtk::WebsiteDataManager::set_memory_pressure_settings(&mut s);
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn init_memory_pressure() {}
+
+/// Windows: quanto o WebView2 segura de memória agora (ver MemoryMode). "Economia" (LOW) faz ele
+/// devolver memória pro sistema — a Microsoft indica pra janela fora de uso, e avisa que deixa
+/// mais lento se a janela estiver em uso. visible = a janela está aberta (não está na bandeja).
+#[cfg(windows)]
+pub fn apply_memory_level(app: &AppHandle, visible: bool) {
+    use tauri::Manager;
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+    };
+    use windows_core::Interface;
+    let low = match memory_mode() {
+        MemoryMode::Alto => false,
+        MemoryMode::Equilibrado => !visible,
+        MemoryMode::Minimo => true,
+    };
+    let Some(win) = app.get_webview_window(crate::app::MAIN) else { return };
+    let _ = win.with_webview(move |pw| {
+        // SAFETY: chamadas COM do WebView2, na thread da janela (with_webview roda lá)
+        unsafe {
+            if let Ok(core) = pw.controller().CoreWebView2() {
+                if let Ok(c19) = core.cast::<ICoreWebView2_19>() {
+                    let level = if low { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW } else { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL };
+                    let _ = c19.SetMemoryUsageTargetLevel(level);
+                }
+            }
+        }
+    });
+}
+
+#[cfg(not(windows))]
+pub fn apply_memory_level(_app: &AppHandle, _visible: bool) {}
 
 /// Chamado antes de qualquer janela existir (as variáveis do WebKitGTK só valem se já estiverem
 /// no ambiente quando o processo da página nasce).
@@ -105,6 +226,8 @@ pub fn diagnostics() -> serde_json::Value {
     let env = |k: &str| std::env::var(k).ok();
     serde_json::json!({
         "hardwareAcceleration": hardware_acceleration(),
+        // modo de uso de memória (alto | equilibrado | minimo) — aba "desempenho"
+        "memoryMode": memory_mode().as_str(),
         "session": env("XDG_SESSION_TYPE"),
         "dmabufDisabled": env("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref() == Some("1"),
         "compositingDisabled": env("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref() == Some("1"),
@@ -116,8 +239,16 @@ pub fn configure(app: &AppHandle, win: &WebviewWindow) {
     let app = app.clone();
     let _ = win.with_webview(move |pw| {
         use tauri::Manager;
-        use webkit2gtk::{SettingsExt, WebViewExt};
+        use webkit2gtk::{SettingsExt, WebContextExt, WebViewExt};
         let wv = pw.inner();
+        // cache em memória conforme o modo de uso de memória (ver MemoryMode): "alto" = o padrão do
+        // WebKit ("navegador"); os outros = "documentos" (guarda bem menos do que saiu da tela)
+        if let Some(ctx) = wv.context() {
+            ctx.set_cache_model(match memory_mode() {
+                MemoryMode::Alto => webkit2gtk::CacheModel::WebBrowser,
+                _ => webkit2gtk::CacheModel::DocumentBrowser,
+            });
+        }
         // arrastar arquivo: no Wayland o WebKit não entrega o arquivo pra página — guarda os
         // caminhos que o GTK recebeu pra página pedir na hora do soltar (drops.rs)
         {
