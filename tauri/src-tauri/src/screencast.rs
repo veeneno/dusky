@@ -264,23 +264,79 @@ fn encoder_name(enc: &str) -> &'static str {
     }
 }
 
-const VAAPI_DEVICE: &str = "/dev/dri/renderD128";
+/// placas de vídeo pro VA-API, na ordem. renderD128 nem sempre é a certa: com duas placas (ex: NVIDIA
+/// + AMD/Intel) a 128 pode ser a NVIDIA, que no VA-API só decodifica — a outra fica em 129, 130…
+fn vaapi_devices() -> Vec<String> {
+    let found: Vec<String> = (128..136)
+        .map(|n| format!("/dev/dri/renderD{n}"))
+        .filter(|p| std::path::Path::new(p).exists())
+        .collect();
+    if found.is_empty() {
+        vec!["/dev/dri/renderD128".into()]
+    } else {
+        found
+    }
+}
+
+/// formato em que a imagem chega no codificador: x11grab entrega BGR0; no Windows (ddagrab/gfxcapture
+/// + hwdownload), BGRA. A detecção usa o mesmo, pra testar o caminho de verdade.
+const CAPTURE_FMT: &str = if IS_WIN { "bgra" } else { "bgr0" };
+
+/// como o VA-API recebe a imagem: placa escolhida e se a conversão de cor (BGR0 → NV12) é feita NA
+/// PLACA (scale_vaapi) ou no processador (o jeito antigo, plano B pra driver que não aceita BGR0)
+#[derive(Clone, Debug)]
+struct Vaapi {
+    device: String,
+    gpu_convert: bool,
+}
 
 /// pedaço extra antes da entrada e filtro de vídeo que cada codificador precisa
-fn encoder_plumbing(enc: &str, scale_to: Option<(u32, u32)>) -> (Vec<String>, Option<String>) {
+fn encoder_plumbing(enc: &str, scale_to: Option<(u32, u32)>, vaapi: Option<&Vaapi>) -> (Vec<String>, Option<String>) {
     let scale = scale_to.map(|(w, h)| format!("{w}:{h}"));
     match enc {
         // reduz o tamanho DENTRO da placa (scale_cuda), sem gastar processador
         "h264_nvenc" => (vec![], scale.map(|s| format!("hwupload_cuda,scale_cuda={s}"))),
-        "h264_vaapi" => (
-            sv(&["-vaapi_device", VAAPI_DEVICE]),
-            Some(format!("format=nv12,hwupload{}", scale.map(|s| format!(",scale_vaapi={s}")).unwrap_or_default())),
-        ),
+        "h264_vaapi" => {
+            let fallback = Vaapi { device: "/dev/dri/renderD128".into(), gpu_convert: false };
+            let v = vaapi.unwrap_or(&fallback);
+            let pre = sv(&["-vaapi_device", &v.device]);
+            if v.gpu_convert {
+                // sobe a imagem como está e a PLACA converte pra NV12 (e reduz o tamanho, se pedido):
+                // antes o format=nv12 rodava no processador, a cada quadro
+                let size = scale_to.map(|(w, h)| format!("w={w}:h={h}:")).unwrap_or_default();
+                (pre, Some(format!("format=bgr0,hwupload,scale_vaapi={size}format=nv12")))
+            } else {
+                (pre, Some(format!("format=nv12,hwupload{}", scale.map(|s| format!(",scale_vaapi={s}")).unwrap_or_default())))
+            }
+        }
         "h264_qsv" => (vec![], Some(format!("{}format=nv12", scale.map(|s| format!("scale={s}:flags=fast_bilinear,")).unwrap_or_default()))),
         // x264: a captura chega em BGR0 e o x264 escolheria 4:4:4, que o perfil baseline não aceita
         // ("baseline profile doesn't support 4:4:4") — força 4:2:0. (O electron/screencast.js tem o
         // mesmo problema no X11 sem placa de vídeo.)
         _ => (vec![], Some(format!("{}format=yuv420p", scale.map(|s| format!("scale={s}:flags=fast_bilinear,")).unwrap_or_default()))),
+    }
+}
+
+/// Windows, tela inteira: a imagem do ddagrab JÁ ESTÁ na placa (textura D3D11). Em vez de baixar pro
+/// processador (hwdownload) e subir de novo (hwupload_cuda), entrega direto pro codificador:
+///   NVENC e AMF aceitam a textura D3D11 como ela vem; QSV precisa só "embrulhar" (hwmap).
+/// Reduzir o tamanho também fica na placa (scale_d3d11 / scale_qsv). Devolve None quando não dá
+/// (codificador sem esse caminho, ou precisa reduzir e o ffmpeg não tem scale_d3d11) — aí vai pelo
+/// caminho antigo. Mesmo devolvendo Some, o screencast_start testa antes de usar (ver direct_works):
+/// notebook com duas placas (tela ligada na Intel, NVENC na NVIDIA) não consegue ligar direto.
+fn direct_plumbing(enc: &str, scale_to: Option<(u32, u32)>, has_scale_d3d11: bool) -> Option<Option<String>> {
+    match enc {
+        "h264_nvenc" | "h264_amf" => match scale_to {
+            None => Some(None),
+            // o scale_d3d11 (ffmpeg 8+) já entrega em NV12, que os dois aceitam
+            Some((w, h)) if has_scale_d3d11 => Some(Some(format!("scale_d3d11=width={w}:height={h}"))),
+            Some(_) => None,
+        },
+        "h264_qsv" => {
+            let size = scale_to.map(|(w, h)| format!("w={w}:h={h}:")).unwrap_or_default();
+            Some(Some(format!("hwmap=derive_device=qsv,format=qsv,scale_qsv={size}format=nv12")))
+        }
+        _ => None,
     }
 }
 
@@ -343,19 +399,26 @@ pub struct ProbeInfo {
     pub gst: Option<String>,
     pub encoder: String,
     pub hardware: bool,
+    /// dá pra reduzir o tamanho (testado na detecção; se não, vai no tamanho original)
     pub can_scale: bool,
+    /// VA-API: qual placa e se a conversão de cor é na placa
+    vaapi: Option<Vaapi>,
+    /// Windows: o ffmpeg tem o scale_d3d11 (reduzir o tamanho sem tirar a imagem da placa)
+    scale_d3d11: bool,
 }
 
 fn unavailable(reason: &str) -> ProbeInfo {
     ProbeInfo { available: false, reason: Some(reason.into()), ..Default::default() }
 }
 
-async fn probe_wayland() -> ProbeInfo {
+/// cpu_only: aceleração de hardware desligada nas configurações → só o x264enc (antes o Wayland
+/// ignorava a opção e continuava indo pela placa)
+async fn probe_wayland(cpu_only: bool) -> ProbeInfo {
     if !run("gst-inspect-1.0", &sv(&["pipewiresrc"]), 15_000).await.ok {
         return unavailable("falta o GStreamer com o plugin do PipeWire (gstreamer1.0-pipewire)");
     }
     let test_src = sv(&["-q", "videotestsrc", "num-buffers=15", "!", "video/x-raw,format=BGRx,width=640,height=360,framerate=30/1", "!"]);
-    for enc in GST_ORDER {
+    for enc in GST_ORDER.iter().filter(|e| !cpu_only || **e == "x264enc") {
         let scale = (*enc == "x264enc").then_some((640, 360));
         let mut args = test_src.clone();
         args.extend(gst_encoder(enc, 2000, 30, scale));
@@ -391,29 +454,83 @@ async fn probe_wayland() -> ProbeInfo {
     unavailable("nenhum codificador H.264 funcionou no GStreamer")
 }
 
+/// um codificador que passou na detecção, e o jeito de usar
+struct Found {
+    enc: &'static str,
+    can_scale: bool,
+    vaapi: Option<Vaapi>,
+}
+
+/// codifica 15 quadros de teste, com a imagem no mesmo formato que a captura entrega (CAPTURE_FMT)
+async fn try_encoder(ffmpeg: &str, enc: &str, scale_to: Option<(u32, u32)>, vaapi: Option<&Vaapi>) -> RunOut {
+    let (pre, filter) = encoder_plumbing(enc, scale_to, vaapi);
+    let mut args = sv(&["-hide_banner", "-loglevel", "error"]);
+    args.extend(pre);
+    args.extend(sv(&["-f", "lavfi", "-i", "testsrc2=s=640x360:r=30", "-frames:v", "15"]));
+    let chain = match filter {
+        Some(f) => format!("format={CAPTURE_FMT},{f}"),
+        None => format!("format={CAPTURE_FMT}"),
+    };
+    args.extend(["-vf".into(), chain]);
+    args.extend(encoder_args(enc, 2000, 60));
+    args.extend(sv(&["-f", "null", "-"]));
+    run(ffmpeg, &args, 20_000).await
+}
+
 /// testa de verdade quais codificadores um ffmpeg consegue usar (codificando alguns quadros) —
 /// "estar na lista" não garante que a placa/driver aceita
-async fn best_encoder_of(ffmpeg: &str, cpu_only: bool) -> Option<&'static str> {
+async fn best_encoder_of(ffmpeg: &str, cpu_only: bool) -> Option<Found> {
     if !run(ffmpeg, &sv(&["-hide_banner", "-version"]), 15_000).await.ok {
         return None;
     }
     for enc in ORDER.iter().filter(|e| !cpu_only || **e == "libx264") {
-        let (pre, filter) = encoder_plumbing(enc, None);
-        let mut args = sv(&["-hide_banner", "-loglevel", "error"]);
-        args.extend(pre);
-        args.extend(sv(&["-f", "lavfi", "-i", "testsrc2=s=640x360:r=30", "-frames:v", "15"]));
-        if let Some(f) = filter {
-            args.extend(["-vf".into(), f]);
+        let enc: &'static str = enc;
+        if enc == "h264_vaapi" {
+            // cada placa; em cada uma, primeiro com a conversão de cor na placa
+            for device in vaapi_devices() {
+                for gpu_convert in [true, false] {
+                    let v = Vaapi { device: device.clone(), gpu_convert };
+                    let r = try_encoder(ffmpeg, enc, None, Some(&v)).await;
+                    if !r.ok {
+                        log::info(&format!("[{ffmpeg}] VA-API em {device} ({}) indisponível: {}", if gpu_convert { "cor na placa" } else { "cor no processador" }, last_line(&r.stderr)));
+                        continue;
+                    }
+                    let can_scale = try_encoder(ffmpeg, enc, Some((320, 180)), Some(&v)).await.ok;
+                    log::info(&format!(
+                        "[{ffmpeg}] VA-API em {device}: conversão de cor {}{}",
+                        if gpu_convert { "na placa" } else { "no processador" },
+                        if can_scale { "" } else { " · sem reduzir o tamanho" }
+                    ));
+                    return Some(Found { enc, can_scale, vaapi: Some(v) });
+                }
+            }
+            continue;
         }
-        args.extend(encoder_args(enc, 2000, 60));
-        args.extend(sv(&["-f", "null", "-"]));
-        let r = run(ffmpeg, &args, 20_000).await;
-        if r.ok {
-            return Some(enc);
+        let r = try_encoder(ffmpeg, enc, None, None).await;
+        if !r.ok {
+            log::info(&format!("[{ffmpeg}] {enc} indisponível: {}", last_line(&r.stderr)));
+            continue;
         }
-        log::info(&format!("[{ffmpeg}] {enc} indisponível: {}", last_line(&r.stderr)));
+        // reduzir o tamanho na NVIDIA passa pelo scale_cuda: testa à parte. Antes não era testado e,
+        // se falhasse, o compartilhamento inteiro caía; agora vai no tamanho original
+        let can_scale = if enc == "h264_nvenc" {
+            let r = try_encoder(ffmpeg, enc, Some((320, 180)), None).await;
+            if !r.ok {
+                log::info(&format!("[{ffmpeg}] reduzir o tamanho na NVIDIA (scale_cuda) indisponível — vai no tamanho da tela: {}", last_line(&r.stderr)));
+            }
+            r.ok
+        } else {
+            true // QSV e x264 reduzem no processador
+        };
+        return Some(Found { enc, can_scale, vaapi: None });
     }
     None
+}
+
+/// Windows: o ffmpeg tem o scale_d3d11? (reduzir o tamanho sem tirar a imagem da placa — ffmpeg 8+)
+async fn has_filter(ffmpeg: &str, name: &str) -> bool {
+    let r = run(ffmpeg, &sv(&["-hide_banner", "-filters"]), 15_000).await;
+    r.ok && r.stdout.lines().any(|l| l.split_whitespace().nth(1) == Some(name))
 }
 
 async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
@@ -423,13 +540,19 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
     if native_bin(app, "dusky-screencast").is_none() {
         return unavailable("auxiliar de compartilhamento não encontrado");
     }
+    let st = app.state::<AppState>();
+    // aceleração de hardware desligada (configurações do site / bandeja): a tela também vai pelo
+    // processador (x264) — saída pra driver de vídeo que dá tela preta ou trava no codificador
+    let cpu_only = !st.prefs.lock().unwrap().hardware_acceleration;
+    if cpu_only {
+        log::info("aceleração de hardware desligada — compartilhamento de tela pelo processador (x264)");
+    }
     if is_wayland() {
-        return probe_wayland().await;
+        return probe_wayland(cpu_only).await;
     }
     if IS_LINUX && std::env::var_os("DISPLAY").is_none() {
         return unavailable("sem DISPLAY do X11");
     }
-    let st = app.state::<AppState>();
     let mut candidates: Vec<String> = Vec::new();
     if let Ok(p) = std::env::var("FFMPEG_PATH") {
         candidates.push(p);
@@ -445,19 +568,24 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
         candidates.push(m.to_string_lossy().into_owned());
     }
 
-    // aceleração de hardware desligada (configurações do site / bandeja): a tela também vai pelo
-    // processador (x264) — saída pra driver de vídeo que dá tela preta ou trava no codificador
-    let cpu_only = !st.prefs.lock().unwrap().hardware_acceleration;
-    if cpu_only {
-        log::info("aceleração de hardware desligada — compartilhamento de tela pelo processador (x264)");
-    }
-
     let mut fallback: Option<ProbeInfo> = None;
     for ffmpeg in candidates {
-        let Some(enc) = best_encoder_of(&ffmpeg, cpu_only).await else { continue };
-        let info = ProbeInfo { available: true, ffmpeg: Some(ffmpeg.clone()), encoder: enc.into(), hardware: enc != "libx264", ..Default::default() };
+        let Some(found) = best_encoder_of(&ffmpeg, cpu_only).await else { continue };
+        let enc = found.enc;
+        let hardware = enc != "libx264";
+        let scale_d3d11 = IS_WIN && hardware && has_filter(&ffmpeg, "scale_d3d11").await;
+        let info = ProbeInfo {
+            available: true,
+            ffmpeg: Some(ffmpeg.clone()),
+            encoder: enc.into(),
+            hardware,
+            can_scale: found.can_scale,
+            vaapi: found.vaapi,
+            scale_d3d11,
+            ..Default::default()
+        };
         if info.hardware {
-            log::info(&format!("compartilhamento nativo: {enc} ({ffmpeg})"));
+            log::info(&format!("compartilhamento nativo: {enc} ({ffmpeg}){}", if scale_d3d11 { " · com scale_d3d11" } else { "" }));
             return info;
         }
         fallback.get_or_insert(info);
@@ -558,7 +686,34 @@ struct Built {
     size: (u32, u32),
 }
 
-fn build_ffmpeg_args(info: &ProbeInfo, src: &Source, o: &ShareOpts) -> Built {
+/// saída do ffmpeg pro auxiliar: H.264 Annex-B no stdout. dump_extra repete SPS/PPS antes de cada
+/// quadro-chave (quem entra no meio consegue começar). flush_packets: cada quadro sai NA HORA — sem
+/// isso o ffmpeg pode juntar vários quadros pequenos no buffer de saída antes de escrever, e o
+/// auxiliar (que marca o tempo de cada quadro pela hora em que ele chega) mandava em rajadas
+fn ffmpeg_output() -> Vec<String> {
+    sv(&["-bsf:v", "dump_extra", "-flush_packets", "1", "-f", "h264", "pipe:1"])
+}
+
+/// Windows, tela inteira, imagem direto da placa pro codificador: testa com o monitor e o tamanho
+/// escolhidos (uns quadros, sem mandar pra ninguém) antes de usar. Falha em notebook com duas placas
+/// (tela na Intel + NVENC na NVIDIA), driver velho, ffmpeg sem o filtro… — aí vai pelo caminho antigo.
+async fn direct_works(ffmpeg: &str, args: &[String]) -> Result<(), String> {
+    let mut test = args.to_vec();
+    test.extend(sv(&["-frames:v", "5", "-f", "null", "-"]));
+    let r = run(ffmpeg, &test, 8_000).await;
+    if r.ok {
+        Ok(())
+    } else {
+        Err(last_line(&r.stderr))
+    }
+}
+
+/// argumentos do ffmpeg (sem a saída, ver ffmpeg_output). direct = tela do Windows direto da placa
+/// pro codificador (ver direct_plumbing); None se esse caminho não serve pra essa combinação.
+fn build_ffmpeg_args(info: &ProbeInfo, src: &Source, o: &ShareOpts, direct: bool) -> Option<Built> {
+    if direct && (IS_LINUX || !matches!(src.kind, Kind::Screen)) {
+        return None; // janela (gfxcapture) muda de tamanho e pode ter tamanho ímpar: fica no caminho antigo
+    }
     let fps = fps_of(o);
     let f = fps.to_string();
     // (entrada, tamanho conhecido?, vem da placa (Windows ddagrab)?)
@@ -603,15 +758,26 @@ fn build_ffmpeg_args(info: &ProbeInfo, src: &Source, o: &ShareOpts) -> Built {
             ),
         }
     };
-    let target = size.and_then(|(w, h)| fit_inside(w, h, o.width, o.height));
+    let wanted = size.and_then(|(w, h)| fit_inside(w, h, o.width, o.height));
+    // caminho antigo: reduzir só se a detecção conseguiu (NVIDIA: scale_cuda). Direto da placa: o
+    // scale_d3d11/scale_qsv é testado junto no direct_works
+    let target = if direct { wanted } else { wanted.filter(|_| info.can_scale) };
+    if wanted.is_some() && target.is_none() {
+        log::info("reduzir o tamanho indisponível neste codificador — vai no tamanho da tela");
+    }
     let final_size = target.or(size).unwrap_or((o.width.unwrap_or(1920), o.height.unwrap_or(1080)));
     let kbps = kbps_of(o, final_size.0, final_size.1, fps);
-    let (pre, plumb_filter) = encoder_plumbing(&info.encoder, target);
 
     let mut filters: Vec<String> = Vec::new();
-    if d3d11 {
-        filters.extend(sv(&["hwdownload", "format=bgra"])); // traz da placa pra todos os codificadores aceitarem
-    }
+    let (pre, plumb_filter) = if direct {
+        // sem hwdownload: a textura D3D11 do ddagrab vai direto pro codificador
+        (vec![], direct_plumbing(&info.encoder, target, info.scale_d3d11)?)
+    } else {
+        if d3d11 {
+            filters.extend(sv(&["hwdownload", "format=bgra"])); // traz da placa pra todos os codificadores aceitarem
+        }
+        encoder_plumbing(&info.encoder, target, info.vaapi.as_ref())
+    };
     if size.is_none() {
         filters.push("crop=trunc(iw/2)*2:trunc(ih/2)*2".into()); // janela: corta 1px se for ímpar
         // Windows (gfxcapture): só manda quadro quando a janela muda — repete o último pra manter o fps
@@ -630,9 +796,7 @@ fn build_ffmpeg_args(info: &ProbeInfo, src: &Source, o: &ShareOpts) -> Built {
         args.extend(["-vf".into(), filters.join(",")]);
     }
     args.extend(encoder_args(&info.encoder, kbps, fps)); // quadro-chave a cada 1s
-    // repete SPS/PPS antes de cada quadro-chave: quem entra no meio consegue começar
-    args.extend(sv(&["-bsf:v", "dump_extra", "-f", "h264", "pipe:1"]));
-    Built { args, kbps, size: final_size }
+    Some(Built { args, kbps, size: final_size })
 }
 
 fn build_gst_args(info: &ProbeInfo, picked: &Value, o: &ShareOpts) -> Built {
@@ -947,11 +1111,29 @@ pub async fn screencast_start(app: AppHandle, webview: Webview, opts: ShareOpts)
     } else {
         st.audio.stop();
     }
-    let built = build_ffmpeg_args(&info, &source, &opts);
+    let ffmpeg = info.ffmpeg.clone().unwrap_or_default();
+    // Windows, tela inteira: tenta a imagem direto da placa pro codificador (testa antes)
+    let mut direct = false;
+    let mut built = None;
+    if let Some(b) = build_ffmpeg_args(&info, &source, &opts, true) {
+        match direct_works(&ffmpeg, &b.args).await {
+            Ok(()) => {
+                direct = true;
+                built = Some(b);
+            }
+            Err(why) => log::info(&format!("tela direto da placa pro codificador não funcionou aqui — vai pelo caminho antigo: {why}")),
+        }
+    }
+    let Some(mut built) = built.or_else(|| build_ffmpeg_args(&info, &source, &opts, false)) else {
+        st.audio.stop();
+        return fail("não deu pra montar a captura");
+    };
+    built.args.extend(ffmpeg_output());
     log::info(&format!("ffmpeg {}", built.args.join(" ")));
     log::info(&format!(
-        "compartilhamento nativo: {} · {}x{} · {} fps · {} kbps · {}",
-        source.name, built.size.0, built.size.1, fps_of(&opts), built.kbps, info.encoder
+        "compartilhamento nativo: {} · {}x{} · {} fps · {} kbps · {}{}",
+        source.name, built.size.0, built.size.1, fps_of(&opts), built.kbps, info.encoder,
+        if direct { " · direto da placa (sem passar pelo processador)" } else { "" }
     ));
     if let Err(e) = spawn_helper(&app).await {
         st.audio.stop();
@@ -1069,6 +1251,45 @@ mod tests {
                 ("XDG_DATA_DIRS".to_string(), None),
             ]
         );
+    }
+
+    #[test]
+    fn direto_da_placa() {
+        // NVENC/AMF sem reduzir: nenhum filtro (a textura vai como está)
+        assert_eq!(direct_plumbing("h264_nvenc", None, false), Some(None));
+        assert_eq!(direct_plumbing("h264_amf", None, true), Some(None));
+        // reduzir: só com o scale_d3d11; sem ele, caminho antigo
+        assert_eq!(direct_plumbing("h264_nvenc", Some((1280, 720)), true), Some(Some("scale_d3d11=width=1280:height=720".into())));
+        assert_eq!(direct_plumbing("h264_nvenc", Some((1280, 720)), false), None);
+        // QSV: embrulha e converte pra NV12 na placa
+        assert_eq!(
+            direct_plumbing("h264_qsv", Some((1280, 720)), false),
+            Some(Some("hwmap=derive_device=qsv,format=qsv,scale_qsv=w=1280:h=720:format=nv12".into()))
+        );
+        assert_eq!(direct_plumbing("h264_qsv", None, false), Some(Some("hwmap=derive_device=qsv,format=qsv,scale_qsv=format=nv12".into())));
+        // x264 não tem caminho direto
+        assert_eq!(direct_plumbing("libx264", None, true), None);
+    }
+
+    #[test]
+    fn vaapi_converte_na_placa() {
+        let gpu = Vaapi { device: "/dev/dri/renderD129".into(), gpu_convert: true };
+        let (pre, f) = encoder_plumbing("h264_vaapi", Some((1280, 720)), Some(&gpu));
+        assert_eq!(pre, sv(&["-vaapi_device", "/dev/dri/renderD129"]));
+        assert_eq!(f.as_deref(), Some("format=bgr0,hwupload,scale_vaapi=w=1280:h=720:format=nv12"));
+        let (_, f) = encoder_plumbing("h264_vaapi", None, Some(&gpu));
+        assert_eq!(f.as_deref(), Some("format=bgr0,hwupload,scale_vaapi=format=nv12"));
+        // plano B: a conversão no processador, como antes
+        let cpu = Vaapi { device: "/dev/dri/renderD128".into(), gpu_convert: false };
+        let (_, f) = encoder_plumbing("h264_vaapi", None, Some(&cpu));
+        assert_eq!(f.as_deref(), Some("format=nv12,hwupload"));
+    }
+
+    #[test]
+    fn saida_sem_buffer() {
+        let out = ffmpeg_output();
+        assert!(out.windows(2).any(|w| w[0] == "-flush_packets" && w[1] == "1"));
+        assert_eq!(out.last().map(String::as_str), Some("pipe:1"));
     }
 
     #[test]
