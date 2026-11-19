@@ -96,4 +96,57 @@
   }).catch(() => {
     document.getElementById('dlMain').innerHTML = '<p class="empty">Não deu pra carregar. Tenta recarregar a página.</p>';
   });
+
+  // ---------------- builds de teste ----------------
+  // downloads/testes/testes.json (fora do git), escrito pelo tauri/scripts/build-testes.js. Sem ele
+  // (ou sem nenhum arquivo), a seção e o link ficam escondidos.
+  const TEST_HINTS = { windows: 'instalador .exe', appimage: 'qualquer distro', deb: 'Ubuntu, Debian, Mint' };
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const list = (title, items) => {
+    if (!Array.isArray(items) || !items.length) return null;
+    const box = el('div');
+    box.appendChild(el('h3', null, title));
+    const ul = el('ul');
+    for (const item of items) ul.appendChild(el('li', null, String(item)));
+    box.appendChild(ul);
+    return box;
+  };
+
+  fetch('/downloads/testes/testes.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((t) => {
+    const files = (t && t.files) || {};
+    const keys = ['windows', 'appimage', 'deb'].filter((k) => files[k] && files[k].file);
+    if (!t || !t.version || !keys.length) return;
+    const body = document.getElementById('testBody');
+
+    const head = el('div', 'test-head');
+    head.appendChild(el('strong', null, `dusky ${t.version}`));
+    const bits = [];
+    if (t.pub_date) bits.push(date(t.pub_date));
+    if (t.commit) bits.push(`commit ${String(t.commit).slice(0, 7)}`);
+    if (bits.length) head.appendChild(el('span', null, bits.join(' · ')));
+    body.appendChild(head);
+    if (t.title) body.appendChild(el('p', 'test-title', t.title));
+
+    const cols = el('div', 'test-cols');
+    for (const box of [list('o que mudou', t.notes), list('o que testar', t.test)]) if (box) cols.appendChild(box);
+    if (cols.children.length) body.appendChild(cols);
+
+    const grid = el('div', 'test-files');
+    // o do sistema de quem está olhando primeiro
+    keys.sort((a, b) => (b === os) - (a === os));
+    for (const key of keys) {
+      const f = files[key];
+      const a = el('a', 'opt');
+      a.href = `/downloads/testes/${encodeURIComponent(f.file)}`;
+      a.appendChild(el('strong', null, NAMES[key]));
+      a.appendChild(el('span', null, `${TEST_HINTS[key]} · ${size(f.size)}`));
+      a.addEventListener('click', () => showInstall(key));
+      grid.appendChild(a);
+    }
+    body.appendChild(grid);
+
+    document.getElementById('testes').hidden = false;
+    document.getElementById('testLink').hidden = false;
+    if (location.hash === '#testes') document.getElementById('testes').scrollIntoView({ block: 'start' });
+  }).catch(() => { /* sem builds de teste: a seção fica escondida */ });
 })();

@@ -204,6 +204,30 @@
     .migrate p { margin: 0; color: var(--text-lo); font-size: 14px; }
     .migrate p + p { margin-top: 6px; }
 
+    /* ---------------- builds de teste ---------------- */
+    .test-link { margin: 14px 0 0; text-align: center; font-size: 13.5px; color: var(--text-faint); animation: appear .9s .24s var(--ease) both; }
+    .test-link[hidden], #testes[hidden] { display: none; }
+    .test-link a { color: #ffc98b; text-decoration: none; border-bottom: 1px dashed rgba(255, 201, 139, .5); }
+    .test-link a:hover { border-bottom-style: solid; }
+    #testes { border-color: rgba(255, 190, 120, .28); }
+    #testes h2 small { color: #ffc98b; }
+    .warn {
+      display: flex; gap: 10px; align-items: flex-start; margin: 0 0 16px; padding: 12px 14px; border-radius: 10px;
+      background: rgba(255, 180, 90, .08); border: 1px solid rgba(255, 190, 120, .28); color: #f3dcc2; font-size: 13.5px;
+    }
+    .warn b { color: #ffc98b; }
+    .test-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 4px; }
+    .test-head strong { font-size: 16px; color: var(--frost); }
+    .test-head span { font-size: 12.5px; color: var(--text-faint); }
+    .test-title { margin: 0 0 12px; color: var(--text-lo); font-size: 14px; }
+    .test-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .test-cols h3 { margin: 0 0 6px; font: 600 12px Inter, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--mint); }
+    .test-cols ul { margin: 0; padding-left: 18px; color: var(--text-lo); font-size: 13.5px; }
+    .test-cols li + li { margin-top: 4px; }
+    .test-files { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+    .test-files .opt { border-color: rgba(255, 190, 120, .22); }
+    .test-files .opt:hover { border-color: rgba(255, 201, 139, .55); }
+
     .foot { margin-top: 30px; text-align: center; color: var(--text-faint); font-size: 13.5px; }
     .foot a { color: var(--violet); }
   </style>
@@ -235,6 +259,7 @@
       <p class="empty">carregando…</p>
     </section>
     <div class="others" id="dlOthers"></div>
+    <p class="test-link" id="testLink" hidden>quer experimentar as novidades antes de todo mundo? <a href="#testes">builds de teste</a></p>
 
     <section class="block glass">
       <h2>o que chegou na Mist <small id="whatsNewVersion">1.0</small></h2>
@@ -331,10 +356,17 @@
       </dl>
     </section>
 
+    <section class="block glass" id="testes" hidden>
+      <h2>testes <small>antes de todo mundo</small></h2>
+      <p class="sub">Builds com coisas novas que ainda estão sendo testadas, feitas a partir da branch <code class="inline">testes</code> do código.</p>
+      <div class="warn"><span>⚠</span><div><b>Pode ter bug.</b> Use se quiser ajudar a testar. Quando sair a próxima versão normal, o app de teste se atualiza sozinho pra ela. Pra voltar antes disso, é só instalar a versão normal lá em cima por cima desta.</div></div>
+      <div id="testBody"></div>
+    </section>
+
     <p class="foot">Prefere não instalar nada? Dá pra usar direto no navegador: <a href="/">entrar no dusky</a>. No celular, use pelo navegador mesmo.</p>
     <p class="foot"><a href="/termos">termos de uso</a> · <a href="/privacidade">privacidade</a> · <a href="https://github.com/veeneno/dusky" target="_blank" rel="noopener">código-fonte</a></p>
   </div>
 
-  <script src="/js/baixar.js"></script>
+  <script src="/js/baixar.js?v=2"></script>
 </body>
 </html>

@@ -191,6 +191,37 @@ senhas, pendrive): sem ela, nenhum app instalado aceita versão nova, e trocar a
 mundo a reinstalar. Só o servidor precisa dela (o build do Windows não assina; quem assina é o
 `release`, no Linux).
 
+## Builds de teste (`npm run release:testes`)
+
+Novidade arriscada vai primeiro pra branch **`testes`** e sai como build de teste, que aparece na
+seção **testes** do `/baixar` (`/baixar#testes`) pra quem quiser ajudar a testar. A versão normal
+(`latest.json`, atualização automática) não muda.
+
+A branch fica numa cópia à parte (git worktree), pra pasta do site continuar na `main`:
+
+```bash
+# uma vez
+cd /mnt/33/dusky/dusky
+git worktree add ../dusky-testes testes
+cd ../dusky-testes
+ln -s ../dusky/downloads downloads                       # publica na pasta do site
+ln -s ../../dusky/tauri/node_modules tauri/node_modules
+ln -s ../../../dusky/tauri/src-tauri/vendor tauri/src-tauri/vendor   # ffmpeg do instalador
+ln -s ../../../dusky/tauri/src-tauri/target tauri/src-tauri/target   # reaproveita a compilação
+
+# a cada build de teste (na pasta tauri/ do worktree)
+npm run release:testes -- --titulo "o que é esta build" \
+  --nota "mudança 1" --nota "mudança 2" --testar "o que testar"
+```
+
+- versão: a próxima da atual com `-teste.N` (1.1.2 → `1.1.3-teste.1`, `-teste.2`…), passada com
+  `--config` (o `tauri.conf.json` não muda). `--mesma-versao` reaproveita o número (pra publicar o
+  outro sistema da mesma build com `--so-linux`/`--so-windows`);
+- arquivos em `downloads/testes/` + `testes.json` (o que a página lê). Ficam as 2 últimas builds;
+- quem instala a build de teste continua no `latest.json` normal: quando sair a 1.1.3 de verdade,
+  ela é maior que `1.1.3-teste.N` e o app se atualiza sozinho pra ela;
+- deu certo? `git checkout main && git merge testes` na pasta do site e `npm run release:all`.
+
 ## Migração do app antigo (Electron)
 
 Quem tem o Electron (0.5.x, instalado como "didiscord") **não precisa reinstalar**: o atualizador
