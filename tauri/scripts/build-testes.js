@@ -50,7 +50,9 @@ if (process.platform !== 'linux') die('este script é pro servidor Linux');
 if (SO_LINUX && SO_WINDOWS) die('use --so-linux OU --so-windows, não os dois');
 
 const env = { ...process.env };
-for (const dir of [path.join(HOME, '.local', 'bin'), path.join(HOME, '.cargo', 'bin')]) {
+// node_modules/.bin: o scripts/tauri.js chama o CLI "tauri" pelo PATH (o npm põe essa pasta no PATH;
+// rodando "node scripts/build-testes.js" direto, não)
+for (const dir of [path.join(TAURI, 'node_modules', '.bin'), path.join(HOME, '.local', 'bin'), path.join(HOME, '.cargo', 'bin')]) {
   if (!env.PATH.split(':').includes(dir)) env.PATH = `${dir}:${env.PATH}`;
 }
 
