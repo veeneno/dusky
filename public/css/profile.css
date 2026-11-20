@@ -507,12 +507,8 @@
   to { color: var(--nfx-c2); text-shadow: 0 0 8px var(--nfx-c2); }
 }
 
-/* "reduzir movimento" (sistema ou acessibilidade do app): o efeito fica, parado. O theme.css
+/* "reduzir animações" (acessibilidade do app — o do sistema não conta, ver decor-catalog.js): o efeito fica, parado. O theme.css
    encurta animações pra 0,01 ms, mas com "infinite" isso vira pisca-pisca — aqui desliga de vez */
-@media (prefers-reduced-motion: reduce) {
-  .name-fx { animation: none !important; }
-  .name-fx-pulso { color: var(--nfx-c1) !important; }
-}
 html[data-reduce-motion] .name-fx { animation: none !important; }
 html[data-reduce-motion] .name-fx-pulso { color: var(--nfx-c1) !important; }
 
@@ -886,10 +882,6 @@ html[data-reduce-motion] .name-fx-pulso { color: var(--nfx-c1) !important; }
 @keyframes fx-rise-170 { from { background-position: 0 0; } to { background-position: 0 -170px; } }
 
 /* "reduzir movimento": tudo parado (o theme.css encurta pra 0,01 ms, que com "infinite" pisca) */
-@media (prefers-reduced-motion: reduce) {
-  .avatar-deco, .avatar-deco::before, .avatar-deco::after,
-  .has-nameplate::before, .pc-fx::before, .pc-fx::after { animation: none !important; }
-}
 html[data-reduce-motion] .avatar-deco,
 html[data-reduce-motion] .avatar-deco::before,
 html[data-reduce-motion] .avatar-deco::after,
@@ -987,7 +979,6 @@ html[data-reduce-motion] .pc-fx::after { animation: none !important; }
 .profile-card:has(> .catalog-profile-fx) { aspect-ratio: 450 / 880; }
 .profile-card.is-popout:has(> .catalog-profile-fx) { aspect-ratio: auto; min-height: min(calc(300px * 880 / 450), calc(100vh - 16px)); }
 html[data-reduce-motion] .catalog-nameplate-video { display: none; }
-@media (prefers-reduced-motion: reduce) { .catalog-nameplate-video { display: none; } }
 
 /* ---------- conta e segurança: e-mail e 2 etapas (31-account-security.js) ---------- */
 .account-security .profile-edit-group { margin-bottom: 18px; }

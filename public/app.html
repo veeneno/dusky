@@ -13,30 +13,30 @@
   <meta name="theme-color" content="#16141f">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e1f22">
-  <script src="/js/compat.js?v=64"></script>
-  <script src="/js/themes.js?v=64"></script>
+  <script src="/js/compat.js?v=66"></script>
+  <script src="/js/themes.js?v=66"></script>
   <script src="/js/theme-boot.js"></script>
   <title>concord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/theme.css?v=64">
-  <link rel="stylesheet" href="/css/app.css?v=64">
-  <link rel="stylesheet" href="/css/chat.css?v=64">
-  <link rel="stylesheet" href="/css/members.css?v=64">
-  <link rel="stylesheet" href="/css/profile.css?v=64">
-  <link rel="stylesheet" href="/css/voice.css?v=64">
-  <link rel="stylesheet" href="/css/settings.css?v=64">
-  <link rel="stylesheet" href="/css/servers.css?v=64">
-  <link rel="stylesheet" href="/css/call-roles.css?v=64">
-  <link rel="stylesheet" href="/css/chat-extras.css?v=64">
-  <link rel="stylesheet" href="/css/design.css?v=64">
-  <link rel="stylesheet" href="/css/media.css?v=64">
-  <link rel="stylesheet" href="/css/server-options.css?v=64">
-  <link rel="stylesheet" href="/css/server-settings.css?v=64">
-  <link rel="stylesheet" href="/css/world.css?v=64">
-  <link rel="stylesheet" href="/css/mobile.css?v=64">
-  <link rel="stylesheet" href="/css/sidebar-dc.css?v=64">
-  <link rel="stylesheet" href="/css/reports.css?v=64">
+  <link rel="stylesheet" href="/css/theme.css?v=66">
+  <link rel="stylesheet" href="/css/app.css?v=66">
+  <link rel="stylesheet" href="/css/chat.css?v=66">
+  <link rel="stylesheet" href="/css/members.css?v=66">
+  <link rel="stylesheet" href="/css/profile.css?v=66">
+  <link rel="stylesheet" href="/css/voice.css?v=66">
+  <link rel="stylesheet" href="/css/settings.css?v=66">
+  <link rel="stylesheet" href="/css/servers.css?v=66">
+  <link rel="stylesheet" href="/css/call-roles.css?v=66">
+  <link rel="stylesheet" href="/css/chat-extras.css?v=66">
+  <link rel="stylesheet" href="/css/design.css?v=66">
+  <link rel="stylesheet" href="/css/media.css?v=66">
+  <link rel="stylesheet" href="/css/server-options.css?v=66">
+  <link rel="stylesheet" href="/css/server-settings.css?v=66">
+  <link rel="stylesheet" href="/css/world.css?v=66">
+  <link rel="stylesheet" href="/css/mobile.css?v=66">
+  <link rel="stylesheet" href="/css/sidebar-dc.css?v=66">
+  <link rel="stylesheet" href="/css/reports.css?v=66">
 </head>
 <body>
   <div class="app-shell">
@@ -1275,7 +1275,14 @@
                   compartilhar com som
                 </label>
               </div>
-              <span class="field-help">resolução e fps valem a partir da próxima vez que compartilhar; prioridade e bitrate valem na hora. A prioridade decide o que cai quando falta processador ou internet: "equilibrado" segura o fps baixando um pouco a resolução (bom pra jogo e vídeo), "nitidez" mantém o texto legível e deixa o fps cair. Cada pessoa assistindo é mais um vídeo saindo do seu PC — se o fps cair com muita gente, quem não está olhando pode clicar em "parar de assistir".</span>
+              <div class="settings-row" id="screenEncoderRow" hidden>
+                <select id="screenEncoderSelect" title="quem comprime o vídeo da sua tela antes de mandar">
+                  <option value="auto">codificar: placa de vídeo primeiro (recomendado)</option>
+                  <option value="cpu">codificar: processador primeiro</option>
+                </select>
+                <span class="field-help" id="screenEncoderStatus"></span>
+              </div>
+              <span class="field-help">resolução, fps e codificação valem a partir da próxima vez que compartilhar; prioridade e bitrate valem na hora. A codificação escolhe quem tenta primeiro; se não funcionar, o outro entra sozinho. Se quem assiste vê a sua tela preta ou congelada, troque pra "processador primeiro". A prioridade decide o que cai quando falta processador ou internet: "equilibrado" segura o fps baixando um pouco a resolução (bom pra jogo e vídeo), "nitidez" mantém o texto legível e deixa o fps cair. Cada pessoa assistindo é mais um vídeo saindo do seu PC — se o fps cair com muita gente, quem não está olhando pode clicar em "parar de assistir".</span>
             </div>
 
         </section>
@@ -1360,7 +1367,7 @@
             <button type="button" class="btn btn-ghost" id="settingsOpenLogsBtn" hidden title="abre a pasta com o dusky.log — mande esse arquivo quando algo der errado">abrir pasta do log</button>
           </div>
           <label class="settings-toggle" id="settingsHwAccelRow" hidden>
-            <span class="settings-toggle-text"><strong>aceleração de hardware</strong><small>desenha o site, as telas e o mundinho na placa de vídeo. Desligue só se a janela ficar preta ou travando. Mudar reinicia o app.</small></span>
+            <span class="settings-toggle-text"><strong>aceleração de hardware</strong><small>desenha o site, as animações e o mundinho na placa de vídeo. Desligue só se a janela ficar preta ou travando. Não muda o compartilhamento de tela (esse tem opção própria em "compartilhar tela"). Mudar reinicia o app.</small></span>
             <input type="checkbox" id="settingsHwAccel">
           </label>
           <label class="settings-toggle" id="settingsAutostartRow" hidden>
@@ -1403,45 +1410,45 @@
     </div>
   </div>
 
-  <script src="/js/realtime.js?v=64"></script>
-  <script src="/js/markdown.js?v=64"></script>
-  <script src="/js/emoji.js?v=64"></script>
+  <script src="/js/realtime.js?v=66"></script>
+  <script src="/js/markdown.js?v=66"></script>
+  <script src="/js/emoji.js?v=66"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=64"></script>
-  <script src="/js/app/02-preferences.js?v=64"></script>
-  <script src="/js/app/03-context-menus.js?v=64"></script>
-  <script src="/js/app/04-sidebar.js?v=64"></script>
-  <script src="/js/app/05-chat.js?v=64"></script>
-  <script src="/js/app/06-message-content.js?v=64"></script>
-  <script src="/js/app/07-composer.js?v=64"></script>
-  <script src="/js/app/08-notifications.js?v=64"></script>
-  <script src="/js/app/09-panels-attachments.js?v=64"></script>
-  <script src="/js/app/10-video-player.js?v=64"></script>
-  <script src="/js/app/11-slash-commands.js?v=64"></script>
-  <script src="/decor/catalog.js?v=64"></script>
-  <script src="/js/decor-catalog.js?v=64"></script>
-  <script src="/js/decor-picker.js?v=64"></script>
-  <script src="/js/app/12-members-profile.js?v=64"></script>
-  <script src="/js/app/13-servers.js?v=64"></script>
-  <script src="/js/app/14-roles.js?v=64"></script>
-  <script src="/js/app/15-media-viewer.js?v=64"></script>
-  <script src="/js/app/16-site-admin.js?v=64"></script>
-  <script src="/js/app/17-settings.js?v=64"></script>
-  <script src="/js/app/18-call-audio.js?v=64"></script>
-  <script src="/js/app/19-call-ui.js?v=64"></script>
-  <script src="/js/app/20-screencast-native.js?v=64"></script>
-  <script src="/js/app/21-call-sfu.js?v=64"></script>
-  <script src="/js/app/22-call-mesh.js?v=64"></script>
-  <script src="/js/app/23-call-media.js?v=64"></script>
-  <script src="/js/app/24-presence.js?v=64"></script>
-  <script src="/js/app/25-server-settings.js?v=64"></script>
-  <script src="/js/app/26-soundboard.js?v=64"></script>
-  <script src="/js/app/27-world.js?v=64"></script>
-  <script src="/js/app/28-realtime.js?v=64"></script>
-  <script src="/js/app/29-mobile.js?v=64"></script>
-  <script src="/js/app/30-shortcuts.js?v=64"></script>
-  <script src="/js/app/31-account-security.js?v=64"></script>
-  <script src="/js/app/32-reports.js?v=64"></script>
-  <script src="/js/app/33-performance.js?v=64"></script>
+  <script src="/js/app/01-state.js?v=66"></script>
+  <script src="/js/app/02-preferences.js?v=66"></script>
+  <script src="/js/app/03-context-menus.js?v=66"></script>
+  <script src="/js/app/04-sidebar.js?v=66"></script>
+  <script src="/js/app/05-chat.js?v=66"></script>
+  <script src="/js/app/06-message-content.js?v=66"></script>
+  <script src="/js/app/07-composer.js?v=66"></script>
+  <script src="/js/app/08-notifications.js?v=66"></script>
+  <script src="/js/app/09-panels-attachments.js?v=66"></script>
+  <script src="/js/app/10-video-player.js?v=66"></script>
+  <script src="/js/app/11-slash-commands.js?v=66"></script>
+  <script src="/decor/catalog.js?v=66"></script>
+  <script src="/js/decor-catalog.js?v=66"></script>
+  <script src="/js/decor-picker.js?v=66"></script>
+  <script src="/js/app/12-members-profile.js?v=66"></script>
+  <script src="/js/app/13-servers.js?v=66"></script>
+  <script src="/js/app/14-roles.js?v=66"></script>
+  <script src="/js/app/15-media-viewer.js?v=66"></script>
+  <script src="/js/app/16-site-admin.js?v=66"></script>
+  <script src="/js/app/17-settings.js?v=66"></script>
+  <script src="/js/app/18-call-audio.js?v=66"></script>
+  <script src="/js/app/19-call-ui.js?v=66"></script>
+  <script src="/js/app/20-screencast-native.js?v=66"></script>
+  <script src="/js/app/21-call-sfu.js?v=66"></script>
+  <script src="/js/app/22-call-mesh.js?v=66"></script>
+  <script src="/js/app/23-call-media.js?v=66"></script>
+  <script src="/js/app/24-presence.js?v=66"></script>
+  <script src="/js/app/25-server-settings.js?v=66"></script>
+  <script src="/js/app/26-soundboard.js?v=66"></script>
+  <script src="/js/app/27-world.js?v=66"></script>
+  <script src="/js/app/28-realtime.js?v=66"></script>
+  <script src="/js/app/29-mobile.js?v=66"></script>
+  <script src="/js/app/30-shortcuts.js?v=66"></script>
+  <script src="/js/app/31-account-security.js?v=66"></script>
+  <script src="/js/app/32-reports.js?v=66"></script>
+  <script src="/js/app/33-performance.js?v=66"></script>
 </body>
 </html>

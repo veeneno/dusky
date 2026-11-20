@@ -15,9 +15,10 @@
   'use strict';
   const items = window.DUSKY_DECOR_CATALOG?.items || [];
   const index = new Map(items.map(item => [item.id, item]));
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const root = document.documentElement;
-  const motionOff = () => reduced.matches || root.hasAttribute('data-reduce-motion');
+  // só a opção do app ("reduzir animações"). O "efeitos de animação" do Windows/sistema NÃO conta:
+  // muita gente desliga ele por desempenho e ficava sem GIF nem efeito, com tudo ligado no dusky
+  const motionOff = () => root.hasAttribute('data-reduce-motion');
   // linhas que "acordam" com o mouse e vitrines que animam sempre (as mesmas do profile.css)
   const ROWS = '.msg-group, .member-item, .dm-item, .call-participant, .channel-voice-preview-avatar, .profile-avatar-wrap';
   const SHOWCASE = '.pc-avatar, .pc-fx, .catalog-profile-fx, .profile-edit-avatar, #decorEditor, .media-viewer';
@@ -66,7 +67,6 @@
   };
   new MutationObserver(scheduleUpdate).observe(root, { childList: true, subtree: true });
   new MutationObserver(scheduleUpdate).observe(root, { attributes: true, attributeFilter: ['data-reduce-motion', 'data-fx-motion', 'data-fx-idle'] });
-  reduced.addEventListener('change', scheduleUpdate);
   document.addEventListener('visibilitychange', scheduleUpdate);
   // mouse entrou/saiu de uma linha: só reavalia o que está dentro dela (e da que ficou pra trás)
   document.addEventListener('pointerover', e => {

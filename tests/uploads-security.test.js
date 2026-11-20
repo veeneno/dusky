@@ -41,6 +41,6 @@ test('revogação de acesso vale mesmo para URL já conhecida',async()=>{
  db.prepare('DELETE FROM dm_members WHERE user_id=2').run();assert.equal((await get(png,2)).status,404);
 });
 test('SVG de perfil não vira página ativa; arquivo sem mensagem não é público',async()=>{
- const r=await get(avatar);assert.equal(r.status,200);assert.match(r.headers.get('content-type'),/octet-stream/);assert.match(r.headers.get('content-disposition'),/^attachment/);
+ const r=await get(avatar);assert.equal(r.status,200);assert.equal(r.headers.get('cache-control'),'private, max-age=31536000, immutable');assert.match(r.headers.get('content-type'),/octet-stream/);assert.match(r.headers.get('content-disposition'),/^attachment/);
  db.prepare('DELETE FROM messages WHERE attachment_url=?').run(html);assert.equal((await get(html,1)).status,404);
 });

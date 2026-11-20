@@ -238,6 +238,10 @@ fn encoder_args(enc: &str, kbps: u32, gop: u32) -> Vec<String> {
             "-c:v".into(), "h264_amf".into(), "-usage".into(), "ultralowlatency".into(), "-quality".into(), "speed".into(), "-rc".into(), "cbr".into(),
             "-profile:v".into(), "constrained_baseline".into(), "-b:v".into(), k.clone(), "-maxrate".into(), k, "-g".into(), g.clone(), "-bf".into(), "0".into(),
             "-forced_idr".into(), "1".into(), "-header_spacing".into(), g,
+            // o driver da AMD no "ultralowlatency" pode ignorar o -g e mandar UM quadro-chave só, no
+            // começo: quem abre a tela depois (todo mundo) ficava esperando quadro-chave pra sempre.
+            // Forçado pelo próprio ffmpeg (1 por segundo), virando IDR pelo -forced_idr acima
+            "-force_key_frames".into(), "expr:gte(t,n_forced*1)".into(),
         ],
         _ => vec![
             "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(), "-tune".into(), "zerolatency".into(), "-profile:v".into(), "baseline".into(),
@@ -411,14 +415,18 @@ fn unavailable(reason: &str) -> ProbeInfo {
     ProbeInfo { available: false, reason: Some(reason.into()), ..Default::default() }
 }
 
-/// cpu_only: aceleração de hardware desligada nas configurações → só o x264enc (antes o Wayland
-/// ignorava a opção e continuava indo pela placa)
-async fn probe_wayland(cpu_only: bool) -> ProbeInfo {
+/// cpu_first: configurações → compartilhar tela → "processador primeiro" (x264enc na frente)
+async fn probe_wayland(cpu_first: bool) -> ProbeInfo {
     if !run("gst-inspect-1.0", &sv(&["pipewiresrc"]), 15_000).await.ok {
         return unavailable("falta o GStreamer com o plugin do PipeWire (gstreamer1.0-pipewire)");
     }
     let test_src = sv(&["-q", "videotestsrc", "num-buffers=15", "!", "video/x-raw,format=BGRx,width=640,height=360,framerate=30/1", "!"]);
-    for enc in GST_ORDER.iter().filter(|e| !cpu_only || **e == "x264enc") {
+    let order: Vec<&'static str> = if cpu_first {
+        std::iter::once("x264enc").chain(GST_ORDER.iter().copied().filter(|e| *e != "x264enc")).collect()
+    } else {
+        GST_ORDER.to_vec()
+    };
+    for enc in order.iter() {
         let scale = (*enc == "x264enc").then_some((640, 360));
         let mut args = test_src.clone();
         args.extend(gst_encoder(enc, 2000, 30, scale));
@@ -461,30 +469,92 @@ struct Found {
     vaapi: Option<Vaapi>,
 }
 
-/// codifica 15 quadros de teste, com a imagem no mesmo formato que a captura entrega (CAPTURE_FMT)
+/// codifica quadros de teste, com a imagem no mesmo formato que a captura entrega (CAPTURE_FMT), e
+/// confere o vídeo que saiu (check_probe_stream)
 async fn try_encoder(ffmpeg: &str, enc: &str, scale_to: Option<(u32, u32)>, vaapi: Option<&Vaapi>) -> RunOut {
     let (pre, filter) = encoder_plumbing(enc, scale_to, vaapi);
     let mut args = sv(&["-hide_banner", "-loglevel", "error"]);
     args.extend(pre);
-    args.extend(sv(&["-f", "lavfi", "-i", "testsrc2=s=640x360:r=30", "-frames:v", "15"]));
+    // 15 fps: 60 quadros = 4 s, então o quadro-chave forçado (1/s) também conta 4
+    args.extend(sv(&["-f", "lavfi", "-i", "testsrc2=s=640x360:r=15", "-frames:v", &PROBE_FRAMES.to_string()]));
     let chain = match filter {
         Some(f) => format!("format={CAPTURE_FMT},{f}"),
         None => format!("format={CAPTURE_FMT}"),
     };
     args.extend(["-vf".into(), chain]);
-    args.extend(encoder_args(enc, 2000, 60));
-    args.extend(sv(&["-f", "null", "-"]));
-    run(ffmpeg, &args, 20_000).await
+    args.extend(encoder_args(enc, 2000, PROBE_GOP));
+    // o MESMO fim do compartilhamento de verdade (ffmpeg_output), num arquivo
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let out = std::env::temp_dir().join(format!("dusky-probe-{}-{}.h264", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed)));
+    let out_s = out.to_string_lossy().into_owned();
+    args.extend(sv(&["-bsf:v", "dump_extra", "-f", "h264", "-y"]));
+    args.push(out_s.clone());
+    let mut r = run(ffmpeg, &args, 20_000).await;
+    if r.ok {
+        if let Err(why) = check_probe_stream(ffmpeg, &out_s).await {
+            r.ok = false;
+            r.stderr = why;
+        }
+    }
+    let _ = std::fs::remove_file(&out);
+    r
+}
+const PROBE_FRAMES: usize = 60;
+const PROBE_GOP: u32 = 15;
+
+/// "codificou sem erro" não basta: confere que o vídeo DECODIFICA e que tem quadro-chave (com
+/// SPS/PPS na frente) a cada GOP — é disso que quem começa a assistir no meio precisa. Driver que
+/// solta um quadro-chave só (ou um vídeo que não decodifica) faz cair pro próximo codificador
+async fn check_probe_stream(ffmpeg: &str, file: &str) -> Result<(), String> {
+    let data = std::fs::read(file).map_err(|e| format!("sem saída do teste ({e})"))?;
+    let keys = count_sps(&data);
+    let want_keys = PROBE_FRAMES / PROBE_GOP as usize - 1; // 60 quadros, GOP 15: 4 (aceita 3)
+    if keys < want_keys {
+        return Err(format!("{keys} quadro(s)-chave em {PROBE_FRAMES} quadros (precisa de {want_keys}) — quem entrasse depois não veria nada"));
+    }
+    let r = run(ffmpeg, &sv(&["-hide_banner", "-v", "error", "-f", "h264", "-i", file, "-f", "framecrc", "-"]), 20_000).await;
+    let decoded = r.stdout.lines().filter(|l| !l.starts_with('#') && !l.trim().is_empty()).count();
+    if !r.ok || decoded < PROBE_FRAMES * 3 / 4 {
+        return Err(format!("o vídeo gerado não decodifica direito ({decoded}/{PROBE_FRAMES} quadros{})",
+            if r.stderr.trim().is_empty() { String::new() } else { format!(": {}", last_line(&r.stderr)) }));
+    }
+    Ok(())
+}
+
+/// quantos SPS (NAL 7) tem no fluxo Annex-B — um na frente de cada quadro-chave (dump_extra)
+fn count_sps(data: &[u8]) -> usize {
+    let mut n = 0;
+    let mut i = 0;
+    while i + 3 < data.len() {
+        if data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 {
+            if data[i + 3] & 0x1f == 7 {
+                n += 1;
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    n
+}
+
+fn screen_cpu_first(app: &AppHandle) -> bool {
+    app.state::<AppState>().prefs.lock().unwrap().screen_encoder == "cpu"
 }
 
 /// testa de verdade quais codificadores um ffmpeg consegue usar (codificando alguns quadros) —
 /// "estar na lista" não garante que a placa/driver aceita
-async fn best_encoder_of(ffmpeg: &str, cpu_only: bool) -> Option<Found> {
+async fn best_encoder_of(ffmpeg: &str, cpu_first: bool) -> Option<Found> {
     if !run(ffmpeg, &sv(&["-hide_banner", "-version"]), 15_000).await.ok {
         return None;
     }
-    for enc in ORDER.iter().filter(|e| !cpu_only || **e == "libx264") {
-        let enc: &'static str = enc;
+    // "processador primeiro": x264 na frente, as placas de reserva
+    let order: Vec<&'static str> = if cpu_first {
+        std::iter::once("libx264").chain(ORDER.iter().copied().filter(|e| *e != "libx264")).collect()
+    } else {
+        ORDER.to_vec()
+    };
+    for enc in order {
         if enc == "h264_vaapi" {
             // cada placa; em cada uma, primeiro com a conversão de cor na placa
             for device in vaapi_devices() {
@@ -541,14 +611,14 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
         return unavailable("auxiliar de compartilhamento não encontrado");
     }
     let st = app.state::<AppState>();
-    // aceleração de hardware desligada (configurações do site / bandeja): a tela também vai pelo
-    // processador (x264) — saída pra driver de vídeo que dá tela preta ou trava no codificador
-    let cpu_only = !st.prefs.lock().unwrap().hardware_acceleration;
-    if cpu_only {
-        log::info("aceleração de hardware desligada — compartilhamento de tela pelo processador (x264)");
+    // configurações → compartilhar tela → "processador primeiro" (x264, placa de reserva). A
+    // aceleração de hardware NÃO entra aqui: ela é só o desenho da página
+    let cpu_first = screen_cpu_first(app);
+    if cpu_first {
+        log::info("compartilhamento de tela: processador primeiro (x264), placa de vídeo de reserva");
     }
     if is_wayland() {
-        return probe_wayland(cpu_only).await;
+        return probe_wayland(cpu_first).await;
     }
     if IS_LINUX && std::env::var_os("DISPLAY").is_none() {
         return unavailable("sem DISPLAY do X11");
@@ -570,7 +640,7 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
 
     let mut fallback: Option<ProbeInfo> = None;
     for ffmpeg in candidates {
-        let Some(found) = best_encoder_of(&ffmpeg, cpu_only).await else { continue };
+        let Some(found) = best_encoder_of(&ffmpeg, cpu_first).await else { continue };
         let enc = found.enc;
         let hardware = enc != "libx264";
         let scale_d3d11 = IS_WIN && hardware && has_filter(&ffmpeg, "scale_d3d11").await;
@@ -584,7 +654,7 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
             scale_d3d11,
             ..Default::default()
         };
-        if info.hardware {
+        if info.hardware != cpu_first {
             log::info(&format!("compartilhamento nativo: {enc} ({ffmpeg}){}", if scale_d3d11 { " · com scale_d3d11" } else { "" }));
             return info;
         }
@@ -607,7 +677,7 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
     }
     match fallback {
         Some(f) => {
-            log::info(&format!("compartilhamento nativo: {} no processador ({})", f.encoder, f.ffmpeg.as_deref().unwrap_or("?")));
+            log::info(&format!("compartilhamento nativo: {} ({}, reserva)", f.encoder, f.ffmpeg.as_deref().unwrap_or("?")));
             f
         }
         None => unavailable("nenhum codificador H.264 funcionou no ffmpeg"),
@@ -1023,8 +1093,30 @@ pub async fn screencast_available(app: AppHandle, webview: Webview) -> Value {
         "hardware": info.hardware,
         "reason": info.reason,
         "sfu": true, // este app sabe mandar a tela pelo servidor de mídia (comando "publish")
+        // "auto" (placa de vídeo primeiro) | "cpu" — configurações → compartilhar tela
+        "encoderMode": st.prefs.lock().unwrap().screen_encoder.clone(),
         "deps": st.deps.status(),
     })
+}
+
+/// configurações → compartilhar tela: "auto" (placa de vídeo primeiro) | "cpu". Vale a partir do
+/// próximo compartilhamento (detecta de novo); não reinicia o app. -> o modo que ficou
+#[tauri::command]
+pub async fn screencast_set_encoder(app: AppHandle, webview: Webview, mode: String) -> String {
+    let st = app.state::<AppState>();
+    if app::require_site(&app, &webview).is_err() || !matches!(mode.as_str(), "auto" | "cpu") {
+        return st.prefs.lock().unwrap().screen_encoder.clone();
+    }
+    {
+        let mut prefs = st.prefs.lock().unwrap();
+        if prefs.screen_encoder != mode {
+            prefs.screen_encoder = mode.clone();
+            crate::server::save_prefs(&st.data_dir, &prefs);
+            log::info(&format!("compartilhar tela: codificar {}", if mode == "cpu" { "pelo processador" } else { "pela placa de vídeo (com o processador de reserva)" }));
+        }
+    }
+    *st.screencast.probe_cache.lock().await = None;
+    mode
 }
 
 /// abre o seletor e começa a transmitir. Os eventos do auxiliar chegam no site por "screencast:event".

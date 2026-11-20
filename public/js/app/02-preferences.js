@@ -170,6 +170,17 @@ function syncFxIdle() {
   document.documentElement.toggleAttribute('data-fx-idle', document.hidden || !document.hasFocus());
 }
 window.addEventListener('focus', syncFxIdle);
+// mexeu o mouse / apertou tecla na página = está olhando. No app do Windows (WebView2) o
+// document.hasFocus() pode ficar false com a janela na frente até um clique dentro — e aí os
+// efeitos e GIFs ficavam parados
+const wakeFx = () => {
+  if (!document.hidden && document.documentElement.hasAttribute('data-fx-idle')) {
+    document.documentElement.removeAttribute('data-fx-idle');
+  }
+};
+window.addEventListener('pointermove', wakeFx, { passive: true });
+window.addEventListener('pointerdown', wakeFx, { passive: true });
+window.addEventListener('keydown', wakeFx, { passive: true });
 window.addEventListener('blur', syncFxIdle);
 document.addEventListener('visibilitychange', syncFxIdle);
 syncFxIdle();

@@ -78,6 +78,10 @@ const prevN = previous && typeof previous.version === 'string' && previous.versi
 const N = flag('--mesma-versao') && prevN ? prevN : prevN + 1;
 const VERSION = `${BASE}-teste.${N}`;
 const CONFIG = JSON.stringify({ version: VERSION });
+// o próprio app sabe que é build de teste e qual (configurações → app e versões, bandeja, log):
+// lidos na compilação pelo app.rs (APP_VERSION / CHANNEL)
+env.DUSKY_BUILD_VERSION = VERSION;
+env.DUSKY_CHANNEL = 'testes';
 
 // ------------------------------------------------------------------ compilar
 
