@@ -36,7 +36,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let reload = MenuItem::with_id(app, "reload", "Recarregar", true, None::<&str>)?;
     let change = MenuItem::with_id(app, "changeServer", "Mudar endereço do servidor…", !st.fixed_by_env, None::<&str>)?;
     let updates = MenuItem::with_id(app, "updates", "Procurar atualizações", true, None::<&str>)?;
-    let version = MenuItem::with_id(app, "version", format!("{} ({})", app::version_label(), env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
+    let version = MenuItem::with_id(app, "version", format!("{} ({})", app::version_label(), app::APP_VERSION), false, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Sair do dusky", true, None::<&str>)?;
     let sep = || PredefinedMenuItem::separator(app);
     let menu = Menu::with_items(

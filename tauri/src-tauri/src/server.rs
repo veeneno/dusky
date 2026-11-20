@@ -341,8 +341,9 @@ pub mod log {
             *FILE.lock().unwrap() = Some((path, f, len));
         }
         info(&format!(
-            "---- dusky {} ({} {}) iniciando ----",
-            env!("CARGO_PKG_VERSION"),
+            "---- dusky {}{} ({} {}) iniciando ----",
+            crate::app::APP_VERSION,
+            if crate::app::is_test_build() { " [build de teste]" } else { "" },
             std::env::consts::OS,
             std::env::consts::ARCH
         ));

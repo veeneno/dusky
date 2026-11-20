@@ -89,7 +89,7 @@ pub async fn check(app: AppHandle, manual: bool) {
         }
         Ok(None) => {
             if manual {
-                info(&app, format!("O dusky já está na versão mais nova.\n\n{} ({})", app::version_label(), env!("CARGO_PKG_VERSION")));
+                info(&app, format!("O dusky já está na versão mais nova.\n\n{} ({})", app::version_label(), app::APP_VERSION));
             }
         }
         Err(err) => {

@@ -24,10 +24,27 @@ pub const BRIDGE_JS: &str = include_str!("bridge.js");
 /// codinome da versão (1.x = Mist)
 pub const CODENAME: &str = "Mist";
 
-/// "dusky Mist 1.0" — o nome que aparece nas configurações e na bandeja
+/// versão de verdade desta build. A build de teste (scripts/build-testes.js) passa
+/// DUSKY_BUILD_VERSION=1.1.3-teste.N na compilação — o Cargo.toml continua com a versão normal
+pub const APP_VERSION: &str = match option_env!("DUSKY_BUILD_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
+/// "testes" na build de teste (DUSKY_CHANNEL na compilação), "estavel" na normal
+pub const CHANNEL: &str = match option_env!("DUSKY_CHANNEL") {
+    Some(c) => c,
+    None => "estavel",
+};
+
+pub fn is_test_build() -> bool {
+    CHANNEL == "testes"
+}
+
+/// "dusky Mist 1.0" (ou "dusky Mist 1.1 · teste") — o nome que aparece nas configurações e na bandeja
 pub fn version_label() -> String {
     let short: Vec<&str> = env!("CARGO_PKG_VERSION").split('.').take(2).collect();
-    format!("dusky {CODENAME} {}", short.join("."))
+    format!("dusky {CODENAME} {}{}", short.join("."), if is_test_build() { " · teste" } else { "" })
 }
 
 #[derive(Serialize)]
@@ -36,6 +53,8 @@ struct AppInfo {
     name: &'static str,
     version: &'static str,
     codename: &'static str,
+    /// "estavel" | "testes" (build de teste — configurações → app e versões mostra um selo)
+    channel: &'static str,
     label: String,
     shell: &'static str,
     os: &'static str,
@@ -48,7 +67,8 @@ struct AppInfo {
 fn app_info() -> AppInfo {
     AppInfo {
         name: "dusky",
-        version: env!("CARGO_PKG_VERSION"),
+        version: APP_VERSION,
+        channel: CHANNEL,
         codename: CODENAME,
         label: version_label(),
         shell: "tauri",

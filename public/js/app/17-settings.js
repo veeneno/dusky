@@ -413,7 +413,16 @@ function renderSettingsAppCard() {
   const info = desk && desk.appInfo;
   card.innerHTML = '<span class="settings-card-icon"><img src="/img/brand/dm-colorido-64.png" width="28" height="28" alt=""></span><span class="settings-card-text"><strong></strong><span></span></span>';
   // app novo: "dusky Mist 1.0"; Electron antigo (sem appInfo): só "app desktop do dusky"
-  card.querySelector('strong').textContent = desk ? ((info && info.label) || 'app desktop do dusky') : 'dusky no navegador';
+  const title = card.querySelector('strong');
+  title.textContent = desk ? ((info && info.label) || 'app desktop do dusky') : 'dusky no navegador';
+  // build de teste (seção "testes" do /baixar): selo pra não confundir com a versão normal
+  if (info && info.channel === 'testes') {
+    const badge = document.createElement('em');
+    badge.className = 'settings-test-badge';
+    badge.textContent = 'build de teste';
+    badge.title = 'versão de teste — quando sair a próxima versão normal, o app se atualiza sozinho pra ela';
+    title.append(' ', badge);
+  }
   const line = () => {
     const parts = [];
     if (desk && desk.appVersion) parts.push(`app ${desk.appVersion}`);
