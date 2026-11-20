@@ -412,5 +412,5 @@ Partes de terceiros incluídas, cada uma com a sua licença:
 | Three.js | `public/vendor/three/` | MIT |
 | emojibase (dados de emoji) | `public/vendor/emoji/` | MIT |
 | bibliotecas do servidor (npm) | `package.json` | MIT, exceto web-push (MPL-2.0) |
-| FFmpeg (só no instalador do Windows) | baixado por `tauri/scripts/fetch-ffmpeg.js` | GPL-3.0 — build "essentials" do gyan.dev; o código-fonte do FFmpeg está em https://ffmpeg.org/download.html |
+| FFmpeg (só no instalador do Windows) | baixado por `tauri/scripts/fetch-ffmpeg.js` | GPL-3.0 — build "win64-gpl" 8.1.3 do BtbN (github.com/BtbN/FFmpeg-Builds); o código-fonte do FFmpeg está em https://ffmpeg.org/download.html |
 | LiveKit server, yt-dlp, ffmpeg do bot | baixados na primeira vez, fora do git | Apache-2.0, Unlicense, LGPL/GPL |

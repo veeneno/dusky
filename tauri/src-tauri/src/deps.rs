@@ -4,7 +4,9 @@
 //! Segurança: versão FIXA, e o arquivo só é usado se o SHA-256 bater com o valor oficial gravado
 //! aqui. Arquivo diferente = descartado.
 //! Fonte: builds estáticas do ffmpeg por BtbN (github.com/BtbN/FFmpeg-Builds), com NVENC, AMF,
-//! QSV/VA-API e captura de tela. Versão 8.1.3 (a 9.x exige driver NVIDIA 610+).
+//! QSV/VA-API e captura de tela. Versão 8.1.3: os builds 8.1 do BtbN usam o SDK 13.0 da NVIDIA
+//! (driver 570+); a 9.x — e o 8.1 do gyan.dev — exigem driver 610+.
+//! O BtbN apaga builds antigos: uma cópia fica no servidor em /mnt/33/dusky/ffmpeg-mirror.
 
 use crate::server::log;
 use serde::Serialize;
@@ -25,20 +27,20 @@ struct Build {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const BUILD: Option<Build> = Some(Build {
-    version: "n8.1.3",
-    url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-26-13-03/ffmpeg-n8.1.3-linux64-gpl-8.1.tar.xz",
-    sha256: "add729675e76163d04ba7e5b7e09c2439a20f66a4eaa23994b20d63f8ad75cb7",
-    size: 150_325_156,
+    version: "n8.1.3-39",
+    url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-20-12-40/ffmpeg-n8.1.3-39-g660b5aa7db-linux64-gpl-8.1.tar.xz",
+    sha256: "1fb59ca0ad9cf1de48e4c7196b245c5e45e9dc1f494ff2e763cfb6a3ab37a347",
+    size: 152_925_712,
     archive: "ffmpeg.tar.xz",
     exe: "ffmpeg",
 });
 
 #[cfg(all(windows, target_arch = "x86_64"))]
 const BUILD: Option<Build> = Some(Build {
-    version: "n8.1.3",
-    url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-26-13-03/ffmpeg-n8.1.3-win64-gpl-8.1.zip",
-    sha256: "d20ef03f0f4161453b9f46a72471eb5370f56b6410fe8bca14a4b0220c6c924a",
-    size: 193_111_781,
+    version: "n8.1.3-39",
+    url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-20-12-40/ffmpeg-n8.1.3-39-g660b5aa7db-win64-gpl-8.1.zip",
+    sha256: "0a0d10072704c7f0b9a4aab1ca9937ef04b32ef25d4f940a0d639868c657d1b5",
+    size: 197_396_697,
     archive: "ffmpeg.zip",
     exe: "ffmpeg.exe",
 });

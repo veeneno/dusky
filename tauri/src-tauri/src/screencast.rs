@@ -201,8 +201,19 @@ async fn run(bin: &str, args: &[String], timeout_ms: u64) -> RunOut {
     }
 }
 
+/// a linha que explica o erro do ffmpeg. A última costuma ser genérica ("Nothing was written into
+/// output file…") e escondia o motivo de verdade — ex.: "Driver does not support the required nvenc
+/// API version" (ffmpeg compilado pra driver NVIDIA mais novo que o da pessoa)
 fn last_line(s: &str) -> String {
-    s.trim().lines().last().unwrap_or("falhou").to_string()
+    const GENERIC: &[&str] = &[
+        "Nothing was written", "Terminating thread", "Task finished", "Could not open encoder before EOF",
+        "Conversion failed", "Error while opening encoder", "Error sending frames", "Exiting with exit code",
+    ];
+    let useful: Vec<&str> = s.trim().lines().map(str::trim).filter(|l| !l.is_empty() && !GENERIC.iter().any(|g| l.contains(g))).collect();
+    match useful.len() {
+        0 => s.trim().lines().last().unwrap_or("falhou").to_string(),
+        n => useful[n.saturating_sub(2)..].join(" | "),
+    }
 }
 
 fn sv(items: &[&str]) -> Vec<String> {
