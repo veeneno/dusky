@@ -282,7 +282,7 @@ O que olhar quando o app tem menos fps que o navegador (Linux):
 
 ## Dependências e instaladores
 
-- **Windows:** o instalador traz tudo — ffmpeg (8.1.2 do gyan.dev, conferido por SHA-256, ver
+- **Windows:** o instalador traz tudo — ffmpeg (8.1.3 do BtbN, conferido por SHA-256, ver
   `scripts/fetch-ffmpeg.js`), `dusky-screencast.exe`, `dusky-audiocap.exe`; o runtime do Visual C++
   vai embutido no executável; o WebView2, se faltar, é baixado durante a instalação.
 - **Linux:** o app usa as bibliotecas do sistema. O `.deb` declara `Depends` (WebKitGTK, GTK,
@@ -342,7 +342,7 @@ Os binários `dusky-screencast` e `dusky-audiocap.exe` vêm de `../native/bin` e
 vão junto no instalador (ver `tauri.linux.conf.json` / `tauri.windows.conf.json`).
 
 No Windows o **ffmpeg vai dentro do instalador** (+~27 MB comprimido): o `npm run dev`/`build`
-baixa uma vez o ffmpeg 8.1.2 "essentials" do gyan.dev (versão fixa, conferida por SHA-256 — ver
+baixa uma vez o ffmpeg 8.1.3 do BtbN (versão fixa, conferida por SHA-256; driver NVIDIA 570+ — ver
 `scripts/fetch-ffmpeg.js`) pra `src-tauri/vendor/ffmpeg/`, que fica fora do git. Assim compartilhar
 tela pela placa de vídeo funciona sem a pessoa instalar nada. No Linux usa o ffmpeg do sistema.
 

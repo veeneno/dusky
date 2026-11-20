@@ -3,18 +3,26 @@
 // do build do Windows feito no Linux (scripts/build-all.js).
 //
 // Versão FIXA e conferida pelo SHA-256: arquivo diferente = descartado.
-// Build "essentials" do gyan.dev (https://www.gyan.dev/ffmpeg/builds/), ffmpeg 8.1.2: tem NVENC,
-// AMF, Quick Sync, ddagrab e gdigrab. 8.1 e não 9.x: a 9 exige driver NVIDIA 610+. Licença GPL
-// (o LICENSE vai junto no instalador).
+// Build "win64-gpl" do BtbN (https://github.com/BtbN/FFmpeg-Builds), ffmpeg 8.1.3: tem NVENC, AMF,
+// Quick Sync, ddagrab, gfxcapture e scale_d3d11. Por que BtbN e não mais o gyan.dev: o 8.1.2 do gyan
+// foi compilado com o SDK 13.1 da NVIDIA e exige driver 610+ — com driver normal (ex.: 581) a NVENC
+// era recusada ("Driver does not support the required nvenc API version") e TODA NVIDIA caía no
+// processador. Os builds 8.1 do BtbN usam o SDK 13.0 (driver 570+). Mesma versão do download de
+// reserva do app (src-tauri/src/deps.rs). Licença GPL (o LICENSE vai junto no instalador).
+//
+// O BtbN apaga builds antigos do GitHub: se a cópia em FFMPEG_MIRROR (padrão: a pasta
+// ffmpeg-mirror ao lado do código, no servidor) existir, usa ela; senão baixa.
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
-const VERSION = '8.1.2';
-const URL = `https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-${VERSION}-essentials_build.zip`;
-const SHA256 = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec';
+const VERSION = 'btbn-n8.1.3-39-g660b5aa7db';
+const NAME = 'ffmpeg-n8.1.3-39-g660b5aa7db-win64-gpl-8.1';
+const URL = `https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-20-12-40/${NAME}.zip`;
+const SHA256 = '0a0d10072704c7f0b9a4aab1ca9937ef04b32ef25d4f940a0d639868c657d1b5';
+const MIRROR = process.env.FFMPEG_MIRROR || path.join(__dirname, '..', '..', '..', 'ffmpeg-mirror');
 
 const dir = path.join(__dirname, '..', 'src-tauri', 'vendor', 'ffmpeg');
 const exe = path.join(dir, 'ffmpeg.exe');
@@ -39,10 +47,17 @@ function unzip(zip, dest) {
 async function main() {
   if (fs.existsSync(exe) && fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8').trim() === VERSION) return;
   fs.mkdirSync(dir, { recursive: true });
-  console.log(`[ffmpeg] baixando ffmpeg ${VERSION} pro instalador do Windows (~105 MB, uma vez só)…`);
-  const res = await fetch(URL, { redirect: 'follow' });
-  if (!res.ok) throw new Error(`download falhou (HTTP ${res.status})`);
-  const buf = Buffer.from(await res.arrayBuffer());
+  const local = path.join(MIRROR, `${NAME}.zip`);
+  let buf;
+  if (fs.existsSync(local)) {
+    console.log(`[ffmpeg] usando a cópia em ${local}`);
+    buf = fs.readFileSync(local);
+  } else {
+    console.log(`[ffmpeg] baixando ffmpeg ${VERSION} pro instalador do Windows (~190 MB, uma vez só)…`);
+    const res = await fetch(URL, { redirect: 'follow' });
+    if (!res.ok) throw new Error(`download falhou (HTTP ${res.status}) — o BtbN apaga builds antigos; ponha o .zip em ${MIRROR}`);
+    buf = Buffer.from(await res.arrayBuffer());
+  }
   const digest = crypto.createHash('sha256').update(buf).digest('hex');
   if (digest !== SHA256) throw new Error('o arquivo baixado não bate com o SHA-256 esperado — descartado');
 
@@ -52,9 +67,9 @@ async function main() {
   fs.rmSync(tmp, { recursive: true, force: true });
   fs.mkdirSync(tmp);
   unzip(zip, tmp);
-  const root = path.join(tmp, `ffmpeg-${VERSION}-essentials_build`);
+  const root = path.join(tmp, NAME);
   fs.copyFileSync(path.join(root, 'bin', 'ffmpeg.exe'), exe);
-  fs.copyFileSync(path.join(root, 'LICENSE'), license);
+  fs.copyFileSync(path.join(root, 'LICENSE.txt'), license);
   fs.writeFileSync(stamp, VERSION);
   fs.rmSync(tmp, { recursive: true, force: true });
   fs.rmSync(zip, { force: true });
