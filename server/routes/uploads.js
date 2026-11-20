@@ -32,7 +32,14 @@ module.exports = function serveUpload(req, res, next) {
       res.sendStatus(err.statusCode === 404 ? 404 : 500);
     });
   };
-  if (folder !== 'attachments') return send(); // imagens de perfil e sons continuam funcionando
+  if (folder !== 'attachments') {
+    // avatar, banner, tema, som...: públicos e o nome é aleatório (arquivo novo = nome novo), então o
+    // navegador pode guardar. Sem isso o GIF do avatar era baixado INTEIRO de novo toda vez que
+    // voltava a animar (decor-catalog.js troca o quadro parado pelo GIF) — e cancelado no meio se o
+    // mouse saía antes: "GIF que não toca". 'private' = só o navegador guarda, não a Cloudflare.
+    res.set('Cache-Control', 'private, max-age=31536000, immutable');
+    return send(); // imagens de perfil e sons continuam funcionando
+  }
   requireAuth(req, res, () => {
     const rows = db.prepare('SELECT channel_id FROM messages WHERE attachment_url = ?').all(url);
     if (!rows.some(row => access.canAccessChannel(row.channel_id, req.user.id))) return res.sendStatus(404);

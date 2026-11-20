@@ -166,7 +166,10 @@
     },
 
     screencast: {
+      // -> { available, encoderName, hardware, encoderMode: 'auto' | 'cpu', ... }
       available: () => invoke('screencast_available'),
+      // 'auto' (placa de vídeo primeiro) | 'cpu' (processador). Vale no próximo compartilhamento -> modo
+      setEncoder: (mode) => invoke('screencast_set_encoder', { mode: String(mode || '') }),
       start: (opts) => invoke('screencast_start', { opts: opts || {} }),
       command: (msg) => { fire('screencast_command', { msg: msg || {} }); },
       stop: () => invoke('screencast_stop'),

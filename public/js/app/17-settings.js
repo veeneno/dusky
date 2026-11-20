@@ -467,6 +467,37 @@ document.getElementById('settingsHwAccel').addEventListener('change', (e) => {
   }
   desk.setHardwareAcceleration(on);
 });
+// compartilhar tela → codificar pela placa de vídeo (padrão, cai pro processador sozinho) ou pelo
+// processador. Só o app (1.1.3+) sabe; não depende da aceleração de hardware
+async function refreshScreenEncoderSetting() {
+  const row = document.getElementById('screenEncoderRow');
+  const sel = document.getElementById('screenEncoderSelect');
+  const status = document.getElementById('screenEncoderStatus');
+  const sc = window.duskyDesktop && window.duskyDesktop.screencast;
+  if (!row || !sc || typeof sc.setEncoder !== 'function') { if (row) row.hidden = true; return; }
+  row.hidden = false;
+  let info = null;
+  try { info = await sc.available(); } catch (_) { /* sem resposta: só o seletor */ }
+  sel.value = info && info.encoderMode === 'cpu' ? 'cpu' : 'auto';
+  status.textContent = info && info.available && info.encoderName
+    ? `usando agora: ${info.encoderName}`
+    : '';
+}
+document.getElementById('screenEncoderSelect').addEventListener('change', async (e) => {
+  const sc = window.duskyDesktop && window.duskyDesktop.screencast;
+  if (!sc || typeof sc.setEncoder !== 'function') return;
+  const sel = e.target;
+  sel.disabled = true;
+  document.getElementById('screenEncoderStatus').textContent = 'testando…';
+  try {
+    await sc.setEncoder(sel.value);
+  } catch (err) {
+    toast(`não deu pra mudar: ${err}`);
+  } finally {
+    sel.disabled = false;
+    refreshScreenEncoderSetting();
+  }
+});
 function inVoiceCallForSettings() {
   try { return typeof voiceChannel !== 'undefined' && !!voiceChannel; } catch (_) { return false; }
 }
@@ -499,6 +530,7 @@ async function openSettingsModal(tab) {
   screenBitrateSelect.value = String(getSavedScreenBitrateKbps());
   screenPrioritySelect.value = getSavedScreenPriority();
   screenAudioCheckbox.checked = getSavedScreenAudioEnabled();
+  refreshScreenEncoderSetting();
   settingsModalBackdrop.hidden = false;
   switchSettingsTab(wanted || 'aparencia');
   try {

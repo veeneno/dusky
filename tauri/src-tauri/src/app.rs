@@ -862,6 +862,7 @@ pub fn run() {
             audio::screen_audio_plan,
             audio::screen_audio_stop,
             screencast::screencast_available,
+            screencast::screencast_set_encoder,
             screencast::screencast_start,
             screencast::screencast_command,
             screencast::screencast_stop,

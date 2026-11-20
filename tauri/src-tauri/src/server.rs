@@ -278,11 +278,14 @@ pub struct Prefs {
     /// uso de memória: "alto" | "equilibrado" (padrão) | "minimo". Mudar reinicia o app (ver
     /// webview_setup::MemoryMode)
     pub memory_mode: String,
+    /// compartilhar tela: "auto" (padrão — tenta a placa de vídeo primeiro, cai pro processador)
+    /// | "cpu" (sempre x264). Independe da aceleração de hardware, que é só o desenho da página
+    pub screen_encoder: String,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { close_to_tray: true, tray_hint_shown: false, hardware_acceleration: true, memory_mode: "equilibrado".into() }
+        Self { close_to_tray: true, tray_hint_shown: false, hardware_acceleration: true, memory_mode: "equilibrado".into(), screen_encoder: "auto".into() }
     }
 }
 

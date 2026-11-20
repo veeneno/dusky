@@ -156,9 +156,8 @@ input, textarea, select, button { font-size: inherit; color: inherit; font-famil
 
 [hidden] { display: none !important; }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-}
+/* só a opção do app: o "efeitos de animação" do Windows desligado parava GIFs e efeitos de perfil
+   de quem nem pediu (ver decor-catalog.js) */
 html[data-reduce-motion] *, html[data-reduce-motion] *::before, html[data-reduce-motion] *::after {
   animation-duration: 0.01ms !important;
   transition-duration: 0.01ms !important;

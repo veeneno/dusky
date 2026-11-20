@@ -238,6 +238,10 @@ fn encoder_args(enc: &str, kbps: u32, gop: u32) -> Vec<String> {
             "-c:v".into(), "h264_amf".into(), "-usage".into(), "ultralowlatency".into(), "-quality".into(), "speed".into(), "-rc".into(), "cbr".into(),
             "-profile:v".into(), "constrained_baseline".into(), "-b:v".into(), k.clone(), "-maxrate".into(), k, "-g".into(), g.clone(), "-bf".into(), "0".into(),
             "-forced_idr".into(), "1".into(), "-header_spacing".into(), g,
+            // o driver da AMD no "ultralowlatency" pode ignorar o -g e mandar UM quadro-chave só, no
+            // começo: quem abre a tela depois (todo mundo) ficava esperando quadro-chave pra sempre.
+            // Forçado pelo próprio ffmpeg (1 por segundo), virando IDR pelo -forced_idr acima
+            "-force_key_frames".into(), "expr:gte(t,n_forced*1)".into(),
         ],
         _ => vec![
             "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(), "-tune".into(), "zerolatency".into(), "-profile:v".into(), "baseline".into(),
@@ -350,12 +354,17 @@ fn unavailable(reason: &str) -> ProbeInfo {
     ProbeInfo { available: false, reason: Some(reason.into()), ..Default::default() }
 }
 
-async fn probe_wayland() -> ProbeInfo {
+async fn probe_wayland(cpu_first: bool) -> ProbeInfo {
     if !run("gst-inspect-1.0", &sv(&["pipewiresrc"]), 15_000).await.ok {
         return unavailable("falta o GStreamer com o plugin do PipeWire (gstreamer1.0-pipewire)");
     }
     let test_src = sv(&["-q", "videotestsrc", "num-buffers=15", "!", "video/x-raw,format=BGRx,width=640,height=360,framerate=30/1", "!"]);
-    for enc in GST_ORDER {
+    let order: Vec<&'static str> = if cpu_first {
+        std::iter::once("x264enc").chain(GST_ORDER.iter().copied().filter(|e| *e != "x264enc")).collect()
+    } else {
+        GST_ORDER.to_vec()
+    };
+    for enc in order.iter() {
         let scale = (*enc == "x264enc").then_some((640, 360));
         let mut args = test_src.clone();
         args.extend(gst_encoder(enc, 2000, 30, scale));
@@ -393,27 +402,82 @@ async fn probe_wayland() -> ProbeInfo {
 
 /// testa de verdade quais codificadores um ffmpeg consegue usar (codificando alguns quadros) —
 /// "estar na lista" não garante que a placa/driver aceita
-async fn best_encoder_of(ffmpeg: &str, cpu_only: bool) -> Option<&'static str> {
+async fn best_encoder_of(ffmpeg: &str, cpu_first: bool) -> Option<&'static str> {
     if !run(ffmpeg, &sv(&["-hide_banner", "-version"]), 15_000).await.ok {
         return None;
     }
-    for enc in ORDER.iter().filter(|e| !cpu_only || **e == "libx264") {
+    // "processador primeiro": x264 na frente, as placas de reserva
+    let order: Vec<&'static str> = if cpu_first {
+        std::iter::once("libx264").chain(ORDER.iter().copied().filter(|e| *e != "libx264")).collect()
+    } else {
+        ORDER.to_vec()
+    };
+    for enc in order {
         let (pre, filter) = encoder_plumbing(enc, None);
         let mut args = sv(&["-hide_banner", "-loglevel", "error"]);
         args.extend(pre);
-        args.extend(sv(&["-f", "lavfi", "-i", "testsrc2=s=640x360:r=30", "-frames:v", "15"]));
+        args.extend(sv(&["-f", "lavfi", "-i", "testsrc2=s=640x360:r=15", "-frames:v", "60"]));
         if let Some(f) = filter {
             args.extend(["-vf".into(), f]);
         }
-        args.extend(encoder_args(enc, 2000, 60));
-        args.extend(sv(&["-f", "null", "-"]));
+        args.extend(encoder_args(enc, 2000, PROBE_GOP));
+        // o MESMO fim do compartilhamento de verdade (build_ffmpeg_args), num arquivo
+        let out = std::env::temp_dir().join(format!("dusky-probe-{}-{enc}.h264", std::process::id()));
+        let out_s = out.to_string_lossy().into_owned();
+        args.extend(sv(&["-bsf:v", "dump_extra", "-f", "h264", "-y"]));
+        args.push(out_s.clone());
         let r = run(ffmpeg, &args, 20_000).await;
-        if r.ok {
-            return Some(enc);
+        let verdict = if r.ok { check_probe_stream(ffmpeg, &out_s).await } else { Err(last_line(&r.stderr)) };
+        let _ = std::fs::remove_file(&out);
+        match verdict {
+            Ok(()) => return Some(enc),
+            Err(why) => log::info(&format!("[{ffmpeg}] {enc} indisponível: {why}")),
         }
-        log::info(&format!("[{ffmpeg}] {enc} indisponível: {}", last_line(&r.stderr)));
     }
     None
+}
+
+const PROBE_FRAMES: usize = 60;
+const PROBE_GOP: u32 = 15;
+
+/// "codificou sem erro" não basta: confere que o vídeo DECODIFICA e que tem quadro-chave (com
+/// SPS/PPS na frente) a cada GOP — é disso que quem começa a assistir no meio precisa. Driver que
+/// solta um quadro-chave só (ou um vídeo que não decodifica) faz cair pro próximo codificador
+async fn check_probe_stream(ffmpeg: &str, file: &str) -> Result<(), String> {
+    let data = std::fs::read(file).map_err(|e| format!("sem saída do teste ({e})"))?;
+    let keys = count_sps(&data);
+    let want_keys = PROBE_FRAMES / PROBE_GOP as usize - 1; // 60 quadros, GOP 15: 4 (aceita 3)
+    if keys < want_keys {
+        return Err(format!("{keys} quadro(s)-chave em {PROBE_FRAMES} quadros (precisa de {want_keys}) — quem entrasse depois não veria nada"));
+    }
+    let r = run(ffmpeg, &sv(&["-hide_banner", "-v", "error", "-f", "h264", "-i", file, "-f", "framecrc", "-"]), 20_000).await;
+    let decoded = r.stdout.lines().filter(|l| !l.starts_with('#') && !l.trim().is_empty()).count();
+    if !r.ok || decoded < PROBE_FRAMES * 3 / 4 {
+        return Err(format!("o vídeo gerado não decodifica direito ({decoded}/{PROBE_FRAMES} quadros{})",
+            if r.stderr.trim().is_empty() { String::new() } else { format!(": {}", last_line(&r.stderr)) }));
+    }
+    Ok(())
+}
+
+/// quantos SPS (NAL 7) tem no fluxo Annex-B — um na frente de cada quadro-chave (dump_extra)
+fn count_sps(data: &[u8]) -> usize {
+    let mut n = 0;
+    let mut i = 0;
+    while i + 3 < data.len() {
+        if data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 {
+            if data[i + 3] & 0x1f == 7 {
+                n += 1;
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    n
+}
+
+fn screen_cpu_first(app: &AppHandle) -> bool {
+    app.state::<AppState>().prefs.lock().unwrap().screen_encoder == "cpu"
 }
 
 async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
@@ -424,7 +488,7 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
         return unavailable("auxiliar de compartilhamento não encontrado");
     }
     if is_wayland() {
-        return probe_wayland().await;
+        return probe_wayland(screen_cpu_first(app)).await;
     }
     if IS_LINUX && std::env::var_os("DISPLAY").is_none() {
         return unavailable("sem DISPLAY do X11");
@@ -445,18 +509,18 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
         candidates.push(m.to_string_lossy().into_owned());
     }
 
-    // aceleração de hardware desligada (configurações do site / bandeja): a tela também vai pelo
-    // processador (x264) — saída pra driver de vídeo que dá tela preta ou trava no codificador
-    let cpu_only = !st.prefs.lock().unwrap().hardware_acceleration;
-    if cpu_only {
-        log::info("aceleração de hardware desligada — compartilhamento de tela pelo processador (x264)");
+    // configurações → compartilhar tela → "processador primeiro" (x264, placa de reserva). A
+    // aceleração de hardware NÃO entra aqui: ela é só o desenho da página
+    let cpu_first = screen_cpu_first(app);
+    if cpu_first {
+        log::info("compartilhamento de tela: processador primeiro (x264), placa de vídeo de reserva");
     }
 
     let mut fallback: Option<ProbeInfo> = None;
     for ffmpeg in candidates {
-        let Some(enc) = best_encoder_of(&ffmpeg, cpu_only).await else { continue };
+        let Some(enc) = best_encoder_of(&ffmpeg, cpu_first).await else { continue };
         let info = ProbeInfo { available: true, ffmpeg: Some(ffmpeg.clone()), encoder: enc.into(), hardware: enc != "libx264", ..Default::default() };
-        if info.hardware {
+        if info.hardware != cpu_first {
             log::info(&format!("compartilhamento nativo: {enc} ({ffmpeg})"));
             return info;
         }
@@ -479,7 +543,7 @@ async fn probe_uncached(app: &AppHandle) -> ProbeInfo {
     }
     match fallback {
         Some(f) => {
-            log::info(&format!("compartilhamento nativo: {} no processador ({})", f.encoder, f.ffmpeg.as_deref().unwrap_or("?")));
+            log::info(&format!("compartilhamento nativo: {} ({}, reserva)", f.encoder, f.ffmpeg.as_deref().unwrap_or("?")));
             f
         }
         None => unavailable("nenhum codificador H.264 funcionou no ffmpeg"),
@@ -859,8 +923,30 @@ pub async fn screencast_available(app: AppHandle, webview: Webview) -> Value {
         "hardware": info.hardware,
         "reason": info.reason,
         "sfu": true, // este app sabe mandar a tela pelo servidor de mídia (comando "publish")
+        // "auto" (placa de vídeo primeiro) | "cpu" — configurações → compartilhar tela
+        "encoderMode": st.prefs.lock().unwrap().screen_encoder.clone(),
         "deps": st.deps.status(),
     })
+}
+
+/// configurações → compartilhar tela: "auto" (placa de vídeo primeiro) | "cpu". Vale a partir do
+/// próximo compartilhamento (detecta de novo); não reinicia o app. -> o modo que ficou
+#[tauri::command]
+pub async fn screencast_set_encoder(app: AppHandle, webview: Webview, mode: String) -> String {
+    let st = app.state::<AppState>();
+    if app::require_site(&app, &webview).is_err() || !matches!(mode.as_str(), "auto" | "cpu") {
+        return st.prefs.lock().unwrap().screen_encoder.clone();
+    }
+    {
+        let mut prefs = st.prefs.lock().unwrap();
+        if prefs.screen_encoder != mode {
+            prefs.screen_encoder = mode.clone();
+            crate::server::save_prefs(&st.data_dir, &prefs);
+            log::info(&format!("compartilhar tela: codificar {}", if mode == "cpu" { "pelo processador" } else { "pela placa de vídeo (com o processador de reserva)" }));
+        }
+    }
+    *st.screencast.probe_cache.lock().await = None;
+    mode
 }
 
 /// abre o seletor e começa a transmitir. Os eventos do auxiliar chegam no site por "screencast:event".
