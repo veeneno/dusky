@@ -1,5 +1,8 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const db = require('../db');
+const { UPLOADS_ROOT } = require('../upload');
 const { requireAuth } = require('../middleware/auth');
 const realtime = require('../realtime');
 const access = require('../access');
@@ -88,11 +91,26 @@ router.patch('/:id', requireAuth, loadAdminChannel, (req, res) => {
   res.json({ ok: true });
 });
 
+// apaga do disco um arquivo de /uploads/ (só dentro de public/uploads, nunca fora)
+function removeUploadFile(url) {
+  if (!url || !url.startsWith('/uploads/')) return;
+  const file = path.resolve(UPLOADS_ROOT, '.' + url.slice('/uploads'.length));
+  if (!file.startsWith(UPLOADS_ROOT + path.sep)) return;
+  fs.unlink(file, () => {});
+}
+
 // DELETE /api/channels/:id — remove um canal de servidor (e suas mensagens, via cascade). Administradores.
+// Os anexos das mensagens saem do disco junto (igual apagar o servidor, routes/servers.js);
+// antes ficavam lá pra sempre, ocupando espaço e contando na cota de quem enviou.
 router.delete('/:id', requireAuth, loadAdminChannel, (req, res) => {
   const ch = req.channel;
   realtime.kickFromChannelVoice(ch.id);
+  const attachments = db.prepare("SELECT DISTINCT attachment_url FROM messages WHERE channel_id = ? AND attachment_url LIKE '/uploads/%'")
+    .all(ch.id).map((r) => r.attachment_url);
   db.prepare('DELETE FROM channels WHERE id = ?').run(ch.id);
+  // só apaga o arquivo se nenhuma outra mensagem (de outro canal) ainda aponta pra ele
+  const stillUsed = db.prepare('SELECT 1 FROM messages WHERE attachment_url = ? LIMIT 1');
+  for (const url of attachments) if (!stillUsed.get(url)) removeUploadFile(url);
   realtime.broadcastToServer(ch.server_id, { type: 'channel_deleted', serverId: ch.server_id, channelId: ch.id });
   audit.log(ch.server_id, req.user.id, 'channel_delete', { type: 'channel', id: ch.id, name: ch.name }, { channel_type: ch.type });
   res.json({ ok: true });
