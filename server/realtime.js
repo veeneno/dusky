@@ -222,7 +222,6 @@ function handleVoiceJoin(ws, msg) {
   // canal-mundo (docs/MUNDINHO.md): a pessoa nasce no ponto de entrada da cena
   if (ch.world_scene) { state.scene = ch.world_scene; state.world = world.spawn(ch.world_scene); }
   voiceStates.set(ws.userId, state);
-  persistVoiceState(ws.userId, state);
 
   sendVoiceSnapshot(ws, state);
 
@@ -280,7 +279,6 @@ function handleVoiceUpdate(ws, msg) {
     if (startedScreen && (!tv || tv.mode === 'off')) setTv(state.channelId, { mode: 'screen', userId: ws.userId, by: ws.userId });
     else if (!state.screenOn && tv && tv.mode === 'screen' && tv.userId === ws.userId) setTv(state.channelId, world.TV_OFF);
   }
-  persistVoiceState(ws.userId, state);
   broadcastToChannel(state.channelId, { type: 'voice_state_update', channelId: state.channelId, userId: ws.userId, muted: state.muted, deafened: state.deafened, cameraOn: state.cameraOn, screenOn: state.screenOn });
 }
 
@@ -391,8 +389,8 @@ function handleRtcSignal(ws, msg) {
 // voz sem ser uma conexão ws de verdade — o áudio em si vai por HTTP (routes/musicbot.js)
 // ===================================================================
 
-// bot "entra" no canal de voz — não persiste no banco (voice_state tem FK pra users(id), e o
-// bot não é uma linha real ali; além disso o estado dele é puramente efêmero mesmo)
+// bot "entra" no canal de voz — estado só em memória, igual o das pessoas (quem está em call
+// nunca vai pro banco: um reinício derruba todas as calls de qualquer jeito)
 // cada servidor tem o seu bot (ver musicBot/queue.js): a presença dele fica aqui, uma por servidor,
 // separada de voiceStates (que é por pessoa). Pros clientes ele sempre aparece como BOT_USER_ID —
 // como cada pessoa só está numa call por vez, ninguém vê dois bots ao mesmo tempo.
@@ -455,7 +453,6 @@ function removeVoiceState(userId, state, except) {
     if (humansInChannel(state.channelId).length === 0) gameTables.clearChannel(state.channelId);
     else gameTables.onLeaveCall(state.channelId, userId);
   }
-  persistVoiceState(userId, { channelId: null, muted: false, deafened: false, cameraOn: false, screenOn: false });
   // avisa quem enxerga o canal (e a própria pessoa, caso ela já não enxergue mais — ex: foi
   // expulsa ou perdeu o cargo — e precise saber que caiu da call)
   const audience = new Set(access.channelAudience(state.channelId));
@@ -697,31 +694,6 @@ function kickFromChannelVoice(channelId) {
   }
   for (const [serverId, bot] of [...botStates.entries()]) {
     if (bot.channelId === channelId) botLeaveVoice(serverId);
-  }
-}
-
-function persistVoiceState(userId, state) {
-  try {
-    db.prepare(`
-      INSERT INTO voice_state (user_id, channel_id, muted, deafened, camera_on, screen_on, updated_at)
-      VALUES (@userId, @channelId, @muted, @deafened, @cameraOn, @screenOn, datetime('now'))
-      ON CONFLICT(user_id) DO UPDATE SET
-        channel_id = excluded.channel_id,
-        muted = excluded.muted,
-        deafened = excluded.deafened,
-        camera_on = excluded.camera_on,
-        screen_on = excluded.screen_on,
-        updated_at = excluded.updated_at
-    `).run({
-      userId,
-      channelId: state.channelId ?? null,
-      muted: state.muted ? 1 : 0,
-      deafened: state.deafened ? 1 : 0,
-      cameraOn: state.cameraOn ? 1 : 0,
-      screenOn: state.screenOn ? 1 : 0,
-    });
-  } catch (err) {
-    console.error('erro ao persistir voice_state:', err.message);
   }
 }
 

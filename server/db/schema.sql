@@ -88,7 +88,8 @@ CREATE TABLE IF NOT EXISTS dm_members (
 );
 CREATE INDEX IF NOT EXISTS idx_dm_members_user ON dm_members(user_id);
 
--- Estado de presença/participação em call de voz (efêmero, mas persiste caso o server reinicie)
+-- Antigo: estado de call de voz. Ninguém lê nem grava mais (quem está em call vive só na memória
+-- do realtime.js); a tabela fica pra não quebrar banco antigo e é esvaziada no boot (db/index.js).
 CREATE TABLE IF NOT EXISTS voice_state (
   user_id     INTEGER PRIMARY KEY REFERENCES users(id),
   channel_id  INTEGER REFERENCES channels(id) ON DELETE SET NULL,

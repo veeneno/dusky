@@ -281,7 +281,7 @@ dusky/
 - **`message_mentions`**, **`message_reactions`**: quem cada mensagem menciona (`user_id` 0 = @everyone) e as reações. Fixada é `messages.pinned_at`.
 - **`server_bans`**, **`audit_log`**, **`soundboard_sounds`**: banimentos, registro de auditoria e sons do soundboard. As configurações novas do servidor (banner, descrição, canal do sistema, AFK, cargo de entrada, permissões do @everyone) são colunas de **`servers`**; mensagens do sistema usam `messages.system_type`.
 - **`messages_fts`**: índice de busca (FTS5), mantido em dia por gatilhos.
-- **`voice_state`**: quem está em qual call (sobrevive a um reinício; enquanto o servidor está de pé, quem manda é a memória do `realtime.js`).
+- **`voice_state`**: resto antigo, não é mais usada (é esvaziada no boot). Quem está em qual call fica só na memória do `realtime.js`: reiniciar o servidor derruba as calls e cada um entra de novo.
 - **`push_subscriptions`**, **`app_secrets`**: inscrições de Web Push e as chaves VAPID.
 - **`auth_codes`**: códigos de 6 dígitos mandados por e-mail (guardados só como hash, valem 15 min).
 - **`reports`**: denúncias, com uma cópia da mensagem/perfil denunciado (`snapshot_json`) e o arquivo da prova (`evidence_file`).

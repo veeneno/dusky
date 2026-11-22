@@ -35,6 +35,10 @@ db.pragma('foreign_keys = ON');
 const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
 db.exec(schema);
 
+// voice_state era gravada a cada mudança de call e nunca lida. Parou de ser gravada; a tabela fica
+// (banco antigo, FK, exclusão de conta), mas o conteúdo velho é jogado fora a cada boot.
+db.exec('DELETE FROM voice_state');
+
 // migrações leves — adiciona colunas que schema.sql não tinha quando o banco já existia
 function ensureColumn(table, column, definition) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all();
