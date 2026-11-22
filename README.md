@@ -41,7 +41,7 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O c�
 **Chat**
 - Canais de texto e DMs (só entre quem divide algum servidor).
 - Enviar, editar, apagar e responder mensagens. Histórico carregado em páginas ao rolar pra cima.
-- Anexos de qualquer tipo até 2 GB: imagem e vídeo com prévia, o resto vira um botão de download.
+- Anexos de qualquer tipo: imagem e vídeo com prévia, o resto vira um botão de download. O tamanho máximo é por conta (padrão 100 MB por arquivo e 5 GB no total; o admin muda no painel). Atenção: o túnel do Cloudflare (plano grátis) recusa qualquer pedido com mais de 100 MB (HTTP 413) antes de chegar no servidor, então arquivo acima de ~90 MB precisa ir em partes.
 - **Markdown** igual o Discord: `# título`, `## subtítulo`, `-# texto pequeno`, `**negrito**`, `*itálico*`, `__sublinhado__`, `~~riscado~~`, `` `código` ``, blocos ```` ``` ````, `||spoiler||`, `> citação`, listas e `[texto](link)`. A caixa de mensagem tem várias linhas (Shift+Enter quebra linha; seta pra cima edita a sua última mensagem).
 - **Menções**: `@` abre a lista de membros; `@everyone` e `@here` avisam todo mundo. Mensagem que te menciona fica destacada.
 - **Emojis e reações**: seletor com busca em português (e gírias como `joinha`, `kkk`), `:atalho:` na caixa de mensagem, tom de pele e recentes. Reação em qualquer mensagem.

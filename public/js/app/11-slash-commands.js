@@ -306,6 +306,9 @@ async function fetchUploadLimits() {
     return res.ok ? await res.json() : null;
   } catch (_) { return null; }
 }
+// o túnel do Cloudflare (plano grátis) não deixa passar pedido com mais de 100 MB: responde 413 em
+// HTML antes de chegar no Node. A resposta não é JSON, então sem isto a pessoa só via "não deu".
+const CLOUDFLARE_413_MSG = 'o arquivo passou do limite de 100 MB por envio do Cloudflare (o caminho até o servidor) — mande um arquivo menor';
 function formatLimitMB(mb) {
   if (mb == null) return 'sem limite';
   if (mb >= 1024) return `${Math.round((mb / 1024) * 10) / 10} GB`;
@@ -376,7 +379,11 @@ chatComposer.addEventListener('submit', async (e) => {
         try {
           const data = JSON.parse(xhr.responseText);
           if (data && data.error) errMsg = data.error;
-        } catch (_) { /* resposta não veio em JSON — segue com a mensagem padrão */ }
+        } catch (_) {
+          // resposta não veio em JSON. Um 413 em HTML é do Cloudflare (o túnel do plano grátis
+          // recusa qualquer pedido acima de 100 MB antes de chegar no servidor), não do dusky
+          if (xhr.status === 413) errMsg = CLOUDFLARE_413_MSG;
+        }
         hideUploadProgress();
         showComposerError(errMsg);
       }
