@@ -189,7 +189,7 @@ Referências de implementação: [Web Push](https://github.com/web-push-libs/web
 
 ## Verificação
 
-`npm test` executa os testes (`tests/*.test.js`) com SQLite em memória: permissões, isolamento entre servidores, categorias e a ordem da lateral (`channel-layout`), configurações do servidor, push, decorações e efeito no nome, contas (e-mail, 2 etapas, esqueci a senha, exportar e excluir conta), denúncias, a página de admin, e as regras do mundinho e de cada jogo (Duno, 21, xadrez com perft e sinuca, com física e faltas). Nenhum teste usa o banco real. `DUSKY_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/dusky.db`; o nome antigo `DIDISCORD_DB_PATH` também vale, e um `didiscord.db` antigo é renomeado sozinho pra `dusky.db` na primeira vez). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
+`npm test` executa os testes (`tests/*.test.js`) com SQLite em memória: permissões, isolamento entre servidores, categorias e a ordem da lateral (`channel-layout`), configurações do servidor, push, decorações e efeito no nome, contas (e-mail, 2 etapas, esqueci a senha, exportar e excluir conta), denúncias, a página de admin, bloquear e fechar DM (`blocks`), anexo em partes (`chunked-upload`), apagar canal levando os anexos (`channel-delete`), e as regras do mundinho e de cada jogo (Duno, 21, xadrez com perft e sinuca, com física e faltas). Nenhum teste usa o banco real. `DUSKY_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/dusky.db`; o nome antigo `DIDISCORD_DB_PATH` também vale, e um `didiscord.db` antigo é renomeado sozinho pra `dusky.db` na primeira vez). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
 
 ## Estrutura do projeto
 
@@ -252,7 +252,7 @@ dusky/
 │   ├── css/                # theme.css (variáveis e componentes base), um arquivo por área,
 │   │                       #   design.css (o visual atual, por cima de tudo) e media.css (imagens/vídeos)
 │   ├── js/themes.js        # motor de temas: aplica as variáveis, temas prontos, editor da aba "temas"
-│   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 32
+│   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 34
 │   │                       #   arquivos por assunto, carregados em ordem — o mapa está em js/app/README.md
 │   ├── js/decor-catalog.js, js/decor-picker.js  # decorações do Discord (tocar efeitos/placas, galeria)
 │   ├── decor/              # catálogo das decorações (catalog.json/.js); as mídias em decor/media/ ficam fora do git
