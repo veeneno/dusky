@@ -26,7 +26,7 @@ test('HTML exige permissão e baixa como octet-stream com sandbox',async()=>{
  assert.equal((await get(html)).status,401);assert.equal((await get(html,3)).status,404);
  const r=await get(html,2);assert.equal(r.status,200);assert.match(r.headers.get('content-type'),/octet-stream/);
  assert.match(r.headers.get('content-disposition'),/^attachment/);assert.match(r.headers.get('content-security-policy'),/sandbox/);
- assert.equal(r.headers.get('x-content-type-options'),'nosniff');assert.equal(r.headers.get('cache-control'),'private, no-store');
+ assert.equal(r.headers.get('x-content-type-options'),'nosniff');assert.equal(r.headers.get('cache-control'),'private, no-cache');
 });
 test('URL codificada, barras duplicadas e HEAD não contornam autenticação',async()=>{
  for(const url of [html.replace('/uploads/','/%75ploads/'),html.replace('/attachments/','%2fattachments%2f'),html.replace('/uploads/','//uploads//')])assert.equal((await get(url)).status,401);

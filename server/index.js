@@ -134,9 +134,9 @@ app.get('/invite/:code', (req, res) => {
   res.redirect(`${dest}?invite=${encodeURIComponent(code)}`);
 });
 
-// arquivos estáticos (html/css/js/uploads) — nunca deixa nada em cache (nem no navegador, nem em
-// proxy/CDN no meio do caminho tipo Cloudflare), senão depois de um deploy o outro lado pode
-// continuar vendo js/css velhos sem perceber
+// arquivos estáticos (html/css/js) — sempre revalidados (no-cache + ETag, nem o navegador nem
+// proxy/CDN no meio do caminho tipo Cloudflare usam cópia sem perguntar), senão depois de um deploy
+// o outro lado pode continuar vendo js/css velhos sem perceber
 //
 // EXCEÇÃO: public/vendor/ (bibliotecas de terceiros — motor/modelo de supressão de ruído, ~24 MB).
 // Esses arquivos nunca mudam no mesmo endereço (versão nova = pasta nova), então ficam no cache
@@ -183,7 +183,10 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
     }
     if (filePath.startsWith(DECOR_MEDIA_DIR)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     else if (filePath.startsWith(VENDOR_DIR)) res.setHeader('Cache-Control', 'public, max-age=2592000');
-    else res.setHeader('Cache-Control', 'no-store');
+    // no-cache (e não mais no-store): o navegador guarda, mas pergunta de novo a cada uso com o
+    // ETag e recebe 304 sem corpo quando nada mudou — continua sempre na versão nova, só sem baixar
+    // tudo de novo a cada página aberta
+    else res.setHeader('Cache-Control', 'no-cache');
   },
 }));
 

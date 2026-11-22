@@ -14,7 +14,12 @@ module.exports = function serveUpload(req, res, next) {
   try { url = path.posix.normalize(decodeURIComponent(req.path)); }
   catch (_) { return res.sendStatus(400); }
   if (url !== '/uploads' && !url.startsWith('/uploads/')) return next();
-  res.set({ 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+  // anexos: 'private, no-cache' = só o navegador guarda (nunca a Cloudflare) e ele SEMPRE pergunta
+  // de novo antes de usar a cópia (com ETag/If-None-Match). A conferência de permissão lá embaixo
+  // continua em todo pedido — quem perdeu acesso leva 404 mesmo tendo o arquivo no cache —, só o
+  // corpo não é baixado outra vez quando nada mudou (304). Antes era no-store: vídeo e imagem
+  // grande eram baixados inteiros a cada vez que apareciam na tela.
+  res.set({ 'Cache-Control': 'private, no-cache', 'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "sandbox; default-src 'none'; frame-ancestors 'none'",
     'Cross-Origin-Resource-Policy': 'same-origin' });
   if (!['GET', 'HEAD'].includes(req.method)) return res.sendStatus(405);
@@ -25,7 +30,8 @@ module.exports = function serveUpload(req, res, next) {
     const type = INLINE_TYPES[path.extname(filename)];
     if (!type) res.attachment(filename);
     res.type(type || 'application/octet-stream');
-    // sendFile preserva Range/HEAD para vídeos, mas não pode cachear dados privados.
+    // sendFile preserva Range/HEAD para vídeos e manda ETag/Last-Modified (o 304 do no-cache);
+    // cacheControl: false pra não sobrescrever o Cache-Control definido acima.
     res.sendFile(path.join(folder, filename), { root: UPLOADS_ROOT, cacheControl: false, dotfiles: 'deny' }, err => {
       if (!err) return;
       if (res.headersSent) return res.destroy();

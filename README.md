@@ -390,7 +390,7 @@ native/build-cross.sh
 - **`.env`, banco e uploads nunca vão pro git** (ver `.gitignore`). Chave nova no `config.js` deve entrar na tabela de variáveis acima.
 - Os comentários do código estão em português e explicam o porquê das decisões que não são óbvias. Vale ler antes de refatorar.
 - **Cores, fontes e cantos sempre por variável** (`var(--accent)`, `var(--bg-chat)`, `var(--text-normal)`…, lista no topo de `css/theme.css`), nunca cor fixa, senão o tema de cada um não pega. Os painéis usam as variáveis transparentes (`--bg-sidebar`, `--bg-chat`) e o que precisa ser sempre opaco (menus, campos) usa as `--bg-solid-*`.
-- Os arquivos estáticos são servidos sem cache (pra ninguém ficar com o código do site velho depois de uma mudança), menos `public/vendor/`, que fica em cache por 30 dias.
+- Os arquivos estáticos vão com `Cache-Control: no-cache`: o navegador guarda, mas confere com o servidor (ETag) toda vez antes de usar, então ninguém fica com o código do site velho depois de uma mudança e o que não mudou volta como 304, sem baixar de novo. As exceções são `public/vendor/` (30 dias) e `public/decor/media/` (1 ano). Anexos do chat vão com `private, no-cache`: a permissão é conferida em todo pedido, só o corpo não é baixado de novo.
 
 ## Próximos passos
 
