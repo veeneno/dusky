@@ -404,3 +404,8 @@ router.put('/:messageId/pin', requireAuth, (req, res) => setPinned(req, res, tru
 router.delete('/:messageId/pin', requireAuth, (req, res) => setPinned(req, res, false));
 
 module.exports = router;
+// o envio em partes (routes/chunkedUploads.js) cria a mensagem pelo mesmo caminho
+module.exports.publishNewMessage = publishNewMessage;
+module.exports.resolveReplyToId = resolveReplyToId;
+module.exports.attachLimit = attachLimit;
+module.exports.uploadDeadline = uploadDeadline;

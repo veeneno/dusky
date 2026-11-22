@@ -42,7 +42,7 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O c�
 - Canais de texto e DMs (só entre quem divide algum servidor).
 - **Bloquear** alguém (no perfil, no botão direito ou em configurações → bloqueados), igual ao Discord: ninguém manda DM pro outro, quem foi bloqueado não abre conversa nova (e não é avisado), e as mensagens dele nos servidores aparecem recolhidas com "mostrar". **Fechar conversa** (o × na lista de DMs) esconde a DM até chegar mensagem nova.
 - Enviar, editar, apagar e responder mensagens. Histórico carregado em páginas ao rolar pra cima.
-- Anexos de qualquer tipo: imagem e vídeo com prévia, o resto vira um botão de download. O tamanho máximo é por conta (padrão 100 MB por arquivo e 5 GB no total; o admin muda no painel). Atenção: o túnel do Cloudflare (plano grátis) recusa qualquer pedido com mais de 100 MB (HTTP 413) antes de chegar no servidor, então arquivo acima de ~90 MB precisa ir em partes.
+- Anexos de qualquer tipo: imagem e vídeo com prévia, o resto vira um botão de download. O tamanho máximo é por conta (padrão 100 MB por arquivo e 5 GB no total; o admin muda no painel). Atenção: o túnel do Cloudflare (plano grátis) recusa qualquer pedido com mais de 100 MB (HTTP 413) antes de chegar no servidor, então arquivo acima de ~90 MB vai sozinho **em partes** de ~50 MB (`server/routes/chunkedUploads.js`), com barra de progresso; a parte que falhar é mandada de novo, sem recomeçar o arquivo, e envio parado há mais de 1 h é descartado.
 - **Markdown** igual o Discord: `# título`, `## subtítulo`, `-# texto pequeno`, `**negrito**`, `*itálico*`, `__sublinhado__`, `~~riscado~~`, `` `código` ``, blocos ```` ``` ````, `||spoiler||`, `> citação`, listas e `[texto](link)`. A caixa de mensagem tem várias linhas (Shift+Enter quebra linha; seta pra cima edita a sua última mensagem).
 - **Menções**: `@` abre a lista de membros; `@everyone` e `@here` avisam todo mundo. Mensagem que te menciona fica destacada.
 - **Emojis e reações**: seletor com busca em português (e gírias como `joinha`, `kkk`), `:atalho:` na caixa de mensagem, tom de pele e recentes. Reação em qualquer mensagem.
@@ -230,6 +230,8 @@ dusky/
 │       ├── categories.js   # criar/editar/apagar categoria
 │       ├── push.js         # inscrição de Web Push
 │       ├── messages.js     # histórico, enviar (texto, anexo, gif), editar, apagar
+│       ├── chunkedUploads.js  # anexo grande em partes (passa do limite de 100 MB do Cloudflare)
+│       ├── blocks.js       # bloquear / desbloquear / meus bloqueados
 │       ├── dms.js          # conversas diretas
 │       ├── activity.js     # não lidas (com menções) e busca de mensagens
 │       ├── embeds.js       # prévia de links (busca a página e devolve título/imagem)

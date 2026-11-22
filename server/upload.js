@@ -113,4 +113,4 @@ function sanitizeAttachmentName(name) {
   return clean || null;
 }
 
-module.exports = { sanitizeAttachmentName, decorUpload, avatarUpload, bannerUpload, soundUpload, attachmentUpload, serverIconUpload, themeBackgroundUpload, attachmentTypeOf, UPLOADS_ROOT };
+module.exports = { extFor, sanitizeAttachmentName, decorUpload, avatarUpload, bannerUpload, soundUpload, attachmentUpload, serverIconUpload, themeBackgroundUpload, attachmentTypeOf, UPLOADS_ROOT };

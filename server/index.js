@@ -49,7 +49,8 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'troque-essa-chave-antes-de
 // próprio em routes/messages.js. Todo o resto precisa terminar de mandar o corpo do pedido em
 // 5 min — senão uma conexão que manda 1 byte por vez ficaria pendurada pra sempre.
 const BODY_DEADLINE_MS = 5 * 60 * 1000;
-const ATTACHMENT_PATH = /^\/api\/channels\/\d+\/messages\/attachment\/?$/;
+// (as partes do envio em partes, routes/chunkedUploads.js, também: ~50 MB numa conexão lenta)
+const ATTACHMENT_PATH = /^\/api\/channels\/\d+\/(messages\/attachment|uploads\/[a-f0-9]{32}\/\d+)\/?$/;
 app.use((req, res, next) => {
   if (req.complete || ATTACHMENT_PATH.test(req.path)) return next();
   const timer = setTimeout(() => { if (!req.complete) req.socket.destroy(); }, BODY_DEADLINE_MS);
@@ -217,6 +218,7 @@ app.use('/api/auth/email', perUser('auth-email', 30, 10 * 60 * 1000, 'muitos ped
 app.use('/api/auth', authRoutes);
 app.use('/api/account', require('./routes/account')); // e-mail, 2 etapas, exportar e excluir conta
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/channels/:channelId/uploads', require('./routes/chunkedUploads')); // anexo grande, em partes
 app.use('/api/channels', channelRoutes);
 app.use('/api/channels/:channelId/messages', messageRoutes);
 app.use('/api/ws', wsRoutes);

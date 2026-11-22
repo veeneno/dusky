@@ -348,6 +348,33 @@ chatComposer.addEventListener('submit', async (e) => {
     chatSendBtn.disabled = true;
     showUploadProgress(0, 0, file.size);
 
+    // arquivo grande: em partes (09-panels-attachments.js), por causa do limite de 100 MB por pedido
+    // do Cloudflare. O resto do comportamento é o mesmo: só limpa o anexo depois de dar certo.
+    if (file.size > CHUNKED_UPLOAD_THRESHOLD) {
+      const upload = uploadAttachmentInParts(file, {
+        channelId: currentChannel.id,
+        caption,
+        replyToId,
+        onProgress: (loaded, total) => showUploadProgress(Math.min(100, Math.round((loaded / total) * 100)), loaded, total),
+      });
+      activeUploadXhr = upload;
+      upload.promise.then(() => {
+        clearPendingAttachment();
+        chatInput.value = '';
+        autosizeComposer();
+        clearReplyTarget();
+      }).catch((err) => {
+        if (err && err.name === 'AbortError') { clearPendingAttachment(); return; }
+        hideUploadProgress();
+        showComposerError((err && err.message) || 'não deu pra enviar esse arquivo');
+      }).finally(() => {
+        if (activeUploadXhr === upload) activeUploadXhr = null;
+        attachBtn.disabled = false;
+        chatSendBtn.disabled = false;
+      });
+      return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
     if (caption) formData.append('content', caption);

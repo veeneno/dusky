@@ -398,6 +398,95 @@ function hideUploadProgress() {
   attachmentPreviewProgressFill.style.width = '0%';
 }
 
+// ---------- envio em partes (arquivo grande) ----------
+// O túnel do Cloudflare (plano grátis) recusa qualquer pedido com mais de 100 MB antes de chegar no
+// servidor. Arquivo acima de CHUNKED_UPLOAD_THRESHOLD vai em pedaços (~50 MB, o servidor diz o
+// tamanho), cada um num pedido próprio, pela rota /api/channels/:id/uploads
+// (server/routes/chunkedUploads.js). Parte que falha é mandada de novo (até CHUNK_MAX_TRIES vezes,
+// esperando um pouco mais a cada tentativa), sem recomeçar o arquivo. Abaixo do limite continua o
+// envio de sempre (um pedido só, em 11-slash-commands.js).
+const CHUNKED_UPLOAD_THRESHOLD = 90 * 1024 * 1024;
+const CHUNK_MAX_TRIES = 5;
+
+// devolve { promise, abort() } — abort() tem a mesma cara do XHR, então serve de activeUploadXhr
+// (o botão "cancelar envio" lá embaixo chama .abort()). A promise resolve com a mensagem criada.
+function uploadAttachmentInParts(file, { channelId, caption, replyToId, onProgress }) {
+  const base = `/api/channels/${channelId}/uploads`;
+  let cancelled = false;
+  let xhr = null;
+  let uploadId = null;
+  let wake = null; // acorda a espera entre tentativas quando a pessoa cancela
+  const abortError = () => Object.assign(new Error('envio cancelado'), { name: 'AbortError' });
+  const readJson = async (res) => { try { return await res.json(); } catch (_) { return {}; } };
+
+  const handle = {
+    abort() {
+      cancelled = true;
+      if (xhr) xhr.abort();
+      if (wake) wake();
+      if (uploadId) fetch(`${base}/${uploadId}`, { method: 'DELETE' }).catch(() => {});
+    },
+  };
+
+  function putChunk(index, blob, onLoaded) {
+    return new Promise((resolve, reject) => {
+      const req = new XMLHttpRequest();
+      xhr = req;
+      req.open('PUT', `${base}/${uploadId}/${index}`);
+      req.setRequestHeader('Content-Type', 'application/octet-stream');
+      req.upload.addEventListener('progress', (ev) => { if (ev.lengthComputable) onLoaded(ev.loaded); });
+      req.addEventListener('load', () => {
+        xhr = null;
+        if (req.status >= 200 && req.status < 300) return resolve();
+        let msg = 'não deu pra enviar uma parte do arquivo';
+        try { const d = JSON.parse(req.responseText); if (d && d.error) msg = d.error; } catch (_) { if (req.status === 413) msg = CLOUDFLARE_413_MSG; }
+        // sessão sumiu, sem permissão ou grande demais: tentar de novo não adianta
+        reject(Object.assign(new Error(msg), { fatal: [403, 404, 413].includes(req.status) }));
+      });
+      req.addEventListener('error', () => { xhr = null; reject(new Error('erro de conexão ao enviar o arquivo')); });
+      req.addEventListener('abort', () => { xhr = null; reject(abortError()); });
+      req.send(blob);
+    });
+  }
+
+  handle.promise = (async () => {
+    const res = await fetch(base, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: file.name, size: file.size, type: file.type || 'application/octet-stream', content: caption || '', reply_to_id: replyToId || null }),
+    });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(data.error || 'não deu pra começar o envio');
+    uploadId = data.uploadId;
+    if (cancelled) { handle.abort(); throw abortError(); }
+
+    let doneBytes = 0;
+    for (let i = 0; i < data.totalChunks; i++) {
+      const blob = file.slice(i * data.chunkSize, Math.min(file.size, (i + 1) * data.chunkSize));
+      for (let attempt = 1; ; attempt++) {
+        if (cancelled) throw abortError();
+        try {
+          await putChunk(i, blob, (loaded) => onProgress(doneBytes + loaded, file.size));
+          break;
+        } catch (err) {
+          if (cancelled || err.name === 'AbortError' || err.fatal || attempt >= CHUNK_MAX_TRIES) throw err;
+          onProgress(doneBytes, file.size);
+          await new Promise((r) => { wake = r; setTimeout(r, 1000 * attempt * attempt); }); // 1 s, 4 s, 9 s, 16 s
+          wake = null;
+        }
+      }
+      doneBytes += blob.size;
+      onProgress(doneBytes, file.size);
+    }
+
+    const fin = await fetch(`${base}/${uploadId}/complete`, { method: 'POST' });
+    const finData = await readJson(fin);
+    if (!fin.ok) throw new Error(finData.error || 'não deu pra terminar o envio');
+    return finData.message;
+  })();
+  return handle;
+}
+
 // durante um upload em andamento, o botão de "remover anexo" vira "cancelar envio" — aborta o
 // XHR (o listener 'abort' cuida da limpeza) em vez de só limpar o estado local, senão o upload
 // continuaria rolando em segundo plano sem nenhuma forma de pará-lo
