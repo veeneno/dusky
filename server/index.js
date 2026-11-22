@@ -141,19 +141,19 @@ app.get('/invite/:code', (req, res) => {
 // EXCEÇÃO: public/vendor/ (bibliotecas de terceiros — motor/modelo de supressão de ruído, ~24 MB).
 // Esses arquivos nunca mudam no mesmo endereço (versão nova = pasta nova), então ficam no cache
 // do navegador — sem isso, a pessoa baixaria 24 MB de novo toda vez que entrasse numa call.
-// Política de conteúdo das páginas. A parte que já vale (CSP_ENFORCED) não quebra nada: proíbe
-// embutir o site, plugins e formulários pra fora. A completa (só scripts do próprio site etc.) roda
-// primeiro em modo "só relatar": o navegador avisa em /api/csp-report o que ela bloquearia, sem
-// bloquear — depois de uns dias sem avisos estranhos no log, ela passa pra CSP_ENFORCED.
-const CSP_ENFORCED = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'";
-const CSP_REPORT_ONLY = [
+// Política de conteúdo das páginas (CSP). Ficou um tempo em modo "só relatar" e os únicos avisos
+// foram blob: em script-src (worklets/workers de áudio carregados de um blob) e data: em
+// connect-src (fetch de data: URL). Com os dois liberados, ela vale de verdade: só roda script do
+// próprio site (nenhum .html tem <script> inline nem atributo on*=), então um HTML injetado não
+// executa nada. O navegador continua avisando em /api/csp-report o que bloquear.
+const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
+  "script-src 'self' 'wasm-unsafe-eval' blob: https://challenges.cloudflare.com https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob: https:",
-  "connect-src 'self' wss: ipc: http://ipc.localhost https://cloudflareinsights.com",
+  "connect-src 'self' data: wss: ipc: http://ipc.localhost https://cloudflareinsights.com",
   "frame-src https://www.youtube-nocookie.com https://challenges.cloudflare.com",
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
@@ -179,8 +179,7 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
       res.setHeader('X-Frame-Options', 'DENY');
-      res.setHeader('Content-Security-Policy', CSP_ENFORCED);
-      res.setHeader('Content-Security-Policy-Report-Only', CSP_REPORT_ONLY);
+      res.setHeader('Content-Security-Policy', CSP);
     }
     if (filePath.startsWith(DECOR_MEDIA_DIR)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     else if (filePath.startsWith(VENDOR_DIR)) res.setHeader('Cache-Control', 'public, max-age=2592000');
