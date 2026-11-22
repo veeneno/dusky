@@ -149,6 +149,8 @@ Nunca rode o servidor em dois PCs com o mesmo túnel ao mesmo tempo: o Cloudflar
 
 Sem `CLOUDFLARE_TUNNEL_MODE` no `.env`, ele volta pro túnel rápido: um endereço aleatório `*.trycloudflare.com`, que muda a cada reinício.
 
+Neste PC o `npm start` roda como serviço do systemd (`/etc/systemd/system/dusky.service`, `Restart=always`, com `User=veneno` e `WorkingDirectory` na pasta do projeto). O serviço deve ter `Environment=NODE_ENV=production` junto das outras linhas `Environment=`: nada no código do dusky lê essa variável, mas o Express sim (sem ela ele roda em modo de desenvolvimento). Depois de mexer no arquivo: `sudo systemctl daemon-reload && sudo systemctl restart dusky.service`. Se o processo cair por uma exceção não tratada, ele sai com código 1 de propósito e o systemd religa em 5 s.
+
 Alternativa sem Cloudflare: `deploy/setup-vm.sh` prepara uma VM Ubuntu com Node, ffmpeg, systemd e Caddy (HTTPS automático).
 
 ### Variáveis de ambiente (`.env`, fora do git)
