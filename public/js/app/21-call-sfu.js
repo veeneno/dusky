@@ -121,18 +121,57 @@ function sfuTrackUnsubscribed(track, publication, participant) {
   renderCallParticipants();
 }
 
-// "parar de assistir" a tela de alguém: no SFU é só deixar de assinar as faixas da tela dela
+// Tela só chega depois do "assistir" (isWatchingScreen, 19-call-ui.js). Por isso a sala do LiveKit
+// conecta SEM assinar nada sozinha (autoSubscribe: false) e cada faixa publicada passa por aqui:
+// voz e câmera sempre; tela (vídeo e som, da pessoa ou do auxiliar "tela-<id>") só de quem eu
+// escolhi assistir; da minha própria conta, só a prévia da minha tela quando ela está ligada.
+function sfuWantsPublication(publication, participant) {
+  const userId = sfuUserId(participant);
+  if (userId == null) return false;
+  const fromHelper = /^tela-/.test(String(participant.identity));
+  if (currentUser && userId === currentUser.id) return fromHelper && publication.kind === 'video' && ownNativePreviewWanted();
+  if (fromHelper || /^screen_share/.test(publication.source)) return isWatchingScreen(userId);
+  return true;
+}
+
+function sfuApplySubscription(publication, participant) {
+  const want = sfuWantsPublication(publication, participant);
+  if (!!publication.isSubscribed === want) return;
+  try { publication.setSubscribed(want); } catch (_) { /* a faixa acabou no meio */ }
+}
+
+// assistir / parar de assistir a tela de alguém: no SFU é só assinar ou deixar de assinar as faixas
+// da tela dela
 function sfuSetScreenSubscribed(userId, on) {
   if (!sfu) return;
   if (sfu.native) { sfu.api.setSubscribed(userId, true, on); return; }
-  // a tela pode vir da própria pessoa (navegador) ou do auxiliar dela (app desktop, "tela-<id>")
+  // a tela pode vir da própria pessoa (navegador) ou do auxiliar dela (app desktop, "tela-<id>",
+  // que só publica tela, qualquer que seja a etiqueta)
   for (const identity of [String(userId), `tela-${userId}`]) {
     const participant = sfu.room.remoteParticipants.get(identity);
     if (!participant) continue;
     for (const pub of participant.trackPublications.values()) {
-      if (/^screen_share/.test(pub.source)) { try { pub.setSubscribed(on); } catch (_) { /* some sozinha se a faixa acabou */ } }
+      if (identity.startsWith('tela-') || /^screen_share/.test(pub.source)) { try { pub.setSubscribed(on); } catch (_) { /* some sozinha se a faixa acabou */ } }
     }
   }
+}
+
+// app do Linux: a sala fica no Rust, que assina tudo sozinho, e as telas vêm pelo assistente oculto
+// "ver-<id>" (native/screencast/watch.go), que assina toda tela de quem não está na lista de "parei
+// de assistir". Então, pra tela não vir antes do clique, cada pessoa da call entra nessa lista assim
+// que aparece (antes mesmo de compartilhar), e sai dela no "assistir" (setWatchingScreen).
+function sfuNativeHoldScreen(userId) {
+  if (!sfu || !sfu.native || userId == null || userId === BOT_USER_ID) return;
+  if ((currentUser && userId === currentUser.id) || isWatchingScreen(userId)) return;
+  try { sfu.api.setSubscribed(userId, true, false); } catch (_) { /* fora da call */ }
+}
+
+// alguém da call começou a compartilhar a tela (28-realtime.js, voice_state_update)
+function screenShareStarted(userId) {
+  sfuNativeHoldScreen(userId);
+  // quem compartilha só manda pra quem pediu (malha, ou a placa de vídeo indo direto pra cada um):
+  // a conexão pode ter sido refeita desde o meu "assistir" — peço de novo (não custa nada)
+  if (isWatchingScreen(userId)) Realtime.send('rtc_signal', { to: userId, data: { kind: 'watch', screen: true } });
 }
 
 function sfuPublishOptions(kind, LK) {
@@ -221,12 +260,8 @@ async function sfuConnect(ch) {
   const mine = (fn) => (...args) => { if (sfu === ctx) fn(...args); };
   room.on(LK.RoomEvent.TrackSubscribed, mine(sfuTrackSubscribed));
   room.on(LK.RoomEvent.TrackUnsubscribed, mine(sfuTrackUnsubscribed));
-  room.on(LK.RoomEvent.TrackPublished, mine((publication, participant) => {
-    // tela de alguém que eu tinha parado de assistir: continua sem assistir
-    if (/^screen_share/.test(publication.source) && unwatchedScreens.has(sfuUserId(participant))) {
-      try { publication.setSubscribed(false); } catch (_) { /* ok */ }
-    }
-  }));
+  // nada é assinado sozinho: cada faixa nova passa pela regra (tela só depois do "assistir")
+  room.on(LK.RoomEvent.TrackPublished, mine(sfuApplySubscription));
   room.on(LK.RoomEvent.Reconnecting, mine(() => { ctx.reconnecting = true; sfuMarkPeers(false); }));
   room.on(LK.RoomEvent.Reconnected, mine(() => { ctx.reconnecting = false; sfuMarkPeers(true); }));
   room.on(LK.RoomEvent.Disconnected, mine((reason) => {
@@ -238,11 +273,17 @@ async function sfuConnect(ch) {
   sfu = ctx;
   try {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-    await room.connect(`${scheme}://${location.host}${info.path}`, info.token, { autoSubscribe: true });
+    await room.connect(`${scheme}://${location.host}${info.path}`, info.token, { autoSubscribe: false });
   } catch (err) {
     if (sfu === ctx) sfu = null;
     try { room.disconnect(false); } catch (_) { /* nem conectou */ }
     throw err;
+  }
+  // quem já estava na sala: assina voz e câmera de todo mundo, e tela só de quem eu assisto
+  if (sfu === ctx) {
+    for (const participant of room.remoteParticipants.values()) {
+      for (const publication of participant.trackPublications.values()) sfuApplySubscription(publication, participant);
+    }
   }
   return sfu === ctx;
 }
@@ -348,12 +389,22 @@ async function sfuConnectNative(ch, info, api) {
     throw new Error((res && res.reason) || 'não consegui entrar na sala do servidor de mídia');
   }
   if (sfu !== ctx) { api.leave(); return false; }
+  for (const userId of callParticipantsState.keys()) sfuNativeHoldScreen(userId);
   sfuNativePullLoop(ctx);
   return true;
 }
 
 function sfuNativeEvent(ctx, ev) {
   if (ev.ev === 'track') {
+    // vídeo de tela que chegou antes do "assistir" (o assistente ainda não tinha recebido a lista
+    // ou a tela veio pelo caminho em JPEG, que o Rust assina sozinho): deixa de assinar e ignora.
+    // O som da tela pode chegar: sem o card aberto ele fica mudo (applyLocalOverrideToRemoteScreenAudio)
+    const owner = sfuUserId({ identity: ev.identity });
+    const isScreenVideo = ev.kind !== 'audio' && (ev.encoded || /^screen_share/.test(ev.source || '') || /^tela-/.test(String(ev.identity)));
+    if (isScreenVideo && owner != null && !(currentUser && owner === currentUser.id) && !isWatchingScreen(owner)) {
+      sfuNativeHoldScreen(owner);
+      return;
+    }
     if (ev.kind === 'audio') sfuNativeAddAudio(ctx, ev);
     else if (ev.encoded) sfuNativeAddEncodedVideo(ctx, ev);
     else sfuNativeAddVideo(ctx, ev);

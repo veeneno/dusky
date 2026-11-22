@@ -366,11 +366,23 @@ function renderCallParticipants() {
 
 // ---------- telas compartilhadas ----------
 
-// parar/voltar a assistir a tela de alguém. Parar avisa a pessoa pra não mandar mais a tela pra
-// mim — em call com muita gente, isso alivia bastante a internet de quem está compartilhando.
+// estou assistindo a tela dessa pessoa? Call normal: só depois de clicar em "assistir" (até lá
+// aparece o card "fulano está compartilhando a tela" e nada do vídeo é baixado). Mundinho: a TV
+// mostra sozinha, a não ser que eu tenha parado de assistir.
+function isWatchingScreen(userId) {
+  if (worldCallActive()) return !unwatchedScreens.has(userId);
+  return watchedScreens.has(userId);
+}
+
+// assistir / parar de assistir a tela de alguém. Avisa a pessoa (malha: ela só manda a tela pra quem
+// pediu) e assina/deixa de assinar no servidor de mídia — em call com muita gente, quem não está
+// assistindo não gasta a internet de quem compartilha nem a própria.
 function setWatchingScreen(userId, watching) {
-  if (watching) unwatchedScreens.delete(userId);
-  else {
+  if (watching) {
+    watchedScreens.add(userId);
+    unwatchedScreens.delete(userId);
+  } else {
+    watchedScreens.delete(userId);
     unwatchedScreens.add(userId);
     closeScreencastPc(peers.get(userId));
   }
@@ -476,7 +488,7 @@ function renderScreenShareArea() {
     if (!currentUser || userId === currentUser.id || userId === BOT_USER_ID || !st.screenOn) continue;
     const user = findUser(userId);
     const name = user ? user.username : 'alguém';
-    if (unwatchedScreens.has(userId)) {
+    if (!isWatchingScreen(userId)) {
       tiles.push({ kind: 'stopped', label: name, userId });
       continue;
     }
@@ -526,7 +538,7 @@ function renderScreenShareArea() {
     if (t.kind === 'stopped') {
       const card = document.createElement('div');
       card.className = 'call-screenshare-stopped';
-      card.innerHTML = `<span class="call-screenshare-stopped-icon">${EYE_OFF_ICON}</span><span class="call-screenshare-stopped-text"></span>`;
+      card.innerHTML = `<span class="call-screenshare-stopped-icon">${EYE_ICON}</span><span class="call-screenshare-stopped-text"></span>`;
       card.querySelector('.call-screenshare-stopped-text').textContent = `${t.label} está compartilhando a tela`;
       const watchBtn = document.createElement('button');
       watchBtn.type = 'button';
@@ -724,7 +736,7 @@ async function updateScreenStats() {
     const st = callParticipantsState.get(peer.userId);
     const screenReceiver = peer.sfu ? peer.sfuScreenReceiver : (peer.screen && peer.screen.receiver);
     const scLive = peer.scPc && peer.scPc.connectionState !== 'closed';
-    if (!st || !st.screenOn || unwatchedScreens.has(peer.userId) || (!screenReceiver && !scLive)) continue;
+    if (!st || !st.screenOn || !isWatchingScreen(peer.userId) || (!screenReceiver && !scLive)) continue;
     try {
       const report = await (scLive ? peer.scPc : screenReceiver).getStats();
       let inbound = null;

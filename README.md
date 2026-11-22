@@ -69,7 +69,7 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O c�
 - Supressão de ruído: avançada (DeepFilterNet3, parecida com a Krisp), leve (RNNoise) ou nenhuma.
 - Processamento da voz: caixa de som (cancela eco), fone de ouvido (voz mais natural) ou estúdio (nada).
 - Ganho do microfone, sensibilidade (corta o mic abaixo de um volume) e "ouvir a si mesmo".
-- Compartilhamento de tela com som, com volume próprio, e opção de "parar de assistir" a tela de alguém.
+- Compartilhamento de tela com som, com volume próprio. Igual ao Discord, a tela de alguém só chega depois de clicar em **assistir** no card "fulano está compartilhando a tela" (antes disso nada do vídeo é baixado, nem pelo servidor de mídia, nem em malha, nem no app do Linux); dá pra "parar de assistir" depois. A escolha vale até sair da call: se a tela da pessoa cai e volta, continua assistindo. No mundinho a TV mostra a tela sozinha, como antes.
 
 **Soundboard** (igual ao do Discord)
 - Cada servidor tem até 48 sons de até ~5 s. No envio, um editor mostra a onda do arquivo (áudio ou vídeo) pra cortar o trecho; o servidor corta e converte pra mp3 com o ffmpeg.

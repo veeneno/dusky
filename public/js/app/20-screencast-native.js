@@ -284,7 +284,7 @@ async function startNativeScreenShare({ fps, width, height, wantAudio }) {
   }, NATIVE_START_TIMEOUT_MS);
   screenOn = true;
   setScreenButtonsLive(true);
-  for (const peer of peers.values()) peer.wantsMyScreen = true;
+  // a tela só vai pra quem clicou em "assistir" (peer.wantsMyScreen, ver 22-call-mesh.js)
   // call no servidor de mídia: a tela sai uma vez só, por ele (senão, direto pra cada pessoa — e
   // continua tentando o servidor, que é o único jeito de quem está no app do Linux ver)
   if (!(await publishNativeToSfu())) retryNativeSfuFromMesh();

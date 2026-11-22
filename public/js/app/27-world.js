@@ -103,7 +103,7 @@ function worldScreenStream(userId) {
     if (nativeScreencast) return { native: true };
     return null;
   }
-  if (unwatchedScreens.has(userId)) return { stopped: true };
+  if (!isWatchingScreen(userId)) return { stopped: true };
   const peer = peers.get(userId);
   if (!peer) return null;
   const nativeStream = peer.scDisplayStream && peer.scDisplayStream.getVideoTracks().some((t) => t.readyState === 'live') ? peer.scDisplayStream : null;

@@ -192,7 +192,13 @@ let localScreenAudioTrack = null; // áudio da MINHA tela (pode vir à parte do 
 // compartilhamento pela placa de vídeo (app desktop): { encoderName, hardware, viewers:Set, stats,
 // sfuCapable, viaSfu } — viaSfu = o vídeo está saindo pelo servidor de mídia (ver 20-screencast-native.js)
 let nativeScreencast = null;
-const unwatchedScreens = new Set(); // userIds cuja tela eu parei de assistir
+// Tela compartilhada só chega quando eu clico em "assistir" (igual ao Discord): watchedScreens são
+// as pessoas cuja tela eu escolhi assistir nesta call. A escolha vale até eu sair da call, então se
+// a tela da pessoa cai e volta, continuo assistindo. Ver isWatchingScreen (19-call-ui.js).
+const watchedScreens = new Set();
+// No mundinho a TV continua como sempre foi: a tela aparece sozinha e dá pra "parar de assistir".
+// unwatchedScreens é essa escolha (só vale em call-mundo; volta ao normal quando a tela para).
+const unwatchedScreens = new Set();
 let spotlightUserId = null; // câmera ampliada na call (pode ser a minha)
 let baseCallStatus = ''; // aviso fixo da call (ex: sem microfone) — "reconectando…" tem prioridade
 // estado de TODOS os canais de voz (não só o que estou ocupando agora) — alimenta a

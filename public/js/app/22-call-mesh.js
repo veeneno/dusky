@@ -33,7 +33,7 @@ function newPeer(userId) {
     pendingCandidates: [],
     iceRestartTimer: null,
     iceState: 'new',
-    wantsMyScreen: true, // essa pessoa quer receber a minha tela? (ela pode "parar de assistir")
+    wantsMyScreen: false, // essa pessoa quer receber a minha tela? (só depois de ela clicar em "assistir")
   };
 }
 
@@ -399,8 +399,8 @@ async function createPeer(userId, isInitiator) {
     Realtime.send('rtc_signal', { to: userId, data: {
       kind: 'offer', sdp: offer, micRed: peer.micRedCapable && !!micSdpPayloads(offer)?.hasRed,
     } });
-    // se eu já tinha parado de assistir a tela dessa pessoa, avisa de novo na conexão nova
-    if (unwatchedScreens.has(userId)) Realtime.send('rtc_signal', { to: userId, data: { kind: 'watch', screen: false } });
+    // conexão nova começa sem mandar tela: se eu estava assistindo a dessa pessoa, peço de novo
+    if (isWatchingScreen(userId)) Realtime.send('rtc_signal', { to: userId, data: { kind: 'watch', screen: true } });
   }
   return peer;
 }
@@ -625,7 +625,7 @@ async function handleRtcSignal(from, data) {
   if (!voiceChannel || !data) return;
 
   if (data.kind === 'watch') {
-    // a pessoa parou (ou voltou) de assistir a minha tela
+    // a pessoa clicou em assistir (ou parou de assistir) a minha tela
     const peer = peers.get(from);
     if (peer) {
       peer.wantsMyScreen = !!data.screen;
@@ -653,7 +653,7 @@ async function handleRtcSignal(from, data) {
     if (peers.get(from) !== peer) return;
     Realtime.send('rtc_signal', { to: from, data: { kind: 'answer', sdp: answer } });
     tuneAudioSenders(peer);
-    if (unwatchedScreens.has(from)) Realtime.send('rtc_signal', { to: from, data: { kind: 'watch', screen: false } });
+    if (isWatchingScreen(from)) Realtime.send('rtc_signal', { to: from, data: { kind: 'watch', screen: true } });
   } else if (data.kind === 'answer') {
     const peer = peers.get(from);
     if (!peer || peer.pc.signalingState !== 'have-local-offer') return;

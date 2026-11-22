@@ -109,8 +109,8 @@ async function startScreenShare(opts = {}) {
   const track = localScreenStream.getVideoTracks()[0];
   track.contentHint = SCREEN_PRIORITIES[getSavedScreenPriority()].contentHint;
   track.addEventListener('ended', () => stopScreenShare()); // clicou em "parar de compartilhar" na barra do navegador
-  // compartilhamento novo: todo mundo começa assistindo (quem tinha parado de assistir o anterior volta)
-  for (const peer of peers.values()) peer.wantsMyScreen = true;
+  // compartilhamento novo: a tela só vai pra quem pediu ("assistir" — peer.wantsMyScreen, que cada um
+  // manda pelo sinal 'watch'); quem já estava assistindo da última vez continua recebendo
   localScreenAudioTrack = null;
   await Promise.all([...peers.values()].map(applyScreenSendersToPeer));
   sfuSyncScreen();
@@ -505,6 +505,7 @@ function leaveVoiceCall(opts = {}) {
   callViewMuteBtn.title = '';
 
   unwatchedScreens.clear();
+  watchedScreens.clear(); // a escolha de assistir vale só durante a call
   spotlightUserId = null;
   baseCallStatus = '';
   localScreenAudioTrack = null;

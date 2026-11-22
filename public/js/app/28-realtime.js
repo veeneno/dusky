@@ -257,6 +257,7 @@ function wireRealtime() {
     for (const p of participants) {
       if (voiceChannel !== channel) return;
       callParticipantsState.set(p.userId, { muted: p.muted, deafened: p.deafened, cameraOn: !!p.cameraOn, screenOn: !!p.screenOn });
+      sfuNativeHoldScreen(p.userId); // app do Linux: tela só depois do "assistir" (21-call-sfu.js)
       // o bot nunca é uma RTCPeerConnection de verdade (ver comentário no topo do arquivo, perto
       // de BOT_USER_ID) — o áudio dele chega por HTTP. Só abre sinalização WebRTC pro humano de verdade.
       if (p.userId === BOT_USER_ID) startBotAudio();
@@ -280,6 +281,7 @@ function wireRealtime() {
     } else {
       playJoinSound(); // alguém entrou na call que eu já estou — a oferta WebRTC vem dele
       if (sfuActive()) sfuEnsurePeer(userId); // pelo servidor de mídia não vem oferta: cria a entrada já
+      sfuNativeHoldScreen(userId); // app do Linux: a tela dela só vem depois de eu clicar em assistir
     }
     renderCallParticipants();
   });
@@ -327,10 +329,13 @@ function wireRealtime() {
       renderVoicePreviews();
     }
 
-    // parou de compartilhar: na próxima vez, volta a assistir automaticamente
+    // parou de compartilhar: no mundinho, a TV volta a mostrar sozinha na próxima vez. Numa call
+    // normal, quem clicou em "assistir" continua assistindo quando a tela voltar (watchedScreens)
     if (!uScreenOn) {
       unwatchedScreens.delete(userId);
       closeScreencastPc(peers.get(userId));
+    } else if (voiceChannel && callParticipantsState.has(userId) && !callParticipantsState.get(userId).screenOn) {
+      screenShareStarted(userId); // 21-call-sfu.js
     }
 
     const st = callParticipantsState.get(userId);
