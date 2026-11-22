@@ -62,6 +62,16 @@ ensureColumn('channels', 'server_id', 'INTEGER REFERENCES servers(id) ON DELETE 
 db.exec('CREATE INDEX IF NOT EXISTS idx_channels_server ON channels(server_id, type, position)');
 // histórico do chat em páginas (routes/messages.js, ?before=<id>)
 db.exec('CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id, id)');
+// reply_to_id é FK pra própria tabela com ON DELETE SET NULL: sem índice, cada mensagem apagada
+// (e cada canal/servidor apagado, mensagem por mensagem) varria a tabela inteira procurando respostas.
+// attachment_url: a rota de uploads (routes/uploads.js) procura a mensagem do arquivo a cada anexo
+// aberto, pra conferir a permissão; também apagar canal confere se o anexo ainda é usado.
+// user_id: FK pra users (excluir conta) e cota de anexos por pessoa (uploadLimits.js).
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_messages_reply_to ON messages(reply_to_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_attachment ON messages(attachment_url) WHERE attachment_url IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id);
+`);
 // cargos: canal restrito a alguns cargos pra ver (private_view) e/ou entrar na call (private_connect)
 ensureColumn('channels', 'private_view', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('channels', 'private_connect', 'INTEGER NOT NULL DEFAULT 0');
