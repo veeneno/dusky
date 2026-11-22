@@ -1,4 +1,5 @@
 const express = require('express');
+const { asyncRoute } = require('../asyncRoute');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
@@ -50,7 +51,7 @@ function securityView(user) {
 router.get('/security', (req, res) => res.json(securityView(me(req))));
 
 // POST /api/account/totp/setup { password } -> { secret, uri, qr } (ainda não liga)
-router.post('/totp/setup', async (req, res) => {
+router.post('/totp/setup', asyncRoute(async (req, res) => {
   const user = me(req);
   if (!(await passwordOk(user, (req.body || {}).password))) return res.status(401).json({ error: 'senha incorreta' });
   if (user.totp_enabled) return res.status(400).json({ error: 'o app autenticador já está ligado' });
@@ -59,7 +60,7 @@ router.post('/totp/setup', async (req, res) => {
   const uri = totp.otpauthUri(user.username, secret);
   const svg = await QRCode.toString(uri, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
   res.json({ secret: secret.replace(/(.{4})/g, '$1 ').trim(), uri, qr: `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}` });
-});
+}));
 
 // POST /api/account/totp/enable { code } -> { recoveryCodes } (mostrados UMA vez)
 router.post('/totp/enable', (req, res) => {
@@ -75,7 +76,7 @@ router.post('/totp/enable', (req, res) => {
 });
 
 // POST /api/account/totp/disable { password, code, method? (totp|recovery) }
-router.post('/totp/disable', async (req, res) => {
+router.post('/totp/disable', asyncRoute(async (req, res) => {
   const user = me(req);
   const body = req.body || {};
   if (!user.totp_enabled) return res.status(400).json({ error: 'o app autenticador não está ligado' });
@@ -85,10 +86,10 @@ router.post('/totp/disable', async (req, res) => {
   db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_pending_secret = NULL, totp_last_step = NULL, recovery_codes = NULL WHERE id = ?').run(user.id);
   if (user.email) mail.sendNotice(user.email, 'app autenticador desligado', 'O app autenticador foi desligado da sua conta do dusky.', user.username);
   res.json(securityView(me(req)));
-});
+}));
 
 // POST /api/account/recovery { password, code } -> novos códigos (os antigos param de valer)
-router.post('/recovery', async (req, res) => {
+router.post('/recovery', asyncRoute(async (req, res) => {
   const user = me(req);
   const body = req.body || {};
   if (!user.totp_enabled) return res.status(400).json({ error: 'ligue o app autenticador primeiro' });
@@ -98,10 +99,10 @@ router.post('/recovery', async (req, res) => {
   const rc = newRecoveryCodes();
   db.prepare('UPDATE users SET recovery_codes = ? WHERE id = ?').run(JSON.stringify(rc.hashed), user.id);
   res.json({ recoveryCodes: rc.plain, ...securityView(me(req)) });
-});
+}));
 
 // POST /api/account/email2fa { enabled, password }
-router.post('/email2fa', async (req, res) => {
+router.post('/email2fa', asyncRoute(async (req, res) => {
   const user = me(req);
   const body = req.body || {};
   if (!user.email) return res.status(400).json({ error: 'confirme um e-mail primeiro' });
@@ -111,7 +112,7 @@ router.post('/email2fa', async (req, res) => {
   mail.sendNotice(user.email, on ? 'código por e-mail ligado' : 'código por e-mail desligado',
     on ? 'A partir de agora, entrar no dusky pede um código mandado pra este e-mail.' : 'Entrar no dusky não pede mais o código por e-mail.', user.username);
   res.json(securityView(me(req)));
-});
+}));
 
 // ------------------------------------------------------------------ seus dados (LGPD)
 
@@ -154,7 +155,7 @@ router.get('/export', (req, res) => {
 });
 
 // POST /api/account/delete { password, code?, method? (totp|recovery), deleteMessages? }
-router.post('/delete', async (req, res) => {
+router.post('/delete', asyncRoute(async (req, res) => {
   const user = me(req);
   const body = req.body || {};
   if (limits.hit('account-delete', String(user.id), 5, 60 * 60 * 1000)) {
@@ -180,6 +181,6 @@ router.post('/delete', async (req, res) => {
   }
   req.session = null;
   res.json({ ok: true, ...result });
-});
+}));
 
 module.exports = router;

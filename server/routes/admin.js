@@ -1,4 +1,5 @@
 const express = require('express');
+const { asyncRoute } = require('../asyncRoute');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -129,7 +130,7 @@ router.post('/users/:id/unsuspend', loadTarget, (req, res) => {
 
 // POST /api/admin/users/:id/reset-password — gera uma senha temporária (mostrada uma vez só) e
 // desconecta todas as sessões da conta
-router.post('/users/:id/reset-password', loadTarget, async (req, res) => {
+router.post('/users/:id/reset-password', loadTarget, asyncRoute(async (req, res) => {
   const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
   const bytes = crypto.randomBytes(10);
   let temp = '';
@@ -140,7 +141,7 @@ router.post('/users/:id/reset-password', loadTarget, async (req, res) => {
   realtime.dropUserConnections(req.target.id, { type: 'session_revoked' });
   require('../adminLog').record(req, 'gerou senha temporária', { type: 'user', id: req.target.id, name: req.target.username });
   res.json({ ok: true, temporaryPassword: temp });
-});
+}));
 
 // GET /api/admin/servers — todos os servidores do site
 router.get('/servers', (req, res) => {

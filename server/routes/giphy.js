@@ -1,4 +1,5 @@
 const express = require('express');
+const { asyncRoute } = require('../asyncRoute');
 const { requireAuth } = require('../middleware/auth');
 const config = require('../config');
 
@@ -6,7 +7,7 @@ const router = express.Router();
 
 // GET /api/giphy/search?q=termo&type=gifs|stickers — proxy pra API do GIPHY. a api key fica só aqui
 // no servidor, nunca é exposta pro navegador (senão qualquer um podia usar sua key direto).
-router.get('/search', requireAuth, async (req, res) => {
+router.get('/search', requireAuth, asyncRoute(async (req, res) => {
   if (!config.giphyApiKey) {
     return res.status(503).json({ error: 'GIPHY não configurado no servidor' });
   }
@@ -37,6 +38,6 @@ router.get('/search', requireAuth, async (req, res) => {
     console.error('[giphy] erro na busca:', err.message);
     res.status(502).json({ error: 'não deu pra buscar gifs agora' });
   }
-});
+}));
 
 module.exports = router;

@@ -1,4 +1,5 @@
 const express = require('express');
+const { asyncRoute } = require('../asyncRoute');
 const { requireAuth } = require('../middleware/auth');
 const stream = require('../bots/musicBot/stream');
 const queue = require('../bots/musicBot/queue');
@@ -42,7 +43,7 @@ router.get('/state', requireAuth, (req, res) => {
 });
 
 // GET /api/musicbot/search?q=... — 5 primeiros resultados do YouTube pro autocompletar do /play
-router.get('/search', requireAuth, async (req, res) => {
+router.get('/search', requireAuth, asyncRoute(async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 200);
   if (q.length < 2 || /^https?:\/\//i.test(q)) return res.json({ results: [] }); // link não precisa de sugestão
   try {
@@ -50,6 +51,6 @@ router.get('/search', requireAuth, async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message, results: [] });
   }
-});
+}));
 
 module.exports = router;

@@ -1,4 +1,5 @@
 const express = require('express');
+const { asyncRoute } = require('../asyncRoute');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const db = require('../db');
@@ -162,7 +163,7 @@ router.get('/config', (req, res) => {
 });
 
 // POST /api/auth/register { username, email, password, acceptTerms, turnstileToken? }
-router.post('/register', async (req, res) => {
+router.post('/register', asyncRoute(async (req, res) => {
   if (rateLimited('register', req)) {
     return res.status(429).json({ error: 'muitas contas criadas daqui — tenta de novo daqui a pouco' });
   }
@@ -213,10 +214,10 @@ router.post('/register', async (req, res) => {
   startSession(req, user);
   const sent = await sendEmailCode('verify', user, email);
   res.status(201).json({ user: selfView(user), needsEmail: needsEmail(user), codeSent: sent });
-});
+}));
 
 // POST /api/auth/login { login (nick ou e-mail), password } — `username` ainda vale (app antigo)
-router.post('/login', async (req, res) => {
+router.post('/login', asyncRoute(async (req, res) => {
   if (rateLimited('login', req)) {
     return res.status(429).json({ error: 'muitas tentativas — espera uns minutos e tenta de novo' });
   }
@@ -256,7 +257,7 @@ router.post('/login', async (req, res) => {
   }
   startSession(req, user);
   res.json({ user: selfView(user), needsEmail: needsEmail(user) });
-});
+}));
 
 function pendingUser(req) {
   const p = req.session && req.session.pending2fa;
@@ -281,14 +282,14 @@ router.post('/login/2fa', (req, res) => {
 });
 
 // POST /api/auth/login/2fa/email — manda (de novo) o código de login pro e-mail
-router.post('/login/2fa/email', async (req, res) => {
+router.post('/login/2fa/email', asyncRoute(async (req, res) => {
   const user = pendingUser(req);
   if (!user) return res.status(401).json({ error: 'o login expirou — entre de novo', restart: true });
   if (!twofaMethods(user).includes('email')) return res.status(400).json({ error: 'código por e-mail não está ligado nessa conta' });
   if (cooldownError(res, user.id, 'login')) return;
   const ok = await sendEmailCode('login', user, user.email);
   res.json({ ok, emailHint: maskEmail(user.email) });
-});
+}));
 
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
@@ -306,7 +307,7 @@ router.get('/me', requireAuth, (req, res) => {
 
 // POST /api/auth/email { email, password? } — põe/troca o e-mail e manda o código pro novo.
 // Trocar um e-mail JÁ confirmado pede a senha.
-router.post('/email', requireAuth, async (req, res) => {
+router.post('/email', requireAuth, asyncRoute(async (req, res) => {
   const user = userById(req.user.id);
   const email = cleanEmail((req.body || {}).email);
   if (!email) return res.status(400).json({ error: 'coloque um e-mail válido' });
@@ -326,10 +327,10 @@ router.post('/email', requireAuth, async (req, res) => {
   const ok = await sendEmailCode('verify', user, email);
   if (!ok) return res.status(502).json({ error: 'não consegui mandar o e-mail agora — tenta de novo daqui a pouco' });
   res.json({ ok: true, emailPending: email });
-});
+}));
 
 // POST /api/auth/email/resend — manda de novo o código pro e-mail pendente
-router.post('/email/resend', requireAuth, async (req, res) => {
+router.post('/email/resend', requireAuth, asyncRoute(async (req, res) => {
   const user = userById(req.user.id);
   if (!user.email_pending) return res.status(400).json({ error: 'nenhum e-mail esperando confirmação' });
   if (cooldownError(res, user.id, 'verify')) return;
@@ -339,10 +340,10 @@ router.post('/email/resend', requireAuth, async (req, res) => {
   const ok = await sendEmailCode('verify', user, user.email_pending);
   if (!ok) return res.status(502).json({ error: 'não consegui mandar o e-mail agora — tenta de novo daqui a pouco' });
   res.json({ ok: true });
-});
+}));
 
 // POST /api/auth/email/confirm { code }
-router.post('/email/confirm', requireAuth, async (req, res) => {
+router.post('/email/confirm', requireAuth, asyncRoute(async (req, res) => {
   const user = userById(req.user.id);
   if (!user.email_pending) return res.status(400).json({ error: 'nenhum e-mail esperando confirmação' });
   const r = codes.check(user.id, 'verify', (req.body || {}).code);
@@ -359,12 +360,12 @@ router.post('/email/confirm', requireAuth, async (req, res) => {
     mail.sendNotice(old, 'o e-mail da sua conta foi trocado', `O e-mail da sua conta no dusky (${user.username}) agora é ${maskEmail(user.email_pending)}.`, user.username);
   }
   res.json({ user: selfView(userById(user.id)) });
-});
+}));
 
 // ------------------------------------------------------------------ esqueci minha senha
 
 // POST /api/auth/forgot { login } — sempre responde igual (não entrega se a conta existe)
-router.post('/forgot', async (req, res) => {
+router.post('/forgot', asyncRoute(async (req, res) => {
   const login = (req.body || {}).login;
   if (limits.hit('forgot-ip', req.ip, 10, 30 * 60 * 1000)) {
     return res.status(429).json({ error: 'muitos pedidos — espera um pouco' });
@@ -377,12 +378,12 @@ router.post('/forgot', async (req, res) => {
   }
   await sendEmailCode('reset', user, user.email);
   res.json(generic);
-});
+}));
 
 // POST /api/auth/reset { login, code, password, twofaMethod?, twofaCode? }
 // Com app autenticador ligado, a senha nova também pede o código do app (ou um de recuperação):
 // só o e-mail não basta pra passar por cima das 2 etapas.
-router.post('/reset', async (req, res) => {
+router.post('/reset', asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (limits.hit('reset-ip', req.ip, 20, 30 * 60 * 1000)) {
     return res.status(429).json({ error: 'muitas tentativas — espera um pouco' });
@@ -407,7 +408,7 @@ router.post('/reset', async (req, res) => {
   const fresh = userById(user.id);
   startSession(req, fresh);
   res.json({ user: selfView(fresh), needsEmail: false });
-});
+}));
 
 module.exports = router;
 module.exports.helpers = { cleanEmail, checkSecondFactor, hashRecovery, selfView, twofaMethods };

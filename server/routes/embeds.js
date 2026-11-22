@@ -2,6 +2,7 @@
 // imagem e (pra YouTube) o id do vídeo. Buscar daqui (e não do navegador) evita bloqueio de CORS e
 // deixa guardar em cache — o mesmo link mandado por várias pessoas só é buscado uma vez.
 const express = require('express');
+const { asyncRoute } = require('../asyncRoute');
 const { safeFetch } = require('../publicFetch');
 const { requireAuth } = require('../middleware/auth');
 
@@ -155,7 +156,7 @@ async function buildEmbed(url) {
 }
 
 // GET /api/embed?url=... -> { embed: {...} | null }
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, asyncRoute(async (req, res) => {
   let url;
   try {
     url = new URL(String(req.query.url || '')).href;
@@ -173,6 +174,6 @@ router.get('/', requireAuth, async (req, res) => {
     }));
   }
   res.json({ embed: await inflight.get(url) });
-});
+}));
 
 module.exports = router;

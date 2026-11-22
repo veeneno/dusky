@@ -106,7 +106,14 @@ function init(server) {
       } catch (_) {
         return; // mensagem malformada, ignora
       }
-      handleClientMessage(ws, msg);
+      // um erro num tratador (mensagem com formato inesperado, bug) não pode derrubar o processo
+      // inteiro e todas as calls junto: loga e segue com as próximas mensagens
+      try {
+        handleClientMessage(ws, msg);
+      } catch (err) {
+        const type = msg && typeof msg.type === 'string' ? msg.type.slice(0, 40) : '?';
+        console.error(`[ws] erro tratando ${type}:`, err && err.stack ? err.stack : err);
+      }
     });
 
     ws.on('close', (code) => {

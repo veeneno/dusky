@@ -1,4 +1,5 @@
 const express = require('express');
+const { asyncRoute } = require('../asyncRoute');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcrypt');
@@ -152,7 +153,7 @@ router.get('/upload-limits', requireAuth, (req, res) => {
 });
 
 // POST /api/profile/password — troca de senha
-router.post('/password', requireAuth, limits.perUser('password', 10, 15 * 60 * 1000, 'muitas tentativas de trocar a senha — espera uns minutos'), async (req, res) => {
+router.post('/password', requireAuth, limits.perUser('password', 10, 15 * 60 * 1000, 'muitas tentativas de trocar a senha — espera uns minutos'), asyncRoute(async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
 
   if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
@@ -178,7 +179,7 @@ router.post('/password', requireAuth, limits.perUser('password', 10, 15 * 60 * 1
   req.session.sv = sv;
   realtime.dropOtherSessions(req.user.id, sv, { type: 'session_revoked' });
   res.json({ ok: true });
-});
+}));
 
 // POST /api/profile/avatar — upload de foto de perfil (imagem ou gif)
 router.post('/avatar', requireAuth, (req, res) => {
@@ -241,7 +242,7 @@ async function downloadLimited(url, max) {
 }
 
 // POST /api/profile/avatar/giphy { id } — usa um gif do GIPHY como avatar
-router.post('/avatar/giphy', requireAuth, async (req, res) => {
+router.post('/avatar/giphy', requireAuth, asyncRoute(async (req, res) => {
   const id = String((req.body && req.body.id) || '');
   if (!GIPHY_ID_RE.test(id)) return res.status(400).json({ error: 'gif inválido' });
   if (!config.giphyApiKey) return res.status(503).json({ error: 'GIPHY não configurado no servidor' });
@@ -276,7 +277,7 @@ router.post('/avatar/giphy', requireAuth, async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   broadcastProfileUpdate(user);
   res.json({ user: publicUser(user) });
-});
+}));
 
 // POST /api/profile/decor/:slot — imagem própria pra uma decoração (campo "image"): placa do nome
 // (nameplate), decoração do avatar (avatar_deco) ou efeito do perfil (profile_fx). Salva na hora,

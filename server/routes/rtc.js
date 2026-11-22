@@ -1,4 +1,5 @@
 const express = require('express');
+const { asyncRoute } = require('../asyncRoute');
 const { requireAuth } = require('../middleware/auth');
 const config = require('../config');
 const access = require('../access');
@@ -31,7 +32,7 @@ let cachedAt = 0;
 // GET /api/rtc/ice-servers — devolve a lista de ICE servers (STUN + TURN) pro cliente montar
 // o RTCPeerConnection. A secret key do Metered NUNCA sai do servidor: aqui a gente troca ela
 // por uma credencial de curta duração (1h) e só devolve essa credencial pro navegador.
-router.get('/ice-servers', requireAuth, async (req, res) => {
+router.get('/ice-servers', requireAuth, asyncRoute(async (req, res) => {
   if (!config.meteredDomain || !config.meteredSecretKey) {
     return res.json({ iceServers: FALLBACK_STUN });
   }
@@ -77,7 +78,7 @@ router.get('/ice-servers', requireAuth, async (req, res) => {
     }
     res.json({ iceServers: FALLBACK_STUN });
   }
-});
+}));
 
 // Com &screen=1 o ingresso é pro auxiliar de tela do app desktop: ele entra na mesma sala como um
 // participante à parte, "tela-<id da conta>", que só envia o vídeo da tela (ver native/

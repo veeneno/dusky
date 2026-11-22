@@ -234,6 +234,30 @@ app.use('/api/admin', adminRoutes);
 app.use('/api', activityRoutes); // /api/unread, /api/search
 app.use('/api/embed', embedRoutes);
 
+// tratador de erro do Express (precisa ser o último app.use, com os 4 argumentos): pega exceção de
+// rota comum e, com asyncRoute (server/asyncRoute.js), de rota async. Loga com o stack e responde
+// sem stack nenhum (não vaza caminho de arquivo nem detalhe interno). err.status cobre os erros do
+// próprio Express/body-parser (JSON torto = 400, corpo grande demais = 413).
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = Number(err && (err.status || err.statusCode)) || 500;
+  if (status >= 500) console.error(`[http] erro em ${req.method} ${req.originalUrl}:`, err && err.stack ? err.stack : err);
+  if (res.headersSent) return res.end();
+  res.status(status).json({ error: status >= 500 ? 'erro interno' : 'pedido inválido' });
+});
+
+// Último recurso: promessa rejeitada que ninguém tratou só loga (o logBuffer já guarda o console pra
+// página /admin) e o servidor segue. Exceção não tratada é diferente: o processo pode ter ficado num
+// estado ruim (meia operação, timer quebrado), então loga e sai com código 1 — o scripts/start.js
+// encerra junto e o systemd religa tudo limpo (Restart=always no dusky.service).
+process.on('unhandledRejection', (reason) => {
+  console.error('[processo] promessa rejeitada sem tratamento:', reason && reason.stack ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[processo] exceção não tratada, saindo pra o systemd religar:', err && err.stack ? err.stack : err);
+  process.exit(1);
+});
+
 const server = http.createServer(app);
 realtime.init(server); // liga o WebSocket em /ws no mesmo servidor HTTP
 // amarra a sala do LiveKit à call do site: só entra na mídia quem está na call, e sair da call
