@@ -7,16 +7,15 @@ const realtime = require('../realtime');
 
 const router = express.Router();
 
-// STUN público do Google + TURN público do Open Relay Project (credencial estática e
-// compartilhada, sem limite de geração — ao contrário da do Metered) como fallback pra quando
-// o Metered falhar (cota estourada, chave inválida, serviço fora do ar etc). Sem isso, calls
-// entre redes diferentes (ex.: celular no 4G + PC em casa) tendem a falhar sem relay TURN.
+// Reserva pra quando o Metered não está configurado ou falha (cota estourada, chave inválida,
+// serviço fora do ar): só STUN. Aqui antes tinha o TURN público do Open Relay Project com a
+// credencial fixa "openrelayproject", mas a Metered não oferece mais esse acesso (hoje precisa de
+// conta e chave de API), então ele só gastava tempo do ICE tentando um relay que recusa. Sem TURN,
+// call entre redes difíceis (4G, NAT simétrico) pode não conectar: pra isso, configure o Metered
+// (METERED_DOMAIN e METERED_SECRET_KEY no .env) ou use o servidor de mídia (SFU=livekit).
 const FALLBACK_STUN = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   { urls: 'stun:openrelay.metered.ca:80' },
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
 
 // cache em memória da credencial TURN — o Metered pede uma credencial nova por chamada à API,

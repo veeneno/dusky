@@ -164,7 +164,7 @@ Todas são opcionais: sem uma delas, a função correspondente cai num modo mais
 | `CONTACT_EMAIL` | e-mail de contato nas páginas de termos e privacidade | "fale com o admin dentro do dusky" |
 | `UPLOAD_MAX_MB`, `UPLOAD_QUOTA_MB` | tamanho máximo de um anexo e espaço total por conta | 100 MB e 5 GB |
 | `SITE_ADMINS` | conta(s) marcada(s) como admin do site no primeiro boot (separadas por vírgula) | `veneno` |
-| `METERED_DOMAIN`, `METERED_SECRET_KEY` | servidor TURN do [Metered](https://www.metered.ca/), pra calls entre redes difíceis (4G, NAT) | STUN do Google + TURN público |
+| `METERED_DOMAIN`, `METERED_SECRET_KEY` | servidor TURN do [Metered](https://www.metered.ca/), pra calls entre redes difíceis (4G, NAT) | só STUN (sem relay TURN: call entre redes difíceis pode não conectar) |
 | `GIPHY_API_KEY` | busca de GIFs e stickers | busca de GIF desligada |
 | `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | links do Spotify no `/play` | só YouTube e busca por nome |
 | `CLOUDFLARE_TUNNEL_MODE` | `nomeado` = túnel com endereço fixo | túnel rápido (endereço aleatório) |
