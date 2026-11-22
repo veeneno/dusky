@@ -232,6 +232,7 @@ app.use('/api/servers', serversRoutes);
 app.use('/api/push', require('./routes/push'));
 app.use('/api/invites', invitesRoutes);
 app.use('/api/dms', dmsRoutes);
+app.use('/api/blocks', require('./routes/blocks')); // bloquear / desbloquear / meus bloqueados
 app.use('/api/users', usersRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api', activityRoutes); // /api/unread, /api/search

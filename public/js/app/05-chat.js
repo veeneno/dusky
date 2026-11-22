@@ -386,6 +386,7 @@ function buildMessageEl(m, continued) {
   const el = document.createElement('div');
   el.className = 'msg-group' + (continued ? ' is-continued' : '');
   el.dataset.messageId = m.id;
+  if (!isBot) el.dataset.userId = m.user_id;
 
   const avatarInner = (!isBot && m.avatar_url)
     ? `<img src="${escapeAttr(m.avatar_url)}" alt="${escapeAttr(name)}">`
@@ -491,6 +492,8 @@ function buildMessageEl(m, continued) {
 
   attachLinkEmbeds(el, m);
   el.querySelector('.msg-body').appendChild(buildReactionsEl(m));
+  // de alguém que eu bloqueei: aparece recolhida, com "mostrar" (34-blocks.js)
+  if (!isBot && blockedUserIds.size) applyBlockedState(el);
 
   // barrinha de ações que aparece no hover: reagir, fixar, responder, editar, apagar
   const actions = document.createElement('div');

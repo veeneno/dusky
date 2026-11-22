@@ -35,6 +35,17 @@ db.pragma('foreign_keys = ON');
 const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
 db.exec(schema);
 
+// bloquear (server/access.js, routes/blocks.js): user_id bloqueou blocked_id
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_blocks (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, blocked_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks(blocked_id);
+`);
+
 // voice_state era gravada a cada mudança de call e nunca lida. Parou de ser gravada; a tabela fica
 // (banco antigo, FK, exclusão de conta), mas o conteúdo velho é jogado fora a cada boot.
 db.exec('DELETE FROM voice_state');
@@ -91,6 +102,8 @@ for (const key of ['send', 'attach', 'react', 'pin']) {
   ensureColumn('channels', 'private_' + key, 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('channel_role_access', 'can_' + key, 'INTEGER NOT NULL DEFAULT 0');
 }
+// "fechar conversa": a DM some da lista de quem fechou até chegar mensagem nova (routes/dms.js)
+ensureColumn('dm_members', 'hidden_at', 'TEXT');
 ensureColumn('roles', 'permissions_json', "TEXT NOT NULL DEFAULT '{}'");
 // cargo "mostrado separado" na lista de membros (igual ao Discord): quem tem o cargo aparece num grupo próprio
 ensureColumn('roles', 'hoist', 'INTEGER NOT NULL DEFAULT 0');

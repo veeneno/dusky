@@ -157,6 +157,7 @@ let bots = [];
 let servers = []; // servidores dos quais sou membro
 let currentServerId = null; // null = tela inicial (mensagens diretas)
 let dms = []; // minhas conversas diretas
+let blockedUserIds = new Set(); // quem eu bloqueei (34-blocks.js)
 let serverRoles = []; // cargos do servidor aberto
 let myServerPerms = { is_admin: false, role_ids: [] }; // o que eu posso no servidor aberto
 const usersById = new Map(); // cache de todo usuario que ja apareceu (ver rememberUser)

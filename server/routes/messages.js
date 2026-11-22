@@ -106,6 +106,9 @@ function publishNewMessage(channelId, messageId, author) {
   const row = db.prepare(MESSAGE_SELECT).get(messageId);
   extras.saveMentions(messageId, row.content);
   extras.markRead(author.id, channelId, messageId);
+  // DM "fechada" (dm_members.hidden_at, ver routes/dms.js) volta pra lista de quem fechou assim
+  // que chega mensagem nova nela
+  db.prepare('UPDATE dm_members SET hidden_at = NULL WHERE channel_id = ? AND hidden_at IS NOT NULL').run(channelId);
   const message = extras.decorateMessage(row);
   realtime.broadcastToChannel(channelId, { type: 'message_created', message });
   require('../push').notifyMessage(message).catch(err => console.error('[push]', err.message));
@@ -117,7 +120,7 @@ router.post('/', requireAuth, sendLimit, (req, res) => {
   const channelId = Number(req.params.channelId);
   const channel = getChannel(channelId, req.user.id);
   if (!channel) return res.status(404).json({ error: 'canal não encontrado' });
-  if (!access.canChannelAction(channel, req.user.id, 'send')) return res.status(403).json({ error: 'você não pode escrever neste canal' });
+  if (!access.canChannelAction(channel, req.user.id, 'send')) return res.status(403).json({ error: access.sendDeniedMessage(channel, req.user.id) });
   if (channel.type !== 'text') return res.status(400).json({ error: 'esse canal não é de texto' });
 
   const { content, reply_to_id } = req.body || {};
@@ -157,7 +160,7 @@ router.post('/attachment', requireAuth, attachLimit, (req, res) => {
   const channelId = Number(req.params.channelId);
   const channel = getChannel(channelId, req.user.id);
   if (!channel) return res.status(404).json({ error: 'canal não encontrado' });
-  if (!access.canChannelAction(channel, req.user.id, 'send')) return res.status(403).json({ error: 'você não pode escrever neste canal' });
+  if (!access.canChannelAction(channel, req.user.id, 'send')) return res.status(403).json({ error: access.sendDeniedMessage(channel, req.user.id) });
   if (channel.type !== 'text') return res.status(400).json({ error: 'esse canal não é de texto' });
 
   if (!access.canChannelAction(channel, req.user.id, 'attach')) return res.status(403).json({ error: 'você não pode enviar anexos neste canal' });
@@ -223,7 +226,7 @@ router.post('/gif', requireAuth, sendLimit, (req, res) => {
   const channelId = Number(req.params.channelId);
   const channel = getChannel(channelId, req.user.id);
   if (!channel) return res.status(404).json({ error: 'canal não encontrado' });
-  if (!access.canChannelAction(channel, req.user.id, 'send')) return res.status(403).json({ error: 'você não pode escrever neste canal' });
+  if (!access.canChannelAction(channel, req.user.id, 'send')) return res.status(403).json({ error: access.sendDeniedMessage(channel, req.user.id) });
   if (channel.type !== 'text') return res.status(400).json({ error: 'esse canal não é de texto' });
 
   if (!access.canChannelAction(channel, req.user.id, 'attach')) return res.status(403).json({ error: 'você não pode enviar anexos neste canal' });

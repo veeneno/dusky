@@ -1,6 +1,6 @@
 # public/js/app/ — o código do site
 
-Aqui mora tudo que roda na página principal (`app.html`): chat, servidores, perfil, calls, compartilhamento de tela e configurações. Era um arquivo só (`public/js/app.js`, com mais de 10 mil linhas); agora são 33 arquivos, um por assunto.
+Aqui mora tudo que roda na página principal (`app.html`): chat, servidores, perfil, calls, compartilhamento de tela e configurações. Era um arquivo só (`public/js/app.js`, com mais de 10 mil linhas); agora são 34 arquivos, um por assunto.
 
 ## Como os arquivos se enxergam
 
@@ -54,6 +54,7 @@ Por que não módulos (`import`/`export`)? O estado do app (`currentChannel`, `p
 | `31-account-security.js` | **Conta e segurança.** perfil → "conta e segurança": e-mail, 2 etapas, códigos de recuperação, baixar meus dados e excluir conta | `loadAccountSecurity()`, `renderAccountSecurity()` |
 | `32-reports.js` | **Denúncias.** janela de denunciar (mensagem ou pessoa) e a aba "denúncias" do painel rápido de admin | `openReportDialog()`, `renderAdminReports()` |
 | `33-performance.js` | **Desempenho (app desktop).** aba "desempenho" das configurações: CPU, RAM e placa de vídeo de cada processo do dusky (números de `tauri/src-tauri/src/perf.rs`), atualizando a cada 2 s só com a aba aberta; os 3 modos de uso de memória do app; e as opções de "efeitos de perfil" (acessibilidade: sempre / ao passar o mouse / nunca) | `startPerfPanel()`, `renderPerfMemoryModes()`, `renderFxMotionOptions()` |
+| `34-blocks.js` | **Bloquear e fechar conversa.** quem eu bloqueei (`blockedUserIds`), mensagens de bloqueado recolhidas com "mostrar", bloquear/desbloquear no perfil e no botão direito, aba "bloqueados" das configurações e o × de "fechar conversa" na lista de DMs. A regra de verdade é a do servidor (`server/access.js`) | `blockUser()`, `unblockUser()`, `applyBlockedState()`, `renderBlockedSettings()`, `closeDmConversation()` |
 
 ## Onde procurar
 

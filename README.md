@@ -40,6 +40,7 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O c�
 
 **Chat**
 - Canais de texto e DMs (só entre quem divide algum servidor).
+- **Bloquear** alguém (no perfil, no botão direito ou em configurações → bloqueados), igual ao Discord: ninguém manda DM pro outro, quem foi bloqueado não abre conversa nova (e não é avisado), e as mensagens dele nos servidores aparecem recolhidas com "mostrar". **Fechar conversa** (o × na lista de DMs) esconde a DM até chegar mensagem nova.
 - Enviar, editar, apagar e responder mensagens. Histórico carregado em páginas ao rolar pra cima.
 - Anexos de qualquer tipo: imagem e vídeo com prévia, o resto vira um botão de download. O tamanho máximo é por conta (padrão 100 MB por arquivo e 5 GB no total; o admin muda no painel). Atenção: o túnel do Cloudflare (plano grátis) recusa qualquer pedido com mais de 100 MB (HTTP 413) antes de chegar no servidor, então arquivo acima de ~90 MB precisa ir em partes.
 - **Markdown** igual o Discord: `# título`, `## subtítulo`, `-# texto pequeno`, `**negrito**`, `*itálico*`, `__sublinhado__`, `~~riscado~~`, `` `código` ``, blocos ```` ``` ````, `||spoiler||`, `> citação`, listas e `[texto](link)`. A caixa de mensagem tem várias linhas (Shift+Enter quebra linha; seta pra cima edita a sua última mensagem).
@@ -277,6 +278,7 @@ dusky/
 - **`servers`**, **`server_members`**, **`invites`**: servidores, quem está em cada um, e convites (usos, validade).
 - **`channels`**: canais de texto/voz de um servidor, com `category_id` e `position` (a ordem da lateral) e `world_scene` (preenchido = mundinho 3D). `server_id` nulo = DM, com os 2 participantes em **`dm_members`**.
 - **`channel_categories`**: categorias de cada servidor (nome e posição).
+- **`user_blocks`**: quem bloqueou quem (regras em `server/access.js`). `dm_members.hidden_at` guarda a DM que a pessoa fechou (volta com mensagem nova).
 - **`messages`**: mensagens, com anexo, resposta (`reply_to_id`), edição, e `embed_json` pras respostas do bot de música.
 - **`roles`**, **`member_roles`**, **`channel_role_access`**: cargos, quem tem cada um, e quais cargos veem/entram em cada canal restrito.
 - **`channel_reads`**: até qual mensagem cada pessoa leu cada canal (as não lidas).

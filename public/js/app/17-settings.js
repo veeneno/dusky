@@ -344,6 +344,7 @@ function switchSettingsTab(tabName) {
     DuskyTheme.mountEditor(document.getElementById('themeEditor'), { toast });
   }
   if (tabName === 'app') renderSettingsAppCard();
+  if (tabName === 'bloqueados') renderBlockedSettings(); // 34-blocks.js
   if (tabName === 'acessibilidade' && typeof renderFxMotionOptions === 'function') renderFxMotionOptions();
   if (hasPerf) { if (tabName === 'desempenho') startPerfPanel(); else stopPerfPanel(); }
   if (!settingsModalBackdrop.hidden) {

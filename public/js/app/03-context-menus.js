@@ -60,6 +60,7 @@ function openParticipantContextMenu(e, userId, username) {
       </label>`}
     `;
   appendVoiceModerationItems(menu, userId);
+  appendBlockMenuItem(menu, userId, username); // 34-blocks.js
   document.body.appendChild(menu);
   openContextMenuEl = menu;
 

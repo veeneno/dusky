@@ -527,6 +527,11 @@ function showProfilePopout(user, mutuals, anchorEl) {
     if (s && canModerateMember(user.id, 'ban_members') && members.some((m) => m.id === user.id)) {
       actions.push({ label: `banir de ${s.name}`, kind: 'danger', onClick: () => { closeViewProfile(); banMember(user); } });
     }
+    if (isUserBlocked(user.id)) {
+      actions.push({ label: 'desbloquear', kind: 'ghost', onClick: () => { closeViewProfile(); unblockUser(user); } });
+    } else {
+      actions.push({ label: 'bloquear', kind: 'danger', onClick: () => { closeViewProfile(); blockUser(user); } });
+    }
     actions.push({ label: 'denunciar', kind: 'ghost', onClick: () => { closeViewProfile(); openReportDialog({ userId: user.id, name: user.username }); } });
   }
   // cargos (só quando estou olhando um servidor e a pessoa é membro dele)

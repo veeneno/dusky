@@ -534,3 +534,46 @@
   .chat-search input { width: 110px; }
   .chat-search input:focus { width: 160px; }
 }
+
+/* mensagem de alguém que eu bloqueei (public/js/app/34-blocks.js): recolhida atrás de uma barra
+   "mostrar", igual ao Discord. A barra fica numa linha só dela (flex-wrap) em cima da mensagem. */
+.msg-group.is-blocked { flex-wrap: wrap; row-gap: 2px; }
+.msg-group.is-blocked:not(.is-blocked-open) > :not(.msg-blocked-bar) { display: none; }
+.msg-blocked-bar {
+  flex: 1 0 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.msg-blocked-bar:hover { color: var(--text-normal); text-decoration: underline; }
+
+/* aba "bloqueados" das configurações */
+.blocked-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.blocked-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--bg-hover); }
+.blocked-row .dm-item-avatar { flex: none; }
+.blocked-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-normal); }
+
+/* "fechar conversa" na lista de DMs: o × aparece ao passar o mouse */
+.dm-item { position: relative; }
+.dm-item-close {
+  margin-left: auto;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+.dm-item:hover .dm-item-close, .dm-item-close:focus-visible { opacity: 1; }
+.dm-item-close:hover { color: var(--text-hi); background: var(--bg-active); }
+@media (hover: none) { .dm-item-close { opacity: 1; } }

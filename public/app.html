@@ -1011,6 +1011,7 @@
         <div class="settings-nav-inner">
           <div class="settings-nav-group">sua conta</div>
           <button type="button" class="settings-tab" data-settings-action="profile">perfil</button>
+          <button type="button" class="settings-tab" data-settings-tab="bloqueados">bloqueados</button>
           <div class="settings-nav-sep"></div>
           <div class="settings-nav-group">aparência</div>
           <button type="button" class="settings-tab" data-settings-tab="aparencia">temas</button>
@@ -1335,6 +1336,14 @@
           </div>
         </section>
 
+        <section class="settings-tab-panel" data-settings-panel="bloqueados" hidden>
+          <h2 class="settings-title">bloqueados</h2>
+          <div class="settings-card">
+            <p class="field-help">Com quem você bloqueou, ninguém manda mensagem direta pro outro, e as mensagens da pessoa nos servidores aparecem recolhidas pra você. Ela não é avisada. Pra bloquear, abra o perfil de alguém ou clique com o botão direito no nome.</p>
+            <div class="blocked-list" id="blockedList"></div>
+          </div>
+        </section>
+
         <section class="settings-tab-panel" data-settings-panel="notificacoes" hidden>
           <h2 class="settings-title">notificações</h2>
           <div class="settings-card"><h3>com o site fechado</h3><p class="field-help">Ative neste navegador para receber avisos mesmo sem a aba aberta. Requer HTTPS e suporte a Web Push. O navegador e o sistema precisam permitir execução em segundo plano.</p><button type="button" class="btn btn-primary" id="pushEnableBtn">ativar neste aparelho</button><button type="button" class="btn btn-ghost" id="pushDisableBtn" hidden>desativar neste aparelho</button><p class="field-help" id="pushStatus" role="status"></p></div>
@@ -1450,5 +1459,6 @@
   <script src="/js/app/31-account-security.js?v=66"></script>
   <script src="/js/app/32-reports.js?v=66"></script>
   <script src="/js/app/33-performance.js?v=66"></script>
+  <script src="/js/app/34-blocks.js?v=66"></script>
 </body>
 </html>

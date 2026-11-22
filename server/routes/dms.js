@@ -40,7 +40,7 @@ router.get('/', requireAuth, (req, res) => {
     FROM channels c
     JOIN dm_members me ON me.channel_id = c.id AND me.user_id = ?
     JOIN dm_members other ON other.channel_id = c.id AND other.user_id != ?
-    WHERE c.server_id IS NULL
+    WHERE c.server_id IS NULL AND me.hidden_at IS NULL
     ORDER BY COALESCE(last_message_at, c.created_at) DESC
   `).all(req.user.id, req.user.id);
   res.json({ dms: rows.map(decorate).filter((d) => d.user) });
@@ -64,11 +64,15 @@ router.post('/', requireAuth, (req, res) => {
     WHERE a.user_id = ? AND b.user_id = ?
     LIMIT 1
   `).get(req.user.id, targetId);
-  if (existing) return res.json({ dm: dmForViewer(existing.id, req.user.id) });
-
-  if (!access.sharesServer(req.user.id, targetId)) {
-    return res.status(403).json({ error: 'vocês precisam estar em algum servidor em comum pra conversar' });
+  if (existing) {
+    // abrir de novo uma conversa que eu tinha fechado: ela volta pra minha lista
+    db.prepare('UPDATE dm_members SET hidden_at = NULL WHERE channel_id = ? AND user_id = ?').run(existing.id, req.user.id);
+    return res.json({ dm: dmForViewer(existing.id, req.user.id) });
   }
+
+  // DM nova: precisa de servidor em comum, e quem foi bloqueado não abre com quem bloqueou
+  const denied = access.openDmDenied(req.user.id, targetId);
+  if (denied) return res.status(403).json({ error: denied });
 
   const channelId = db.transaction(() => {
     const { lastInsertRowid } = db.prepare(
@@ -84,6 +88,20 @@ router.post('/', requireAuth, (req, res) => {
   // outras abas minhas já mostram a conversa; a outra pessoa só vê quando chegar a 1ª mensagem
   realtime.sendToUsers([req.user.id], { type: 'dm_created', dm });
   res.status(201).json({ dm });
+});
+
+// POST /api/dms/:id/close — "fechar conversa": some da MINHA lista (a outra pessoa não vê nada
+// mudar) até chegar mensagem nova nela ou eu abrir de novo pelo perfil. O histórico fica.
+// Fica guardado por pessoa em dm_members.hidden_at; quem limpa é publishNewMessage
+// (routes/messages.js) e o POST /api/dms acima.
+router.post('/:id/close', requireAuth, (req, res) => {
+  const channelId = Number(req.params.id);
+  const ch = channelId ? access.canAccessChannel(channelId, req.user.id) : null;
+  if (!ch || ch.server_id != null) return res.status(404).json({ error: 'conversa não encontrada' });
+  db.prepare("UPDATE dm_members SET hidden_at = datetime('now') WHERE channel_id = ? AND user_id = ?").run(channelId, req.user.id);
+  // minhas outras abas tiram a conversa da lista também
+  realtime.sendToUsers([req.user.id], { type: 'dm_closed', channelId });
+  res.json({ ok: true });
 });
 
 module.exports = router;

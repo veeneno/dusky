@@ -581,7 +581,10 @@ function buildDmItem(dm) {
         <span class="dm-item-status"></span>
       </span>
       <span class="unread-pill" aria-label="mensagens novas"></span>
+      <button type="button" class="dm-item-close" title="fechar conversa" aria-label="fechar conversa">×</button>
     `;
+  // fechar conversa (34-blocks.js): some da lista até chegar mensagem nova
+  el.querySelector('.dm-item-close').addEventListener('click', (e) => { e.stopPropagation(); closeDmConversation(dm); });
   el.querySelector('.dm-item-name').textContent = u.username;
   applyNameStyle(el.querySelector('.dm-item-name'), u);
   applyNameplate(el, u);

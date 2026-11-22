@@ -65,7 +65,7 @@ function deleteAccount(user, { deleteMessages = false } = {}) {
       removedMessages = db.prepare('SELECT id, channel_id, attachment_url FROM messages WHERE user_id = ?').all(user.id);
       db.prepare('DELETE FROM messages WHERE user_id = ?').run(user.id);
     }
-    for (const t of ['server_members', 'member_roles', 'push_subscriptions', 'auth_codes', 'channel_reads', 'message_reactions', 'voice_state']) {
+    for (const t of ['server_members', 'member_roles', 'push_subscriptions', 'auth_codes', 'channel_reads', 'message_reactions', 'voice_state', 'user_blocks']) {
       db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).run(user.id);
     }
     db.prepare(`UPDATE users SET

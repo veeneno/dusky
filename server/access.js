@@ -99,8 +99,67 @@ function serverPermissions(serverId, userId) {
 function hasServerPermission(serverId, userId, key) { return serverPermissions(serverId, userId)[key] === true; }
 function canChannelAction(channel, userId, action) {
   if (!channel || !canAccessChannel(channel.id, userId)) return false;
-  if (channel.server_id == null) return true;
+  // DM: quem participa pode tudo, menos se um dos dois bloqueou o outro (aí ninguém escreve,
+  // anexa, reage, fixa nem aparece "digitando" — ver dmBlockState)
+  if (channel.server_id == null) return !(DM_BLOCKED_ACTIONS.has(action) && dmBlockState(channel.id, userId));
   return channelPermissions(channel, userId)[action] === true;
+}
+
+// ------------------------------------------------------------------
+// bloquear (igual ao Discord): user_blocks (user_id bloqueou blocked_id)
+// - quem bloqueou não recebe mais DM de quem foi bloqueado: o envio é recusado com uma mensagem
+//   neutra, que não conta pra pessoa bloqueada que ela foi bloqueada;
+// - quem bloqueou também não manda (precisa desbloquear antes, igual no Discord);
+// - o bloqueado não abre DM nova com quem o bloqueou (openDmDenied);
+// - em canal de servidor nada muda no servidor: as mensagens do bloqueado continuam chegando e o
+//   site de quem bloqueou mostra recolhidas ("mensagem de alguém bloqueado — mostrar").
+// ------------------------------------------------------------------
+const DM_BLOCKED_ACTIONS = new Set(['send', 'attach', 'react', 'pin']);
+const DM_BLOCKED_BY_OTHER_MSG = 'não foi possível enviar a mensagem pra essa pessoa';
+const DM_BLOCKED_BY_ME_MSG = 'você bloqueou essa pessoa — desbloqueie pra mandar mensagem';
+
+function hasBlocked(userId, otherId) {
+  return !!db.prepare('SELECT 1 FROM user_blocks WHERE user_id = ? AND blocked_id = ?').get(userId, otherId);
+}
+
+function blockedIds(userId) {
+  return db.prepare('SELECT blocked_id FROM user_blocks WHERE user_id = ? ORDER BY created_at').all(userId).map((r) => r.blocked_id);
+}
+
+// a outra pessoa de uma DM (do ponto de vista de userId)
+function dmOtherId(channelId, userId) {
+  const row = db.prepare('SELECT user_id FROM dm_members WHERE channel_id = ? AND user_id != ? LIMIT 1').get(channelId, userId);
+  return row ? row.user_id : null;
+}
+
+// numa DM: 'me' = eu bloqueei a outra pessoa, 'them' = ela me bloqueou, null = nenhum bloqueio
+function dmBlockState(channelId, userId) {
+  const other = dmOtherId(channelId, userId);
+  if (!other) return null;
+  if (hasBlocked(userId, other)) return 'me';
+  if (hasBlocked(other, userId)) return 'them';
+  return null;
+}
+
+// mensagem de erro pra quem não pode escrever num canal: em DM com bloqueio, a neutra (ou o aviso de
+// desbloquear, pra quem bloqueou); senão, a de sempre
+function sendDeniedMessage(channel, userId, fallback = 'você não pode escrever neste canal') {
+  if (channel && channel.server_id == null) {
+    const state = dmBlockState(channel.id, userId);
+    if (state === 'them') return DM_BLOCKED_BY_OTHER_MSG;
+    if (state === 'me') return DM_BLOCKED_BY_ME_MSG;
+  }
+  return fallback;
+}
+
+// abrir DM NOVA com alguém: precisa dividir um servidor, e quem foi bloqueado não abre com quem o
+// bloqueou. Devolve null (pode) ou a mensagem de erro. A mesma mensagem neutra de "sem servidor em
+// comum" pro bloqueado, pra não entregar o bloqueio.
+function openDmDenied(userId, targetId) {
+  const neutral = 'vocês precisam estar em algum servidor em comum pra conversar';
+  if (hasBlocked(targetId, userId)) return neutral;
+  if (!sharesServer(userId, targetId)) return neutral;
+  return null;
 }
 
 // algum cargo dessa pessoa tem a permissão `column` ('can_view' ou 'can_connect') nesse canal?
@@ -231,4 +290,10 @@ module.exports = {
   sharesServer,
   sharesDm,
   mutualServers,
+  hasBlocked,
+  blockedIds,
+  dmOtherId,
+  dmBlockState,
+  sendDeniedMessage,
+  openDmDenied,
 };
