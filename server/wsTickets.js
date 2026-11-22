@@ -22,4 +22,12 @@ function consume(ticket) {
   return entry;
 }
 
+// ticket pedido e nunca usado (aba fechada no meio, conexão que falhou) só saía do Map quando
+// alguém tentava usá-lo: ficava pra sempre. A cada minuto os vencidos vão embora. unref pra esse
+// timer não segurar o processo aberto (testes, desligamento).
+setInterval(() => {
+  const now = Date.now();
+  for (const [ticket, entry] of tickets) if (now > entry.expires) tickets.delete(ticket);
+}, 60 * 1000).unref();
+
 module.exports = { issue, consume };

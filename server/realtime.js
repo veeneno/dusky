@@ -374,8 +374,10 @@ function handleTyping(ws, msg) {
   const now = Date.now();
   if (!ws.typingAt) ws.typingAt = new Map();
   if (now - (ws.typingAt.get(channelId) || 0) < 2000) return;
-  ws.typingAt.set(channelId, now);
   if (!access.canChannelAction(access.getChannel(channelId), ws.userId, 'send')) return;
+  // só depois da permissão: senão qualquer id de canal (até de servidor alheio) virava uma entrada
+  // nova no Map desta conexão, e ele crescia sem limite
+  ws.typingAt.set(channelId, now);
   broadcastToChannel(channelId, { type: 'typing', channelId, userId: ws.userId }, ws);
 }
 
@@ -532,8 +534,9 @@ setInterval(checkAfk, AFK_CHECK_MS).unref();
 // ------------------------------------------------------------------
 function sendToCall(channelId, event, exceptUserId) {
   const payload = JSON.stringify(event);
+  const droppable = DROPPABLE_EVENTS.has(event.type);
   for (const [uid, s] of voiceStates.entries()) {
-    if (uid !== exceptUserId && s.channelId === channelId && s.ws && s.ws.readyState === s.ws.OPEN) s.ws.send(payload);
+    if (uid !== exceptUserId && s.channelId === channelId && s.ws) wsSend(s.ws, payload, droppable);
   }
 }
 
@@ -667,7 +670,7 @@ function handleSoundboardPlay(ws, msg) {
   };
   const payload = JSON.stringify(event);
   for (const s of voiceStates.values()) {
-    if (s.channelId === state.channelId && s.ws && s.ws.readyState === s.ws.OPEN) s.ws.send(payload);
+    if (s.channelId === state.channelId && s.ws) wsSend(s.ws, payload, false);
   }
 }
 
@@ -708,8 +711,9 @@ function kickFromChannelVoice(channelId) {
 // realmente globais; o normal é usar sendToUsers / broadcastToServer / broadcastToChannel
 function broadcast(event, except) {
   const payload = JSON.stringify(event);
+  const droppable = DROPPABLE_EVENTS.has(event.type);
   for (const ws of clients) {
-    if (ws !== except && ws.readyState === ws.OPEN) ws.send(payload);
+    if (ws !== except) wsSend(ws, payload, droppable);
   }
 }
 
@@ -718,8 +722,9 @@ function sendToUsers(userIds, event, except) {
   const targets = new Set(userIds);
   if (targets.size === 0) return;
   const payload = JSON.stringify(event);
+  const droppable = DROPPABLE_EVENTS.has(event.type);
   for (const ws of clients) {
-    if (ws !== except && targets.has(ws.userId) && ws.readyState === ws.OPEN) ws.send(payload);
+    if (ws !== except && targets.has(ws.userId)) wsSend(ws, payload, droppable);
   }
 }
 
@@ -733,7 +738,27 @@ function broadcastToChannel(channelId, event, except) {
 }
 
 function send(ws, event) {
-  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event));
+  wsSend(ws, JSON.stringify(event), DROPPABLE_EVENTS.has(event.type));
+}
+
+// Contrapressão: uma conexão lenta (celular no 4G, aba em segundo plano) acumula na fila de saída
+// (ws.bufferedAmount) tudo que não conseguiu mandar ainda, e essa fila mora na memória do servidor.
+// Eventos que só valem "agora" (posição no mundinho, digitando, quem fala, nota do piano) são
+// pulados pra essa conexão quando a fila passa de 1 MB: o próximo já substitui. Se mesmo assim
+// passar de 8 MB, a conexão está praticamente parada e é derrubada; o site reconecta sozinho e
+// ressincroniza o chat.
+const DROPPABLE_EVENTS = new Set(['world_state', 'typing', 'voice_speaking', 'piano_note']);
+const WS_SOFT_BUFFER = 1024 * 1024;
+const WS_HARD_BUFFER = 8 * 1024 * 1024;
+function wsSend(ws, payload, droppable) {
+  if (ws.readyState !== ws.OPEN) return;
+  if (ws.bufferedAmount > WS_HARD_BUFFER) {
+    console.warn(`[ws] derrubando conexão de userId=${ws.userId}: ${Math.round(ws.bufferedAmount / 1024 / 1024)} MB parados na fila de saída`);
+    ws.terminate();
+    return;
+  }
+  if (droppable && ws.bufferedAmount > WS_SOFT_BUFFER) return;
+  ws.send(payload);
 }
 
 function isOnline(userId) {
