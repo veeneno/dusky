@@ -228,10 +228,11 @@ function timeValue(iso) {
   return new Date(iso.replace(' ', 'T') + 'Z').getTime();
 }
 
+// escapa também aspas: o jeito antigo (textContent → innerHTML) só trocava & < >, e um texto
+// com " fechava o atributo quando ia parar dentro de `attr="${...}"` (XSS pelo nome do anexo)
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  return String(str ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
 // texto de embed suporta um markdown bem mínimo (**negrito** e `código`) — os embeds do bot

@@ -103,4 +103,14 @@ function attachmentTypeOf(mimetype) {
   return 'file'; // qualquer outro tipo — chip de download genérico no chat
 }
 
-module.exports = { decorUpload, avatarUpload, bannerUpload, soundUpload, attachmentUpload, serverIconUpload, themeBackgroundUpload, attachmentTypeOf, UPLOADS_ROOT };
+// nome original do anexo, limpo antes de ir pro banco: tira caracteres de controle, aspas,
+// < >, / e \ (o nome vai pra tela de todo mundo do canal e pro atributo download do link) e corta
+// em 255. O arquivo no disco nunca usa esse nome (é sempre aleatório, ver makeStorage).
+function sanitizeAttachmentName(name) {
+  if (typeof name !== 'string') return null;
+  // eslint-disable-next-line no-control-regex
+  const clean = name.replace(/[\u0000-\u001f\u007f-\u009f"'<>/\\`]/g, '').trim().slice(0, 255);
+  return clean || null;
+}
+
+module.exports = { sanitizeAttachmentName, decorUpload, avatarUpload, bannerUpload, soundUpload, attachmentUpload, serverIconUpload, themeBackgroundUpload, attachmentTypeOf, UPLOADS_ROOT };

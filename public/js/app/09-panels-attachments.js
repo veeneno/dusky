@@ -515,7 +515,7 @@ function renderGifResults(gifs, append) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'gif-picker-item';
-    btn.innerHTML = `<img src="${g.preview}" alt="${escapeHtml(g.title)}" loading="lazy">`;
+    btn.innerHTML = `<img src="${escapeAttr(g.preview)}" alt="${escapeAttr(g.title)}" loading="lazy">`;
     btn.addEventListener('click', () => sendGif(g.url));
     gifPickerGrid.appendChild(btn);
   }

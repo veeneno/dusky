@@ -388,7 +388,7 @@ function buildMessageEl(m, continued) {
   el.dataset.messageId = m.id;
 
   const avatarInner = (!isBot && m.avatar_url)
-    ? `<img src="${m.avatar_url}" alt="${escapeHtml(name)}">`
+    ? `<img src="${escapeAttr(m.avatar_url)}" alt="${escapeAttr(name)}">`
     : initials(name);
 
   el.innerHTML = `
@@ -462,8 +462,10 @@ function buildMessageEl(m, continued) {
       wrap.className = 'msg-attachment msg-attachment-file';
       const fname = m.attachment_name || 'arquivo';
       const fsize = formatFileSize(m.attachment_size);
+      // nome e URL entram pelo DOM (a.href / a.download), nunca dentro do HTML: o nome vem
+      // de quem enviou e já foi usado pra fechar o atributo e injetar onmouseover
       wrap.innerHTML = `
-          <a href="${m.attachment_url}" download="${escapeHtml(fname)}" class="msg-file-chip">
+          <a class="msg-file-chip">
             <span class="msg-file-chip-icon">${FILE_ICON}</span>
             <span class="msg-file-chip-info">
               <span class="msg-file-chip-name"></span>
@@ -472,6 +474,9 @@ function buildMessageEl(m, continued) {
             <span class="msg-file-chip-download">${DOWNLOAD_ICON}</span>
           </a>
         `;
+      const chip = wrap.querySelector('.msg-file-chip');
+      chip.href = m.attachment_url;
+      chip.download = fname;
       wrap.querySelector('.msg-file-chip-name').textContent = fname;
     } else {
       wrap.className = 'msg-attachment msg-attachment-image is-loading' + (m.attachment_type === 'gif' || /\.gif($|\?)/i.test(m.attachment_url) ? ' is-gif' : '');

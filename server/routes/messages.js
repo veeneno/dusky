@@ -5,7 +5,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const realtime = require('../realtime');
 const access = require('../access');
-const { attachmentUpload, attachmentTypeOf } = require('../upload');
+const { attachmentUpload, attachmentTypeOf, sanitizeAttachmentName } = require('../upload');
 const { MESSAGE_COLUMNS, MESSAGE_SELECT_BY_ID } = require('../db/messageQueries');
 const musicBot = require('../bots/musicBot');
 const extras = require('../chatExtras');
@@ -203,7 +203,7 @@ router.post('/attachment', requireAuth, attachLimit, (req, res) => {
     const attachmentUrl = `/uploads/attachments/${req.file.filename}`;
     // nome/tamanho originais só importam de verdade pro chip de arquivo genérico (imagem/vídeo
     // já mostram preview inline, sem precisar do nome do arquivo) — mas guarda sempre, é barato
-    const attachmentName = req.file.originalname ? req.file.originalname.slice(0, 255) : null;
+    const attachmentName = sanitizeAttachmentName(req.file.originalname);
     const attachmentSize = req.file.size || null;
     const caption = typeof req.body.content === 'string' ? req.body.content.trim().slice(0, 4000) : '';
     const replyToId = resolveReplyToId(channelId, req.body.reply_to_id);

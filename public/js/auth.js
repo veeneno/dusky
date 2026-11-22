@@ -133,10 +133,11 @@
     notice.classList.add('show');
   }
 
+  // escapa também aspas (o jeito antigo, textContent → innerHTML, deixava " passar e um
+  // texto podia fechar um atributo)
   function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(str ?? '').replace(/[&<>"']/g, (c) => map[c]);
   }
 
   async function api(path, body) {
@@ -392,9 +393,11 @@
       }
       const { invite } = await res.json();
       const s = invite.server;
+      // URL do ícone pelo DOM, não dentro do HTML (vem do dono do servidor)
       inviteIcon.innerHTML = s.icon_url
-        ? `<img src="${escapeHtml(s.icon_url)}" alt="">`
+        ? '<img alt="">'
         : `<span>${escapeHtml(s.name.trim().slice(0, 2))}</span>`;
+      if (s.icon_url) inviteIcon.querySelector('img').src = s.icon_url;
       inviteLead.textContent = invite.inviter ? `${invite.inviter} te convidou pra` : 'você foi convidado pra';
       inviteName.textContent = s.name;
       inviteBox.hidden = false;
