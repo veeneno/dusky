@@ -93,6 +93,9 @@ ensureColumn('users', 'upload_max_mb', 'INTEGER');    // tamanho máximo de UM a
 ensureColumn('users', 'upload_quota_mb', 'INTEGER');  // soma de todos os anexos da conta
 // aparência (tema) de cada pessoa — ver routes/profile.js e public/js/themes.js
 ensureColumn('users', 'theme_json', 'TEXT');
+// fundos do tema que a pessoa enviou e ainda estão no disco (JSON, o último é o atual) — pra apagar
+// o antigo quando ele sai do tema (routes/profile.js, sweepThemeBackgrounds)
+ensureColumn('users', 'theme_bg_url', 'TEXT');
 // efeito no nome (LED, neon, degradê…) — JSON {"effect","c1","c2"}, validado em routes/profile.js.
 // Vai junto com os dados públicos do perfil: todo mundo vê o efeito no chat, DMs, membros e perfil
 ensureColumn('users', 'name_style', 'TEXT');

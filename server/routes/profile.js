@@ -350,15 +350,50 @@ router.put('/theme', requireAuth, (req, res) => {
   const json = JSON.stringify({ theme: theme || null, saved: Array.isArray(saved) ? saved.slice(0, 20) : [] });
   if (Buffer.byteLength(json) > THEME_MAX_BYTES) return res.status(413).json({ error: 'tema grande demais (o CSS próprio tem limite)' });
   db.prepare('UPDATE users SET theme_json = ? WHERE id = ?').run(json, req.user.id);
+  // o fundo enviado saiu do tema (trocou por link, degradê ou outro fundo): o arquivo vai embora
+  sweepThemeBackgrounds(req.user.id);
   res.json({ ok: true });
 });
+
+// Imagem de fundo do tema: cada envio cria um arquivo novo, e antes o antigo ficava no disco pra
+// sempre. Agora users.theme_bg_url guarda os fundos que a pessoa enviou e ainda estão no disco
+// (JSON com uma lista; o último é o atual). A cada envio e a cada tema salvo, os que não são o
+// atual são apagados — mas só se nenhum tema (nem os "meus temas" da pessoa, nem o de um amigo que
+// copiou o código do tema) ainda aponta pra eles. Só apaga arquivo que a própria pessoa enviou.
+// É uma lista, e não um só, porque o fundo antigo pode continuar no tema até o próximo "salvar"
+// (enviou outro e ainda não salvou): com um só, esse antigo perderia o dono e ficaria pra sempre.
+// Fundo enviado há menos de THEME_BG_GRACE_MS nunca é apagado: um "salvar" que saiu do navegador
+// antes do envio terminar (o tema salva sozinho 0,7 s depois de cada mudança) ainda não tem a URL nova.
+const THEME_BG_TRACK_MAX = 30;
+const THEME_BG_GRACE_MS = 2 * 60 * 1000;
+function isFreshUpload(url) {
+  try { return Date.now() - fs.statSync(path.join(UPLOADS_ROOT, url.slice('/uploads/'.length))).mtimeMs < THEME_BG_GRACE_MS; } catch (_) { return false; }
+}
+function themeBgList(userId) {
+  const raw = db.prepare('SELECT theme_bg_url FROM users WHERE id = ?').get(userId)?.theme_bg_url;
+  try { const list = JSON.parse(raw || '[]'); return Array.isArray(list) ? list.filter((u) => typeof u === 'string') : []; } catch (_) { return []; }
+}
+function sweepThemeBackgrounds(userId, current) {
+  const list = themeBgList(userId);
+  const used = db.prepare('SELECT 1 FROM users WHERE instr(theme_json, ?) > 0 LIMIT 1');
+  const keep = [];
+  for (const url of list) {
+    if (url === current || used.get(url) || isFreshUpload(url)) keep.push(url);
+    else removeOldUpload(url);
+  }
+  if (current && !keep.includes(current)) keep.push(current);
+  db.prepare('UPDATE users SET theme_bg_url = ? WHERE id = ?')
+    .run(keep.length ? JSON.stringify(keep.slice(-THEME_BG_TRACK_MAX)) : null, userId);
+}
 
 // POST /api/profile/theme/background — imagem de fundo do tema (png/jpg/webp/gif até 15MB)
 router.post('/theme/background', requireAuth, (req, res) => {
   themeBackgroundUpload.single('image')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'imagem grande demais (máximo 15MB)' : 'não deu pra enviar essa imagem' });
     if (!req.file) return res.status(400).json({ error: 'imagem inválida (use png, jpg, webp ou gif)' });
-    res.json({ url: `/uploads/themes/${req.file.filename}` });
+    const url = `/uploads/themes/${req.file.filename}`;
+    sweepThemeBackgrounds(req.user.id, url);
+    res.json({ url });
   });
 });
 
