@@ -238,8 +238,11 @@ router.post('/gif', requireAuth, sendLimit, (req, res) => {
   } catch (_) {
     return res.status(400).json({ error: 'url inválida' });
   }
-  // só aceita URLs do próprio GIPHY — senão isso vira um jeito de mandar qualquer link como "anexo"
-  if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith('giphy.com')) {
+  // só aceita URLs do próprio GIPHY — senão isso vira um jeito de mandar qualquer link como "anexo".
+  // Domínio exato ou subdomínio de verdade: só endsWith('giphy.com') deixava passar xgiphy.com.
+  // (mesma regra de routes/profile.js)
+  const host = parsed.hostname.toLowerCase();
+  if (parsed.protocol !== 'https:' || !(host === 'giphy.com' || host.endsWith('.giphy.com'))) {
     return res.status(400).json({ error: 'só aceito gifs vindos do giphy' });
   }
 
