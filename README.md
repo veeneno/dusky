@@ -176,6 +176,21 @@ Todas são opcionais: sem uma delas, a função correspondente cai num modo mais
 | `CLOUDFLARE_TUNNEL_NAME` / `CLOUDFLARE_TUNNEL_TOKEN` | qual túnel nomeado usar (pelo nome em `~/.cloudflared`, ou por token do painel) | — |
 | `CLOUDFLARE_TUNNEL_HOSTNAME` | endereço mostrado no terminal quando o túnel sobe | não mostra |
 | `YTDLP_PATH`, `FFMPEG_PATH` | usar um `yt-dlp`/`ffmpeg` específico | `yt-dlp` baixado pelo bot e `ffmpeg` do sistema |
+| `DUSKY_TESTES_PUBLIC` | pasta do site da branch `testes` (o "site de teste", abaixo) | `../dusky-testes/public` ao lado da pasta do site |
+
+### Site de teste (branch `testes`)
+
+Novidade arriscada que mexe só no site (html/js/css) dá pra testar no servidor de verdade antes do
+merge: em configurações → app e versões, a chave **site de teste** faz o servidor mandar pra essa
+pessoa os arquivos de `public/` da branch `testes` (o git worktree `../dusky-testes`, ver
+[`tauri/README.md`](tauri/README.md) → "Builds de teste") em vez dos da `main`. Vale no navegador e
+nos apps, sem build nova; quem não liga não vê diferença. A API, as calls e o banco são os mesmos pra
+todo mundo, então mudança em `server/` não vai junto.
+
+- é um cookie (`dusky_site=testes`); a chave só aparece quando a pasta existe (`server/siteTestes.js`);
+- `git pull` no worktree já vale no próximo carregamento, sem reiniciar o servidor;
+- o que não existe na branch (e sempre anexos, downloads, `vendor/` e `decor/media/`) sai da `main`;
+- o site de teste quebrou a ponto de não abrir as configurações? `/site-teste/sair` no navegador desliga.
 
 ## Notificações com o site fechado
 
@@ -191,7 +206,7 @@ Referências de implementação: [Web Push](https://github.com/web-push-libs/web
 
 ## Verificação
 
-`npm test` executa os testes (`tests/*.test.js`) com SQLite em memória: permissões, isolamento entre servidores, categorias e a ordem da lateral (`channel-layout`), configurações do servidor, push, decorações e efeito no nome, contas (e-mail, 2 etapas, esqueci a senha, exportar e excluir conta), denúncias, a página de admin, bloquear e fechar DM (`blocks`), anexo em partes (`chunked-upload`), apagar canal levando os anexos (`channel-delete`), e as regras do mundinho e de cada jogo (Duno, 21, xadrez com perft e sinuca, com física e faltas). Nenhum teste usa o banco real. `DUSKY_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/dusky.db`; o nome antigo `DIDISCORD_DB_PATH` também vale, e um `didiscord.db` antigo é renomeado sozinho pra `dusky.db` na primeira vez). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
+`npm test` executa os testes (`tests/*.test.js`) com SQLite em memória: permissões, isolamento entre servidores, categorias e a ordem da lateral (`channel-layout`), configurações do servidor, push, decorações e efeito no nome, contas (e-mail, 2 etapas, esqueci a senha, exportar e excluir conta), denúncias, a página de admin, bloquear e fechar DM (`blocks`), anexo em partes (`chunked-upload`), apagar canal levando os anexos (`channel-delete`), o site de teste (`site-testes`), e as regras do mundinho e de cada jogo (Duno, 21, xadrez com perft e sinuca, com física e faltas). Nenhum teste usa o banco real. `DUSKY_DB_PATH` permite apontar uma instância de desenvolvimento para outro banco (o padrão continua `server/db/dusky.db`; o nome antigo `DIDISCORD_DB_PATH` também vale, e um `didiscord.db` antigo é renomeado sozinho pra `dusky.db` na primeira vez). A entrega por um serviço de push real depende da ativação no navegador; os testes verificam assinatura/criptografia e o comportamento do worker sem enviar avisos externos.
 
 ## Estrutura do projeto
 
@@ -213,6 +228,7 @@ dusky/
 │   ├── sfu/livekit.js      # servidor de mídia opcional (LiveKit)
 │   ├── upload.js           # multer: avatar, banner, ícone, anexos
 │   ├── wsTickets.js        # ticket de uso único pra autenticar o WebSocket
+│   ├── siteTestes.js       # "site de teste": quem liga recebe o public/ da branch testes
 │   ├── mail.js, authCodes.js, totp.js  # e-mail (Resend), códigos de 6 dígitos e app autenticador (2 etapas)
 │   ├── turnstile.js        # anti-robô do cadastro (Cloudflare Turnstile)
 │   ├── accountDeletion.js  # excluir conta (LGPD): apaga os dados pessoais e anonimiza

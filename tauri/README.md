@@ -197,6 +197,11 @@ Novidade arriscada vai primeiro pra branch **`testes`** e sai como build de test
 seção **testes** do `/baixar` (`/baixar#testes`) pra quem quiser ajudar a testar. A versão normal
 (`latest.json`, atualização automática) não muda.
 
+Só precisa de build de teste quando a branch mexe no **app** (`tauri/`). Mudança só no site
+(`public/`) não precisa de build: quem liga a chave **site de teste** (configurações → app e
+versões) já recebe o site da branch, no app normal ou no navegador — ver "Site de teste" no
+[README principal](../README.md).
+
 A branch fica numa cópia à parte (git worktree), pra pasta do site continuar na `main`:
 
 ```bash
