@@ -585,6 +585,8 @@ function renderScreenShareArea() {
     if (t.kind === 'remote') applyLocalOverrideToRemoteScreenAudio(t.userId, video);
     tile.appendChild(video);
     if (nativeCanvas) tile.appendChild(nativeCanvas);
+    // "melhorar imagem" (FSR, 35-screen-fsr.js): no navegador o canvas vai por cima do <video>
+    else if (t.kind === 'remote') attachScreenFsr(tile, video, t.userId);
 
     const label = document.createElement('span');
     label.className = 'call-screenshare-label';

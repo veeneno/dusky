@@ -143,6 +143,7 @@ function openScreenShareContextMenu(e, kind, userId, label) {
         <input type="checkbox" data-role="stats-visible" ${statsVisible ? 'checked' : ''}>
       </label>
     `;
+  if (isRemote) appendScreenFsrMenuItem(menu); // 35-screen-fsr.js
   document.body.appendChild(menu);
   openContextMenuEl = menu;
 

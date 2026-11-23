@@ -1,6 +1,6 @@
 # public/js/app/ — o código do site
 
-Aqui mora tudo que roda na página principal (`app.html`): chat, servidores, perfil, calls, compartilhamento de tela e configurações. Era um arquivo só (`public/js/app.js`, com mais de 10 mil linhas); agora são 34 arquivos, um por assunto.
+Aqui mora tudo que roda na página principal (`app.html`): chat, servidores, perfil, calls, compartilhamento de tela e configurações. Era um arquivo só (`public/js/app.js`, com mais de 10 mil linhas); agora são 35 arquivos, um por assunto.
 
 ## Como os arquivos se enxergam
 
@@ -13,7 +13,7 @@ Por que não módulos (`import`/`export`)? O estado do app (`currentChannel`, `p
 1. **A ordem importa.** O número no nome é a ordem de carga. Código que roda **na hora em que o arquivo carrega** (fora de função) só pode usar `const`/`let` de arquivos anteriores e funções de arquivos anteriores ou do próprio arquivo. Dentro de funções e de `addEventListener(..., () => …)` pode usar qualquer coisa de qualquer arquivo, porque isso só roda depois que todos carregaram.
 2. **Nomes são globais.** Antes de criar uma função ou variável no topo, procure o nome na pasta (`grep -rn "function nome" public/js/app/`). Dois `const` com o mesmo nome em arquivos diferentes derrubam o segundo arquivo inteiro. Evite nomes que o navegador já usa em `window` (`name`, `status`, `top`, `open`, `close`, `stop`, `focus`…).
 3. **Arquivo novo** entra na pasta com o número da posição certa e ganha uma linha `<script>` no `app.html`, no mesmo lugar da ordem.
-4. **Mudou qualquer arquivo? Suba o `?v=` de todos** no `app.html` (hoje `?v=67`). O servidor manda tudo com `no-cache` (o navegador sempre confere se mudou), mas o número igual em todos deixa claro que são do mesmo conjunto — numa call todo mundo precisa estar com a mesma versão.
+4. **Mudou qualquer arquivo? Suba o `?v=` de todos** no `app.html` (hoje `?v=68`). O servidor manda tudo com `no-cache` (o navegador sempre confere se mudou), mas o número igual em todos deixa claro que são do mesmo conjunto — numa call todo mundo precisa estar com a mesma versão.
 5. **Estado compartilhado** (o que vários assuntos usam) fica em `01-state.js`. Estado de um assunto só fica no arquivo dele.
 6. Cores, fontes e cantos sempre por variável CSS; comentários em português explicando o porquê. (Regras gerais do projeto, ver README da raiz.)
 
@@ -55,6 +55,7 @@ Por que não módulos (`import`/`export`)? O estado do app (`currentChannel`, `p
 | `32-reports.js` | **Denúncias.** janela de denunciar (mensagem ou pessoa) e a aba "denúncias" do painel rápido de admin | `openReportDialog()`, `renderAdminReports()` |
 | `33-performance.js` | **Desempenho (app desktop).** aba "desempenho" das configurações: CPU, RAM e placa de vídeo de cada processo do dusky (números de `tauri/src-tauri/src/perf.rs`), atualizando a cada 2 s só com a aba aberta; os 3 modos de uso de memória do app; e as opções de "efeitos de perfil" (acessibilidade: sempre / ao passar o mouse / nunca) | `startPerfPanel()`, `renderPerfMemoryModes()`, `renderFxMotionOptions()` |
 | `34-blocks.js` | **Bloquear e fechar conversa.** quem eu bloqueei (`blockedUserIds`), mensagens de bloqueado recolhidas com "mostrar", bloquear/desbloquear no perfil e no botão direito, aba "bloqueados" das configurações e o × de "fechar conversa" na lista de DMs. A regra de verdade é a do servidor (`server/access.js`) | `blockUser()`, `unblockUser()`, `applyBlockedState()`, `renderBlockedSettings()`, `closeDmConversation()` |
+| `35-screen-fsr.js` | **Melhorar a tela dos outros (FSR 1, experimental).** preferência "melhorar imagem" por aparelho (original, só nitidez, aumentar e dar nitidez); no navegador, um canvas desenhado com o FSR por cima do `<video>` de cada tela; no app do Linux o FSR entra direto no desenho de `21-call-sfu.js`. O FSR em si (shaders WebGL2, port do AMD FidelityFX FSR 1) fica em `public/js/screen-fsr.js` | `attachScreenFsr()`, `screenFsrDrawOptions()`, `getScreenFsrMode()` |
 
 ## Onde procurar
 

@@ -70,6 +70,7 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O c�
 - Processamento da voz: caixa de som (cancela eco), fone de ouvido (voz mais natural) ou estúdio (nada).
 - Ganho do microfone, sensibilidade (corta o mic abaixo de um volume) e "ouvir a si mesmo".
 - Compartilhamento de tela com som, com volume próprio. Igual ao Discord, a tela de alguém só chega depois de clicar em **assistir** no card "fulano está compartilhando a tela" (antes disso nada do vídeo é baixado, nem pelo servidor de mídia, nem em malha, nem no app do Linux); dá pra "parar de assistir" depois. A escolha vale até sair da call: se a tela da pessoa cai e volta, continua assistindo. No mundinho a TV mostra a tela sozinha, como antes.
+- **Melhorar a tela dos outros (experimental)**: em configurações → compartilhar tela, quem assiste pode ligar o **AMD FSR 1** (ou só a nitidez dele). Roda na placa de vídeo de quem assiste: aumenta a tela de quem compartilha pro tamanho em que ela aparece (até 2x) e dá nitidez, o que ajuda quando a pessoa manda em 720p ou com bitrate baixo. Quem compartilha não muda nada. Precisa de WebGL2 com placa de vídeo de verdade; sem isso, a tela fica como chega.
 
 **Soundboard** (igual ao do Discord)
 - Cada servidor tem até 48 sons de até ~5 s. No envio, um editor mostra a onda do arquivo (áudio ou vídeo) pra cortar o trecho; o servidor corta e converte pra mp3 com o ffmpeg.
@@ -252,7 +253,8 @@ dusky/
 │   ├── css/                # theme.css (variáveis e componentes base), um arquivo por área,
 │   │                       #   design.css (o visual atual, por cima de tudo) e media.css (imagens/vídeos)
 │   ├── js/themes.js        # motor de temas: aplica as variáveis, temas prontos, editor da aba "temas"
-│   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 34
+│   ├── js/screen-fsr.js    # AMD FSR 1 (EASU + RCAS) em WebGL2, pra "melhorar imagem" da tela de quem assiste
+│   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 35
 │   │                       #   arquivos por assunto, carregados em ordem — o mapa está em js/app/README.md
 │   ├── js/decor-catalog.js, js/decor-picker.js  # decorações do Discord (tocar efeitos/placas, galeria)
 │   ├── decor/              # catálogo das decorações (catalog.json/.js); as mídias em decor/media/ ficam fora do git
@@ -416,6 +418,7 @@ Partes de terceiros incluídas, cada uma com a sua licença:
 | DeepFilterNet3 | `public/vendor/deepfilternet3/` | MIT / Apache-2.0 |
 | RNNoise (web-noise-suppressor) | `public/vendor/web-noise-suppressor/` | MIT / BSD |
 | Three.js | `public/vendor/three/` | MIT |
+| AMD FidelityFX Super Resolution 1 (port dos shaders EASU/RCAS pra WebGL2) | `public/js/screen-fsr.js` | MIT |
 | emojibase (dados de emoji) | `public/vendor/emoji/` | MIT |
 | bibliotecas do servidor (npm) | `package.json` | MIT, exceto web-push (MPL-2.0) |
 | FFmpeg (só no instalador do Windows) | baixado por `tauri/scripts/fetch-ffmpeg.js` | GPL-3.0 — build "win64-gpl" 8.1.3 do BtbN (github.com/BtbN/FFmpeg-Builds); o código-fonte do FFmpeg está em https://ffmpeg.org/download.html |

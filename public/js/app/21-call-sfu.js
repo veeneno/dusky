@@ -502,13 +502,18 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
   // (dá pra forçar o canvas 2D com localStorage 'dusky:nativeVideo2d' = '1', pra comparar)
   let force2d = false;
   try { force2d = localStorage.getItem('dusky:nativeVideo2d') === '1'; } catch (_) { /* sem armazenamento */ }
-  const gl = force2d ? null : createNativeVideoGl(canvas);
-  const g = gl ? null : canvas.getContext('2d');
+  // "melhorar imagem" ligado (35-screen-fsr.js): o canvas já nasce com o FSR (WebGL2), que também
+  // sabe só copiar se a pessoa desligar no meio. Desligado, fica tudo exatamente como antes.
+  const fsr = !force2d && getScreenFsrMode() !== 'off' && window.DuskyFsr
+    ? window.DuskyFsr.create(canvas, { preserveDrawingBuffer: true, desynchronized: true })
+    : null;
+  const gl = fsr || force2d ? null : createNativeVideoGl(canvas);
+  const g = gl || fsr ? null : canvas.getContext('2d');
   const track = canvas.captureStream().getVideoTracks()[0];
   if (!track) return;
   track.duskyCanvas = canvas; // 19-call-ui.js mostra o canvas direto no lugar do <video>
   const entry = {
-    identity: ev.identity, source: 'screen_share', canvas, g, gl, track, encoded: true, codec, codecId: ev.codec,
+    identity: ev.identity, source: 'screen_share', canvas, g, gl, fsr, fsrFails: 0, track, encoded: true, codec, codecId: ev.codec,
     decoder: null, needKey: true, configured: '', // configurado pra que tamanho (só no 1º quadro-chave)
     bytes: 0, frames: 0, shown: 0, statFrames: 0, statShown: 0, statAt: performance.now(),
     queue: [], // quadros já decodificados esperando a vez de aparecer (ver sfuNativePresent)
@@ -560,7 +565,10 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
       entry.statAt = now;
       return new Map([['tela', {
         id: 'tela', type: 'inbound-rtp', kind: 'video', timestamp: now, bytesReceived: entry.bytes,
-        frameWidth: canvas.width, frameHeight: canvas.height, framesPerSecond: shownFps, framesDecodedPerSecond: decodedFps,
+        // com o FSR o canvas é do tamanho da SAÍDA: o que chega é o tamanho do quadro decodificado
+        frameWidth: entry.fsr ? entry.fsr.info.srcW : canvas.width,
+        frameHeight: entry.fsr ? entry.fsr.info.srcH : canvas.height,
+        framesPerSecond: shownFps, framesDecodedPerSecond: decodedFps,
       }]]);
     },
   };
@@ -638,6 +646,20 @@ function sfuNativePresent(ctx) {
       for (let i = 0; i < pick; i++) q[i].close(); // os que perderam a vez
       q.splice(0, pick + 1);
       const { canvas, g, gl } = entry;
+      if (entry.fsr) {
+        // FSR: o próprio draw ajusta o tamanho do canvas pro espaço onde a tela aparece
+        if (entry.fsr.draw(frame, frame.displayWidth, frame.displayHeight, screenFsrDrawOptions(canvas))) entry.fsrFails = 0;
+        else if (++entry.fsrFails > 30 || entry.fsr.lost) {
+          // não está conseguindo desenhar (o WebKitGTK sem subir VideoFrame no WebGL2, contexto
+          // perdido): essa tela passa pro caminho em JPEG, que sempre funciona
+          frame.close();
+          sfuNativeFallBack(ctx, entry, 'o FSR não conseguiu desenhar');
+          continue;
+        }
+        frame.close();
+        entry.shown++;
+        continue;
+      }
       if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
         canvas.width = frame.displayWidth;
         canvas.height = frame.displayHeight;
@@ -800,7 +822,7 @@ function sfuNativeDiag(ctx) {
       ctx.api.log(`tela de ${e.identity}: ${r('received')} quadros/s chegando, ${r('frames')} decodificados, ${r('shown')} mostrados` +
         `${e.waitingKey - p.waitingKey ? `, ${e.waitingKey - p.waitingKey} descartados esperando quadro-chave` : ''}` +
         `, página redesenhando ${Math.round(ticks / secs)}x/s, ${e.canvas.width}x${e.canvas.height}, ` +
-        `${e.gl ? 'WebGL' : 'canvas 2D'}${e.softwareOnly ? ', decod. no processador' : ''}` +
+        `${e.fsr ? `FSR (${screenFsrLabel(e.fsr.info) || 'parado'})` : e.gl ? 'WebGL' : 'canvas 2D'}${e.softwareOnly ? ', decod. no processador' : ''}` +
         `${e.lastError ? `, último erro: ${e.lastError}` : ''}`);
     }
     ticks = 0;
@@ -841,6 +863,7 @@ function sfuNativeRemoveVideo(ctx, sid) {
   ctx.videos.delete(sid);
   if (entry.decoder && entry.decoder.state !== 'closed') { try { entry.decoder.close(); } catch (_) { /* já fechado */ } }
   if (entry.queue) { for (const f of entry.queue) f.close(); entry.queue = []; }
+  if (entry.fsr) entry.fsr.destroy();
   sfuTrackUnsubscribed({ mediaStreamTrack: entry.track }, { source: entry.source }, { identity: entry.identity });
   entry.track.stop();
 }
