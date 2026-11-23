@@ -13,30 +13,30 @@
   <meta name="theme-color" content="#16141f">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e1f22">
-  <script src="/js/compat.js?v=67"></script>
-  <script src="/js/themes.js?v=67"></script>
+  <script src="/js/compat.js?v=70"></script>
+  <script src="/js/themes.js?v=70"></script>
   <script src="/js/theme-boot.js"></script>
   <title>concord</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/theme.css?v=67">
-  <link rel="stylesheet" href="/css/app.css?v=67">
-  <link rel="stylesheet" href="/css/chat.css?v=67">
-  <link rel="stylesheet" href="/css/members.css?v=67">
-  <link rel="stylesheet" href="/css/profile.css?v=67">
-  <link rel="stylesheet" href="/css/voice.css?v=67">
-  <link rel="stylesheet" href="/css/settings.css?v=67">
-  <link rel="stylesheet" href="/css/servers.css?v=67">
-  <link rel="stylesheet" href="/css/call-roles.css?v=67">
-  <link rel="stylesheet" href="/css/chat-extras.css?v=67">
-  <link rel="stylesheet" href="/css/design.css?v=67">
-  <link rel="stylesheet" href="/css/media.css?v=67">
-  <link rel="stylesheet" href="/css/server-options.css?v=67">
-  <link rel="stylesheet" href="/css/server-settings.css?v=67">
-  <link rel="stylesheet" href="/css/world.css?v=67">
-  <link rel="stylesheet" href="/css/mobile.css?v=67">
-  <link rel="stylesheet" href="/css/sidebar-dc.css?v=67">
-  <link rel="stylesheet" href="/css/reports.css?v=67">
+  <link rel="stylesheet" href="/css/theme.css?v=70">
+  <link rel="stylesheet" href="/css/app.css?v=70">
+  <link rel="stylesheet" href="/css/chat.css?v=70">
+  <link rel="stylesheet" href="/css/members.css?v=70">
+  <link rel="stylesheet" href="/css/profile.css?v=70">
+  <link rel="stylesheet" href="/css/voice.css?v=70">
+  <link rel="stylesheet" href="/css/settings.css?v=70">
+  <link rel="stylesheet" href="/css/servers.css?v=70">
+  <link rel="stylesheet" href="/css/call-roles.css?v=70">
+  <link rel="stylesheet" href="/css/chat-extras.css?v=70">
+  <link rel="stylesheet" href="/css/design.css?v=70">
+  <link rel="stylesheet" href="/css/media.css?v=70">
+  <link rel="stylesheet" href="/css/server-options.css?v=70">
+  <link rel="stylesheet" href="/css/server-settings.css?v=70">
+  <link rel="stylesheet" href="/css/world.css?v=70">
+  <link rel="stylesheet" href="/css/mobile.css?v=70">
+  <link rel="stylesheet" href="/css/sidebar-dc.css?v=70">
+  <link rel="stylesheet" href="/css/reports.css?v=70">
 </head>
 <body>
   <div class="app-shell">
@@ -1383,6 +1383,10 @@
             <span class="settings-toggle-text"><strong>iniciar com o sistema</strong><small>abre o dusky na bandeja quando você entra no computador, sem mostrar a janela.</small></span>
             <input type="checkbox" id="settingsAutostart">
           </label>
+          <label class="settings-toggle" id="settingsSiteTestesRow" hidden>
+            <span class="settings-toggle-text"><strong>site de teste</strong><small id="settingsSiteTestesInfo"></small></span>
+            <input type="checkbox" id="settingsSiteTestes">
+          </label>
 
           <h3 class="settings-subtitle">atividade</h3>
           <div id="presenceSettings"></div>
@@ -1419,46 +1423,46 @@
     </div>
   </div>
 
-  <script src="/js/realtime.js?v=67"></script>
-  <script src="/js/markdown.js?v=67"></script>
-  <script src="/js/emoji.js?v=67"></script>
+  <script src="/js/realtime.js?v=70"></script>
+  <script src="/js/markdown.js?v=70"></script>
+  <script src="/js/emoji.js?v=70"></script>
   <!-- o código do site: scripts comuns que dividem o mesmo escopo, nesta ordem (ver public/js/app/README.md) -->
-  <script src="/js/app/01-state.js?v=67"></script>
-  <script src="/js/app/02-preferences.js?v=67"></script>
-  <script src="/js/app/03-context-menus.js?v=67"></script>
-  <script src="/js/app/04-sidebar.js?v=67"></script>
-  <script src="/js/app/05-chat.js?v=67"></script>
-  <script src="/js/app/06-message-content.js?v=67"></script>
-  <script src="/js/app/07-composer.js?v=67"></script>
-  <script src="/js/app/08-notifications.js?v=67"></script>
-  <script src="/js/app/09-panels-attachments.js?v=67"></script>
-  <script src="/js/app/10-video-player.js?v=67"></script>
-  <script src="/js/app/11-slash-commands.js?v=67"></script>
-  <script src="/decor/catalog.js?v=67"></script>
-  <script src="/js/decor-catalog.js?v=67"></script>
-  <script src="/js/decor-picker.js?v=67"></script>
-  <script src="/js/app/12-members-profile.js?v=67"></script>
-  <script src="/js/app/13-servers.js?v=67"></script>
-  <script src="/js/app/14-roles.js?v=67"></script>
-  <script src="/js/app/15-media-viewer.js?v=67"></script>
-  <script src="/js/app/16-site-admin.js?v=67"></script>
-  <script src="/js/app/17-settings.js?v=67"></script>
-  <script src="/js/app/18-call-audio.js?v=67"></script>
-  <script src="/js/app/19-call-ui.js?v=67"></script>
-  <script src="/js/app/20-screencast-native.js?v=67"></script>
-  <script src="/js/app/21-call-sfu.js?v=67"></script>
-  <script src="/js/app/22-call-mesh.js?v=67"></script>
-  <script src="/js/app/23-call-media.js?v=67"></script>
-  <script src="/js/app/24-presence.js?v=67"></script>
-  <script src="/js/app/25-server-settings.js?v=67"></script>
-  <script src="/js/app/26-soundboard.js?v=67"></script>
-  <script src="/js/app/27-world.js?v=67"></script>
-  <script src="/js/app/28-realtime.js?v=67"></script>
-  <script src="/js/app/29-mobile.js?v=67"></script>
-  <script src="/js/app/30-shortcuts.js?v=67"></script>
-  <script src="/js/app/31-account-security.js?v=67"></script>
-  <script src="/js/app/32-reports.js?v=67"></script>
-  <script src="/js/app/33-performance.js?v=67"></script>
-  <script src="/js/app/34-blocks.js?v=67"></script>
+  <script src="/js/app/01-state.js?v=70"></script>
+  <script src="/js/app/02-preferences.js?v=70"></script>
+  <script src="/js/app/03-context-menus.js?v=70"></script>
+  <script src="/js/app/04-sidebar.js?v=70"></script>
+  <script src="/js/app/05-chat.js?v=70"></script>
+  <script src="/js/app/06-message-content.js?v=70"></script>
+  <script src="/js/app/07-composer.js?v=70"></script>
+  <script src="/js/app/08-notifications.js?v=70"></script>
+  <script src="/js/app/09-panels-attachments.js?v=70"></script>
+  <script src="/js/app/10-video-player.js?v=70"></script>
+  <script src="/js/app/11-slash-commands.js?v=70"></script>
+  <script src="/decor/catalog.js?v=70"></script>
+  <script src="/js/decor-catalog.js?v=70"></script>
+  <script src="/js/decor-picker.js?v=70"></script>
+  <script src="/js/app/12-members-profile.js?v=70"></script>
+  <script src="/js/app/13-servers.js?v=70"></script>
+  <script src="/js/app/14-roles.js?v=70"></script>
+  <script src="/js/app/15-media-viewer.js?v=70"></script>
+  <script src="/js/app/16-site-admin.js?v=70"></script>
+  <script src="/js/app/17-settings.js?v=70"></script>
+  <script src="/js/app/18-call-audio.js?v=70"></script>
+  <script src="/js/app/19-call-ui.js?v=70"></script>
+  <script src="/js/app/20-screencast-native.js?v=70"></script>
+  <script src="/js/app/21-call-sfu.js?v=70"></script>
+  <script src="/js/app/22-call-mesh.js?v=70"></script>
+  <script src="/js/app/23-call-media.js?v=70"></script>
+  <script src="/js/app/24-presence.js?v=70"></script>
+  <script src="/js/app/25-server-settings.js?v=70"></script>
+  <script src="/js/app/26-soundboard.js?v=70"></script>
+  <script src="/js/app/27-world.js?v=70"></script>
+  <script src="/js/app/28-realtime.js?v=70"></script>
+  <script src="/js/app/29-mobile.js?v=70"></script>
+  <script src="/js/app/30-shortcuts.js?v=70"></script>
+  <script src="/js/app/31-account-security.js?v=70"></script>
+  <script src="/js/app/32-reports.js?v=70"></script>
+  <script src="/js/app/33-performance.js?v=70"></script>
+  <script src="/js/app/34-blocks.js?v=70"></script>
 </body>
 </html>

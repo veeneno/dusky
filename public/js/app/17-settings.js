@@ -450,6 +450,33 @@ function renderSettingsAppCard() {
   const canAuto = !!(desk && desk.autostart && typeof desk.autostart.set === 'function');
   autoRow.hidden = !canAuto;
   if (canAuto) document.getElementById('settingsAutostart').checked = !!desk.autostart.enabled;
+  refreshSiteTestesSetting();
+}
+// site de teste (server/siteTestes.js): quem liga recebe o site da branch testes, no navegador e
+// no app. A chave só aparece quando o servidor tem a pasta da branch. Saída de emergência, se o
+// site de teste quebrar: abrir /site-teste/sair no navegador
+async function refreshSiteTestesSetting() {
+  const row = document.getElementById('settingsSiteTestesRow');
+  if (!row) return;
+  let info = null;
+  try {
+    const r = await fetch('/api/site-testes', { cache: 'no-store' });
+    info = r.ok ? await r.json() : null;
+  } catch (_) { /* sem resposta: some a chave */ }
+  row.hidden = !(info && info.available);
+  if (row.hidden) return;
+  document.getElementById('settingsSiteTestes').checked = !!info.on;
+  document.getElementById('settingsSiteTestesInfo').textContent = info.on
+    ? `ligado: você está no site da branch testes${info.commit ? ` (${info.commit})` : ''}. Pode ter bug; desligou, volta pro normal.`
+    : 'mostra as novidades da branch testes antes de todo mundo, só pra você. Pode ter bug; desligou, volta pro normal.';
+  // selo no cartão do app, igual ao da build de teste
+  const title = document.querySelector('#settingsAppCard strong');
+  if (info.on && title && !title.querySelector('.settings-site-test-badge')) {
+    const badge = document.createElement('em');
+    badge.className = 'settings-test-badge settings-site-test-badge';
+    badge.textContent = 'site de teste';
+    title.append(' ', badge);
+  }
 }
 document.getElementById('settingsAutostart').addEventListener('change', async (e) => {
   const desk = window.duskyDesktop;
@@ -476,6 +503,24 @@ document.getElementById('settingsHwAccel').addEventListener('change', (e) => {
     return;
   }
   desk.setHardwareAcceleration(on);
+});
+document.getElementById('settingsSiteTestes').addEventListener('change', async (e) => {
+  const box = e.target;
+  const on = box.checked;
+  if (!confirm(`${on ? 'Ligar' : 'Desligar'} o site de teste? A página recarrega agora${inVoiceCallForSettings() ? ' (e sai da call)' : ''}.`)) {
+    box.checked = !on;
+    return;
+  }
+  box.disabled = true;
+  try {
+    const r = await fetch('/api/site-testes', { method: on ? 'PUT' : 'DELETE' });
+    if (!r.ok) throw new Error(`erro ${r.status}`);
+    location.reload();
+  } catch (err) {
+    box.checked = !on;
+    box.disabled = false;
+    toast(`não deu pra mudar: ${err.message || err}`);
+  }
 });
 // compartilhar tela → codificar pela placa de vídeo (padrão, cai pro processador sozinho) ou pelo
 // processador. Só o app (1.1.3+) sabe; não depende da aceleração de hardware

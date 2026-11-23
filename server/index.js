@@ -175,8 +175,7 @@ app.post('/api/csp-report', express.json({ type: ['application/csp-report', 'app
 
 const DECOR_MEDIA_DIR = path.join(__dirname, '..', 'public', 'decor', 'media') + path.sep;
 const VENDOR_DIR = path.join(__dirname, '..', 'public', 'vendor') + path.sep;
-app.use(require('./routes/uploads'));
-app.use(express.static(path.join(__dirname, '..', 'public'), {
+const STATIC_OPTIONS = {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
       res.setHeader('X-Frame-Options', 'DENY');
@@ -189,7 +188,14 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
     // tudo de novo a cada página aberta
     else res.setHeader('Cache-Control', 'no-cache');
   },
-}));
+};
+app.use(require('./routes/uploads'));
+// "site de teste" (server/siteTestes.js): com a chave ligada, html/js/css saem da branch testes;
+// o que não existir lá cai no site normal logo abaixo
+const siteTestes = require('./siteTestes');
+app.use(siteTestes.router);
+app.use(siteTestes.staticMiddleware(STATIC_OPTIONS));
+app.use(express.static(path.join(__dirname, '..', 'public'), STATIC_OPTIONS));
 
 // app desktop: /baixar, /downloads/*, /api/downloads (público, sem login)
 app.use(downloadRoutes);
