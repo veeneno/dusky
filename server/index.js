@@ -246,6 +246,14 @@ app.use('/api/admin', adminRoutes);
 app.use('/api', activityRoutes); // /api/unread, /api/search
 app.use('/api/embed', embedRoutes);
 
+// nada respondeu (vai virar o 404 padrão do Express): no-store, senão a Cloudflare guarda por 4 h o
+// 404 de um .js — e quem liga o site de teste (server/siteTestes.js), que pede arquivo que só existe
+// na branch, recebia o 404 guardado de quem pediu o mesmo endereço sem a chave
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
 // tratador de erro do Express (precisa ser o último app.use, com os 4 argumentos): pega exceção de
 // rota comum e, com asyncRoute (server/asyncRoute.js), de rota async. Loga com o stack e responde
 // sem stack nenhum (não vaza caminho de arquivo nem detalhe interno). err.status cobre os erros do
