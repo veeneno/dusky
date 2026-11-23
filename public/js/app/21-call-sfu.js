@@ -502,9 +502,10 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
   // (dá pra forçar o canvas 2D com localStorage 'dusky:nativeVideo2d' = '1', pra comparar)
   let force2d = false;
   try { force2d = localStorage.getItem('dusky:nativeVideo2d') === '1'; } catch (_) { /* sem armazenamento */ }
-  // "melhorar imagem" ligado (35-screen-fsr.js): o canvas já nasce com o FSR (WebGL2), que também
-  // sabe só copiar se a pessoa desligar no meio. Desligado, fica tudo exatamente como antes.
-  const fsr = !force2d && getScreenFsrMode() !== 'off' && window.DuskyFsr
+  // "melhorar imagem" ou "gerar quadros" ligados (35-screen-fsr.js): o canvas já nasce com o
+  // renderizador do FSR (WebGL2), que também sabe só copiar se a pessoa desligar no meio.
+  // Desligados, fica tudo exatamente como antes.
+  const fsr = !force2d && screenEnhanceOn() && window.DuskyFsr
     ? window.DuskyFsr.create(canvas, { preserveDrawingBuffer: true, desynchronized: true })
     : null;
   const gl = fsr || force2d ? null : createNativeVideoGl(canvas);
@@ -513,7 +514,7 @@ function sfuNativeAddEncodedVideo(ctx, ev) {
   if (!track) return;
   track.duskyCanvas = canvas; // 19-call-ui.js mostra o canvas direto no lugar do <video>
   const entry = {
-    identity: ev.identity, source: 'screen_share', canvas, g, gl, fsr, fsrFails: 0, track, encoded: true, codec, codecId: ev.codec,
+    identity: ev.identity, source: 'screen_share', canvas, g, gl, fsr, track, encoded: true, codec, codecId: ev.codec,
     decoder: null, needKey: true, configured: '', // configurado pra que tamanho (só no 1º quadro-chave)
     bytes: 0, frames: 0, shown: 0, statFrames: 0, statShown: 0, statAt: performance.now(),
     queue: [], // quadros já decodificados esperando a vez de aparecer (ver sfuNativePresent)
@@ -618,6 +619,9 @@ function drawNativeVideoGl(gl, frame, w, h) {
 // da tela aparece o quadro mais novo cuja hora já chegou. Assim 60 fps de origem viram 60 quadros
 // distintos na tela (num monitor de 60 Hz ou mais), sem pular e repetir.
 const NATIVE_PLAYOUT_DELAY_MS = 40;
+// com geração de quadros a folga é maior: pra inventar os quadros do meio entre A e B, o B já
+// precisa ter chegado quando chega a hora de começar a sair de A
+const NATIVE_PLAYOUT_DELAY_FG_MS = 70;
 
 function sfuNativePresent(ctx) {
   ctx.presenting = true;
@@ -629,6 +633,26 @@ function sfuNativePresent(ctx) {
       if (!entry.encoded) continue;
       any = true;
       const q = entry.queue;
+      if (entry.fsr) {
+        // FSR e/ou geração de quadros (35-screen-fsr.js, screenEnhanceNativeStep): ele escolhe o que
+        // mostrar e roda mesmo com a fila vazia (os quadros do meio continuam saindo)
+        if (!entry.clock) {
+          if (!q.length) continue;
+          const delay = getScreenFrameGenMode() !== 'off' ? NATIVE_PLAYOUT_DELAY_FG_MS : NATIVE_PLAYOUT_DELAY_MS;
+          entry.clock = { ts: q[0].timestamp, wall: now + delay };
+        }
+        let playout = entry.clock.ts + (now - entry.clock.wall) * 1000;
+        if (q.length && (q[q.length - 1].timestamp < playout - 300000 || q[0].timestamp > playout + 200000)) {
+          entry.clock = { ts: q[q.length - 1].timestamp, wall: now };
+          playout = entry.clock.ts;
+        }
+        if (q.length > 6) entry.clock.wall -= 2;
+        noteScreenDisplayFrame(now);
+        // não está conseguindo desenhar (o WebKitGTK sem subir VideoFrame no WebGL2, contexto
+        // perdido): essa tela passa pro caminho em JPEG, que sempre funciona
+        if (screenEnhanceNativeStep(entry, playout) === 'fail') sfuNativeFallBack(ctx, entry, 'o FSR não conseguiu desenhar');
+        continue;
+      }
       if (!q.length) continue;
       if (!entry.clock) entry.clock = { ts: q[0].timestamp, wall: now + NATIVE_PLAYOUT_DELAY_MS };
       let playout = entry.clock.ts + (now - entry.clock.wall) * 1000; // em µs, na escala de quem envia
@@ -646,20 +670,6 @@ function sfuNativePresent(ctx) {
       for (let i = 0; i < pick; i++) q[i].close(); // os que perderam a vez
       q.splice(0, pick + 1);
       const { canvas, g, gl } = entry;
-      if (entry.fsr) {
-        // FSR: o próprio draw ajusta o tamanho do canvas pro espaço onde a tela aparece
-        if (entry.fsr.draw(frame, frame.displayWidth, frame.displayHeight, screenFsrDrawOptions(canvas))) entry.fsrFails = 0;
-        else if (++entry.fsrFails > 30 || entry.fsr.lost) {
-          // não está conseguindo desenhar (o WebKitGTK sem subir VideoFrame no WebGL2, contexto
-          // perdido): essa tela passa pro caminho em JPEG, que sempre funciona
-          frame.close();
-          sfuNativeFallBack(ctx, entry, 'o FSR não conseguiu desenhar');
-          continue;
-        }
-        frame.close();
-        entry.shown++;
-        continue;
-      }
       if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
         canvas.width = frame.displayWidth;
         canvas.height = frame.displayHeight;
@@ -822,7 +832,7 @@ function sfuNativeDiag(ctx) {
       ctx.api.log(`tela de ${e.identity}: ${r('received')} quadros/s chegando, ${r('frames')} decodificados, ${r('shown')} mostrados` +
         `${e.waitingKey - p.waitingKey ? `, ${e.waitingKey - p.waitingKey} descartados esperando quadro-chave` : ''}` +
         `, página redesenhando ${Math.round(ticks / secs)}x/s, ${e.canvas.width}x${e.canvas.height}, ` +
-        `${e.fsr ? `FSR (${screenFsrLabel(e.fsr.info) || 'parado'})` : e.gl ? 'WebGL' : 'canvas 2D'}${e.softwareOnly ? ', decod. no processador' : ''}` +
+        `${e.fsr ? `renderizador (${screenFsrLabel(e.fsr.info, e.fgFactor || 1) || 'só cópia'})` : e.gl ? 'WebGL' : 'canvas 2D'}${e.softwareOnly ? ', decod. no processador' : ''}` +
         `${e.lastError ? `, último erro: ${e.lastError}` : ''}`);
     }
     ticks = 0;

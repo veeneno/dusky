@@ -71,6 +71,7 @@ O site fica em **https://dusky.veneno.space**, por um túnel do Cloudflare. O c�
 - Ganho do microfone, sensibilidade (corta o mic abaixo de um volume) e "ouvir a si mesmo".
 - Compartilhamento de tela com som, com volume próprio. Igual ao Discord, a tela de alguém só chega depois de clicar em **assistir** no card "fulano está compartilhando a tela" (antes disso nada do vídeo é baixado, nem pelo servidor de mídia, nem em malha, nem no app do Linux); dá pra "parar de assistir" depois. A escolha vale até sair da call: se a tela da pessoa cai e volta, continua assistindo. No mundinho a TV mostra a tela sozinha, como antes.
 - **Melhorar a tela dos outros (experimental)**: em configurações → compartilhar tela, quem assiste pode ligar o **AMD FSR 1** (ou só a nitidez dele). Roda na placa de vídeo de quem assiste: aumenta a tela de quem compartilha pro tamanho em que ela aparece (até 2x) e dá nitidez, o que ajuda quando a pessoa manda em 720p ou com bitrate baixo. Quem compartilha não muda nada. Precisa de WebGL2 com placa de vídeo de verdade; sem isso, a tela fica como chega.
+- **Gerar quadros na tela dos outros (experimental)**: parecido com o "frame generation" do Lossless Scaling, feito do zero em WebGL2 (`public/js/screen-framegen.js`), no navegador, no app do Windows e no app do Linux. A placa de vídeo de quem assiste estima o movimento entre dois quadros que chegaram (do tamanho menor pro maior, mais um movimento global pra rolagem de tela e giro de câmera) e monta os quadros do meio: 2x, 3x ou automático (até a taxa do monitor, no máximo 4x). Custa ~meio quadro de atraso (~17 ms a 30 fps em 2x); não gera nada com a tela quase parada (menos de ~10 fps) e pode deixar defeitos em objetos muito rápidos e em letras paradas por cima de algo que se mexe.
 
 **Soundboard** (igual ao do Discord)
 - Cada servidor tem até 48 sons de até ~5 s. No envio, um editor mostra a onda do arquivo (áudio ou vídeo) pra cortar o trecho; o servidor corta e converte pra mp3 com o ffmpeg.
@@ -254,6 +255,7 @@ dusky/
 │   │                       #   design.css (o visual atual, por cima de tudo) e media.css (imagens/vídeos)
 │   ├── js/themes.js        # motor de temas: aplica as variáveis, temas prontos, editor da aba "temas"
 │   ├── js/screen-fsr.js    # AMD FSR 1 (EASU + RCAS) em WebGL2, pra "melhorar imagem" da tela de quem assiste
+│   ├── js/screen-framegen.js  # geração de quadros (estimativa de movimento + quadros do meio) em WebGL2
 │   ├── js/app/             # o site inteiro (chat, servidores, perfil, calls, tela, configurações), em 35
 │   │                       #   arquivos por assunto, carregados em ordem — o mapa está em js/app/README.md
 │   ├── js/decor-catalog.js, js/decor-picker.js  # decorações do Discord (tocar efeitos/placas, galeria)

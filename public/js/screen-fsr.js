@@ -14,10 +14,13 @@
 //
 // Uso (window.DuskyFsr):
 //   const fsr = DuskyFsr.create(canvas, glOptions)   // null se não tiver WebGL2 de verdade
-//   fsr.draw(fonte, larguraFonte, alturaFonte, { upscale, sharpness, maxWidth, maxHeight })
+//   fsr.draw(fonte, larguraFonte, alturaFonte, { upscale, sharpen, sharpness, maxWidth, maxHeight })
 //      fonte: <video>, <canvas> ou VideoFrame. O canvas vira do tamanho da saída.
 //      sharpness: em "stops" do RCAS — 0 = máximo; cada 1 = metade da nitidez.
-//   fsr.info   → { srcW, srcH, outW, outH, easu } do último quadro
+//   Com geração de quadros (public/js/screen-framegen.js), em vez de draw:
+//   fsr.push(fonte, w, h, { frameGen: true })   // a cada quadro que chega
+//   fsr.present(opções, t)                        // t entre 0 (anterior) e 1 (o mais novo)
+//   fsr.info   → { srcW, srcH, outW, outH, easu, t } do último desenho
 //   fsr.destroy()
 //
 // ------------------------------------------------------------------------------------------------
@@ -246,7 +249,20 @@ void main() {
       return null;
     }
     const vao = gl.createVertexArray(); // o WebGL2 exige um, mesmo sem atributos
-    const srcTex = makeTexture(gl);
+    // os dois últimos quadros que chegaram (a geração de quadros precisa do anterior e do novo).
+    // Filtro linear: o FSR lê com texelFetch (ignora o filtro), a geração de quadros lê "entre" pixels
+    const ring = [makeTexture(gl), makeTexture(gl)];
+    for (const t of ring) {
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    }
+    const sizes = [{ w: 0, h: 0 }, { w: 0, h: 0 }];
+    const hasPyramid = [false, false];
+    let cur = -1;          // slot do quadro mais novo
+    let count = 0;         // quantos quadros já chegaram (até 2)
+    let motionDirty = true;
+    let frameGen;          // undefined = ainda não tentou montar; null = não dá neste aparelho
     const midTex = makeTexture(gl);
     const fbo = gl.createFramebuffer();
     let midW = 0;
@@ -254,83 +270,140 @@ void main() {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
 
+    const getFrameGen = () => {
+      if (frameGen === undefined) frameGen = window.DuskyFrameGen ? window.DuskyFrameGen.create(gl) : null;
+      return frameGen;
+    };
+
+    // FSR (ou só cópia) de uma textura srcW×srcH pro canvas
+    function runFsr(input, srcW, srcH, o) {
+      // tamanho da saída: o espaço onde a tela aparece, sem passar de 2x a entrada (o EASU foi
+      // feito até 2x) nem do teto pedido; mantém a proporção da entrada
+      let outW = srcW;
+      let outH = srcH;
+      if (o.upscale && o.maxWidth && o.maxHeight) {
+        const k = Math.min(2, o.maxWidth / srcW, o.maxHeight / srcH);
+        if (k > 1.05) { outW = Math.round(srcW * k); outH = Math.round(srcH * k); }
+      }
+      const useEasu = outW > srcW;
+      if (canvas.width !== outW) canvas.width = outW;
+      if (canvas.height !== outH) canvas.height = outH;
+      gl.bindVertexArray(vao);
+      gl.activeTexture(gl.TEXTURE0);
+
+      let inW = srcW;
+      let inH = srcH;
+      if (useEasu) {
+        if (midW !== outW || midH !== outH) {
+          gl.bindTexture(gl.TEXTURE_2D, midTex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, outW, outH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, midTex, 0);
+          midW = outW;
+          midH = outH;
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.viewport(0, 0, outW, outH);
+        gl.useProgram(easu.p);
+        gl.bindTexture(gl.TEXTURE_2D, input);
+        gl.uniform1i(easu.u.uSrc, 0);
+        gl.uniform4f(easu.u.uCon0, srcW / outW, srcH / outH, 0.5 * srcW / outW - 0.5, 0.5 * srcH / outH - 0.5);
+        gl.uniform2i(easu.u.uSrcMax, srcW - 1, srcH - 1);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        input = midTex;
+        inW = outW;
+        inH = outH;
+      }
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, outW, outH);
+      gl.bindTexture(gl.TEXTURE_2D, input);
+      if (o.sharpen === false && !useEasu) {
+        gl.useProgram(copy.p);
+        gl.uniform1i(copy.u.uSrc, 0);
+        gl.uniform1i(copy.u.uOutH, outH);
+      } else {
+        gl.useProgram(rcas.p);
+        gl.uniform1i(rcas.u.uSrc, 0);
+        gl.uniform2i(rcas.u.uSrcMax, inW - 1, inH - 1);
+        gl.uniform1i(rcas.u.uOutH, outH);
+        gl.uniform1f(rcas.u.uSharp, o.sharpen === false ? 0 : Math.pow(2, -(Number(o.sharpness) || 0)));
+      }
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      return { outW, outH, useEasu };
+    }
+
     const self = {
       gl,
-      info: { srcW: 0, srcH: 0, outW: 0, outH: 0, easu: false },
+      info: { srcW: 0, srcH: 0, outW: 0, outH: 0, easu: false, t: 1 },
       lost: false,
-      // desenha um quadro. Devolve false se não deu (contexto perdido, fonte sem tamanho)
-      draw(source, srcW, srcH, opts) {
+      // a geração de quadros funciona neste aparelho? (monta na primeira vez que perguntam)
+      get canInterpolate() { return !self.lost && !!getFrameGen(); },
+
+      // chegou um quadro novo: guarda (o anterior vira o "de antes"). frameGen: monta também a
+      // pirâmide de brilho dele, pra geração de quadros. Devolve false se não deu.
+      push(source, srcW, srcH, opts) {
         if (self.lost || gl.isContextLost()) { self.lost = true; return false; }
         if (!srcW || !srcH) return false;
-        const o = opts || {};
-        // tamanho da saída: o espaço onde a tela aparece, sem passar de 2x a entrada (o EASU foi
-        // feito até 2x) nem do teto pedido; mantém a proporção da entrada
-        let outW = srcW;
-        let outH = srcH;
-        if (o.upscale && o.maxWidth && o.maxHeight) {
-          const k = Math.min(2, o.maxWidth / srcW, o.maxHeight / srcH);
-          if (k > 1.05) { outW = Math.round(srcW * k); outH = Math.round(srcH * k); }
-        }
-        const useEasu = outW > srcW;
-        if (canvas.width !== outW) canvas.width = outW;
-        if (canvas.height !== outH) canvas.height = outH;
-
-        gl.bindVertexArray(vao);
+        const slot = cur === 0 ? 1 : 0;
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, srcTex);
+        gl.bindTexture(gl.TEXTURE_2D, ring[slot]);
         try {
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
         } catch (_) {
           return false; // vídeo ainda sem quadro, ou fonte que não dá pra subir
         }
-
-        let input = srcTex;
-        let inW = srcW;
-        let inH = srcH;
-        if (useEasu) {
-          if (midW !== outW || midH !== outH) {
-            gl.bindTexture(gl.TEXTURE_2D, midTex);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, outW, outH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, midTex, 0);
-            midW = outW;
-            midH = outH;
-          }
-          gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-          gl.viewport(0, 0, outW, outH);
-          gl.useProgram(easu.p);
-          gl.bindTexture(gl.TEXTURE_2D, srcTex);
-          gl.uniform1i(easu.u.uSrc, 0);
-          gl.uniform4f(easu.u.uCon0, srcW / outW, srcH / outH, 0.5 * srcW / outW - 0.5, 0.5 * srcH / outH - 0.5);
-          gl.uniform2i(easu.u.uSrcMax, srcW - 1, srcH - 1);
-          gl.drawArrays(gl.TRIANGLES, 0, 3);
-          input = midTex;
-          inW = outW;
-          inH = outH;
+        sizes[slot] = { w: srcW, h: srcH };
+        cur = slot;
+        count = Math.min(2, count + 1);
+        motionDirty = true;
+        hasPyramid[slot] = false;
+        if (opts && opts.frameGen) {
+          const fg = getFrameGen();
+          if (fg) hasPyramid[slot] = fg.buildPyramid(slot, ring[slot], srcW, srcH);
         }
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, outW, outH);
-        gl.bindTexture(gl.TEXTURE_2D, input);
-        if (o.sharpen === false && !useEasu) {
-          gl.useProgram(copy.p);
-          gl.uniform1i(copy.u.uSrc, 0);
-          gl.uniform1i(copy.u.uOutH, outH);
-        } else {
-          gl.useProgram(rcas.p);
-          gl.uniform1i(rcas.u.uSrc, 0);
-          gl.uniform2i(rcas.u.uSrcMax, inW - 1, inH - 1);
-          gl.uniform1i(rcas.u.uOutH, outH);
-          gl.uniform1f(rcas.u.uSharp, o.sharpen === false ? 0 : Math.pow(2, -(Number(o.sharpness) || 0)));
-        }
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        self.info = { srcW, srcH, outW, outH, easu: useEasu };
         return true;
       },
+
+      // mostra o ponto t entre o quadro anterior (0) e o mais novo (1). Sem t, ou t >= 1: o mais
+      // novo. No meio: o quadro gerado (se der; senão, o mais perto dos dois).
+      present(opts, t) {
+        if (self.lost || gl.isContextLost()) { self.lost = true; return false; }
+        if (cur < 0) return false;
+        const o = opts || {};
+        const prev = cur === 0 ? 1 : 0;
+        const { w, h } = sizes[cur];
+        const pairOk = count === 2 && sizes[prev].w === w && sizes[prev].h === h;
+        let input = ring[cur];
+        let shownT = 1;
+        if (t != null && t < 1 && pairOk) {
+          if (t <= 0) {
+            input = ring[prev];
+            shownT = 0;
+          } else if (frameGen && hasPyramid[prev] && hasPyramid[cur]) {
+            if (motionDirty) { frameGen.estimate(prev, cur, w, h); motionDirty = false; }
+            const mid = frameGen.interpolate(ring[prev], ring[cur], w, h, t);
+            if (mid) { input = mid; shownT = t; }
+          } else if (t < 0.5) {
+            input = ring[prev];
+            shownT = 0;
+          }
+        }
+        const r = runFsr(input, w, h, o);
+        self.info = { srcW: w, srcH: h, outW: r.outW, outH: r.outH, easu: r.useEasu, t: shownT };
+        return true;
+      },
+
+      // jeito antigo, sem geração de quadros: guarda e mostra na hora
+      draw(source, srcW, srcH, opts) {
+        return self.push(source, srcW, srcH) && self.present(opts, 1);
+      },
+
       destroy() {
         self.lost = true;
         try {
-          gl.deleteTexture(srcTex);
+          if (frameGen) frameGen.destroy();
+          for (const t of ring) gl.deleteTexture(t);
           gl.deleteTexture(midTex);
           gl.deleteFramebuffer(fbo);
           for (const x of [easu, rcas, copy]) gl.deleteProgram(x.p);
